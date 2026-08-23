@@ -5,7 +5,10 @@
 	"scripts": {
 		"dev": "next dev",
 		"build": "next build",
-		"generate": "node scripts/pack-editor.mjs",
+    "generate": "node scripts/pack-editor.mjs",
+    "generate:battle": "node scripts/pack-editor.mjs --battle",
+    "generate:battle:night": "node scripts/generate-battle-night-assets.mjs",
+    "check:battle:compression": "node scripts/check-battle-compression.mjs",
 		"start": "next start",
 		"lint": "eslint .",
 		"typecheck": "tsc --noEmit",

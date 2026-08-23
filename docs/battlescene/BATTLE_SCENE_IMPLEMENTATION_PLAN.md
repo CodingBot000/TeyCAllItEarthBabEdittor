@@ -17,7 +17,7 @@
 ### 에셋 제작 원칙
 
 - 전투 화면에 사용되는 모든 2D 및 3D 에셋은 새로 제작한다.
-- 기존 프로젝트와 이전 전투 구현의 모델, 텍스처, 스프라이트, VFX atlas를 재사용하지 않는다.
+- 맵·모선 최종 아트는 신규 제작한다. 단, 동작 패리티 검증을 위해 sibling에서 검증된 전투기 Billboard와 VFX flipbook·시민 WebP를 임시 런타임 참조본으로 복사할 수 있으며 최종 아트 교체 대상으로 관리한다.
 - 초안 이미지를 잘라 배경이나 유닛 텍스처로 사용하지 않는다.
 - 새 에셋은 웹 런타임용 최적화본과 편집 가능한 원본을 구분해 관리한다.
 - 외부 제작 도구나 외부 원본을 사용한다면 출처와 라이선스를 별도 manifest에 기록한다.
@@ -403,7 +403,7 @@ src/scripts/battlescene/
 
 실제 폴더명은 Editor가 생성하는 스크립트 맵과 충돌하지 않는지 첫 프로토타입에서 확인한 뒤 확정한다.
 
-Editor 씬을 변경한 뒤에는 `npm run generate`로 배포용 `.babylon` 씬과 스크립트 맵을 생성하고, 그 다음 Next.js 빌드를 실행한다.
+Editor 씬을 변경한 뒤에는 배틀 자산을 포함하는 `npm run generate:battle`로 배포용 `.babylon` 씬과 스크립트 맵을 생성하고, 맵별 WebP 사본을 `public/assets/runtime/battlescene/`에 동기화한 다음 Next.js 빌드를 실행한다. `npm run generate`는 앞단 1차 산출물용으로 배틀 자산을 제외한다.
 
 ### 16.1 동일 전투 화면과 맵 패키지 교체
 
@@ -423,16 +423,17 @@ assets/battlescene/
 
 맵 manifest는 `sky`, `far`, `middle`, `near`, `ground`, `foregroundAtmosphere` 슬롯과 패럴랙스, 카메라, ground lane 설정을 제공한다. 전투 로더는 `BattleLaunchRequest.mapId`로 manifest를 선택한 뒤 공통 배경 Plane의 Material/Texture만 교체한다.
 
-manifest에는 `/scene/assets/`를 포함하지 않는 key를 저장하고, 로더가 공통 prefix를 붙인다.
+manifest에는 `/scene/assets/`나 `/assets/runtime/`를 포함하지 않는 key를 저장하고, Editor 패커와 웹 로더가 각자의 공통 prefix를 붙인다.
 
 ```text
 key: battlescene/maps/city-day/backgrounds/city-far-day.webp
-URL: /scene/assets/battlescene/maps/city-day/backgrounds/city-far-day.webp
+Editor URL: /scene/assets/battlescene/maps/city-day/backgrounds/city-far-day.webp
+Web URL: /assets/runtime/battlescene/maps/city-day/backgrounds/city-far-day.webp
 ```
 
 이 구조에서 모선 GLB, 전투기, 드론, 지상 유닛 같은 3D 공통 에셋은 `shared/`에 둔다. 특정 맵에서 모선 이미지나 발광 색만 달라져야 할 때에만 manifest에 override를 추가한다.
 
-현재 `scripts/pack-editor.mjs`는 1차 메뉴·월드맵 빌드에 전투 에셋이 섞이지 않도록 `assets/battlescene/`을 임시 제외한다. 전투 화면을 연결하는 단계에서는 별도 `generate:battle` 패킹 경로를 만들거나 이 제외 목록을 제거해야 한다. 맵별 파일은 빌드 산출물에 존재할 수 있지만, 브라우저는 선택된 map manifest가 참조하는 파일만 요청하도록 lazy loading한다.
+현재 `scripts/pack-editor.mjs`는 1차 메뉴·월드맵 빌드에 전투 에셋이 섞이지 않도록 `assets/battlescene/`과 `assets/battlescene.scene/`을 임시 제외한다. 배틀 웹 빌드는 `npm run generate:battle`을 사용한다. 맵별 파일은 빌드 산출물에 존재할 수 있지만, 브라우저는 선택된 map manifest가 참조하는 파일만 요청하도록 lazy loading한다.
 
 ## 17. 신규 에셋 인벤토리
 
@@ -528,6 +529,8 @@ Babylon.js Editor의 KTX-Software 방식으로 KTX2 압축을 활성화한다. K
 - 알파 경계, normal map, ORM 채널은 압축 artifact에 민감하므로 색상 텍스처와 별도의 품질 검수를 수행한다.
 
 Editor CLI는 프로젝트 설정에서 압축이 활성화되어 있으면 `npm run generate` 시 KTX2 산출물을 생성한다. 압축 산출물의 존재만 확인하지 말고 실제 런타임 네트워크 요청이 KTX2를 선택하는지 브라우저 개발자 도구로 검증한다.
+
+현재 개발 환경에는 `toktx`와 `basisu`가 설치되어 있지 않다. `npm run check:battle:compression`이 이를 확인하며, encoder가 추가되기 전에는 `compressedTexturesEnabled`를 켜지 않고 WebP fallback만 배포한다.
 
 ### 19.4 크기와 해상도 기준
 
@@ -678,7 +681,7 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 - instance/pool 구성
 - 신규 지상 대공포·탱크 반입 또는 Sprite Manager 구성
 - ground lane과 X축 제한 구현
-- 발사체 풀과 단순 피격 판정 구현
+- `CombatState` 발사체 배열, 단순 피격 판정, bounded projectile visual 구현
 
 완료 기준: 목표 최대 수량의 임시 전투를 성능 저하 없이 반복 실행할 수 있다.
 
@@ -687,6 +690,7 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 - 회피 원회전 prototype
 - 카메라 방향 추락 prototype
 - 연출 상태 진입·종료 처리
+- 추락 cinematic 종료 시 `FAILED` 결과를 앱에 전달
 - 입력, 충돌, 카메라 추적과의 충돌 방지
 - near plane과 화면 이탈 조건 처리
 
@@ -696,7 +700,7 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 
 - 최종 신규 도시 레이어 적용
 - 신규 하늘과 환경광 적용
-- 신규 VFX atlas와 particle 적용
+- 방어막/선체 피격, EMP, 플라즈마, 인간 흡입, 방공 레이저 VFX를 도메인 이벤트에 연결
 - 2D/3D 조명, fog, 색보정 통합
 - 최종 모델 LOD와 texture 압축 적용
 
@@ -766,21 +770,22 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 - 추락 연출이 전투 화면 안에서 끝나는지 별도 결과 화면으로 이어지는지 여부
 - 도시 배경의 파괴 상태를 정적 variation으로 만들지 런타임 decal/VFX로 표현할지 여부
 
-## 25. 현재 프로젝트에서의 다음 작업
+## 25. 현재 구현과 다음 작업
 
-현재 Editor 프로젝트에는 기본 `example.scene`만 존재하고 실제 전투 씬은 없다. 첫 구현 작업은 최종 에셋 제작이 아니라 B0 기술 회색상자로 시작한다.
+현재 브랜치에는 Editor에서 다시 열어 배치할 수 있는 `assets/battlescene.scene/` 회색상자 씬이 생성되어 있다. `project.bjseditor`의 마지막 씬도 이 경로를 가리킨다.
 
-권장 첫 작업 범위는 다음과 같다.
+배틀 실행 및 웹 패킹:
 
-1. Babylon.js Editor 5.4.x에서 프로젝트를 열고 프로젝트 메타데이터를 갱신한다.
-2. `battlescene` 신규 씬을 생성한다.
-3. primitive 모선과 3개의 임시 배경 Plane을 배치한다.
-4. 원근 카메라의 FOV와 깊이 구성을 확정한다.
-5. 모선 X 이동, 카메라 dead zone, 좌우 ±100% 경계를 구현한다.
-6. 회피 원회전과 카메라 방향 추락을 primitive로 짧게 검증한다.
-7. 결과가 확정된 뒤 신규 에셋의 화면 크기, 카메라 각도, texture 규격을 아트 제작 기준으로 전달한다.
+```bash
+npm run dev
+npm run generate:battle
+```
 
-이 순서를 따르면 최종 신규 에셋을 제작한 뒤 카메라나 월드 비율이 바뀌어 에셋을 다시 만드는 위험을 줄일 수 있다.
+앱에서 새 캠페인 → 서울 선택 → `영공 진입`을 누르면 Babylon 배틀 캔버스로 진입한다. `A/D` 또는 방향키로 모선과 카메라가 좌우 이동하고, `ESC`로 일시정지한다. 씬 로드에 실패하면 동일한 계약을 사용하는 TypeScript 회색상자로 자동 전환한다.
+
+Editor에서 조정해도 유지해야 하는 노드 이름은 `BattleCamera`, `EnvironmentRoot/*Root`, `MothershipGameplayRoot`, `MothershipVisualRoot`, `WeaponSockets`, `DroneSpawnSockets`, `GroundLaneDefinitions`이다. 정적 배치·재질·모델은 Editor에서 수정하고, 입력·카메라 경계·패럴랙스·맵 선택은 TypeScript가 소유한다.
+
+다음 작업은 최종 신규 3D 모델을 이 고정 계층에 교체하고, 회피·추락 cinematic과 실제 전투 판정/풀링을 추가하는 것이다. 새 맵은 `src/game/battle/maps/battleMapCatalog.ts`에 동일한 manifest 계약으로 등록하고 `public/assets/runtime/battlescene/maps/<map-id>/`에 이미지 패키지를 추가한다.
 
 ## 참고 문서
 

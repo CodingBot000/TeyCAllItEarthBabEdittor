@@ -28,6 +28,8 @@ assets/.export-cache.json
 # Phase-one battle art is retained locally for the later battle rewrite but is not migrated or committed.
 art-source/
 assets/battlescene/
+!assets/battlescene/
+!assets/battlescene/**
 
 # Local environment and deployment state
 .env

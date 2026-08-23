@@ -4,7 +4,7 @@
 - 대상: Babylon.js Editor 전투 씬
 - 배포 형태: 웹 빌드
 - 시각 참고: `docs/reference_images/thetcall_inbattle_2d_day.png`
-- 에셋 정책: 기존 전투 에셋 및 초안 이미지의 부분 추출을 사용하지 않고 모두 신규 제작
+- 에셋 정책: 맵·모선 아트는 신규 제작을 유지한다. 다만 sibling 구현과의 동작 패리티 검증을 위해 전투 VFX flipbook·시민 Billboard WebP는 현재 단계에서 임시 런타임 참조본을 복사해 사용하며, 최종 아트 교체 대상으로 관리한다.
 - 현재 맵 ID: `city-day`
 
 ## 제작 단계
@@ -45,6 +45,15 @@
 
 ## 맵별 리소스 배치
 
+현재 맵 패키지:
+
+| 맵 ID | 배경 레이어 | 런타임 상태 |
+|---|---:|---|
+| `city-day` | 6 | WebP 생성·Editor 패킹 완료 |
+| `city-night` | 6 | 낮 레이어에서 파생한 WebP 생성·카탈로그 등록 완료 |
+
+`city-night`은 공통 Battle Scene을 복제하지 않고 `map.manifest.json`과 6개 배경 경로만 교체하는 검증용 샘플이다. 최종 야간 아트는 별도 제작 단계에서 교체한다.
+
 배틀 화면은 하나의 Babylon Editor 씬과 하나의 런타임 화면을 공유한다. 맵 스타일이 추가될 때 씬을 복제하지 않고 `maps/<map-id>/` 패키지만 추가한다.
 
 ```text
@@ -82,17 +91,20 @@ art-source/battlescene/
 
 ### 런타임 경로 규칙
 
-manifest의 에셋 경로는 `/scene/assets/`를 포함하지 않는 프로젝트 상대 key로 저장한다. 전투 로더가 다음처럼 공통 prefix를 붙인다.
+manifest의 에셋 경로는 `/scene/assets/`나 `/assets/runtime/`를 포함하지 않는 프로젝트 상대 key로 저장한다. Editor 패킹 경로와 웹 런타임 경로가 각각 공통 prefix를 붙인다.
 
 ```text
 manifest key:
 battlescene/maps/city-day/backgrounds/city-far-day.webp
 
-runtime URL:
+Editor 패킹 URL:
 /scene/assets/battlescene/maps/city-day/backgrounds/city-far-day.webp
+
+웹 런타임 URL:
+/assets/runtime/battlescene/maps/city-day/backgrounds/city-far-day.webp
 ```
 
-이 규칙을 사용하면 배틀 화면 코드는 `city-day`인지 `desert-day`인지 알 필요 없이 manifest의 동일한 `far`, `middle`, `near`, `ground` 슬롯만 읽으면 된다.
+이 규칙을 사용하면 배틀 화면 코드는 `city-day`인지 `desert-day`인지 알 필요 없이 manifest의 동일한 `far`, `middle`, `near`, `ground` 슬롯만 읽으면 된다. 현재 `battleMapCatalog.ts`가 웹 런타임 prefix를 적용하고, `npm run generate:battle`이 Editor 패킹 산출물을 만든다.
 
 ### 맵 교체 흐름
 
@@ -129,7 +141,7 @@ parallax · camera · ground lane 설정 적용
 - `2D-008`은 grayscale lossless WebP로 변환
 - 모선 base color 가장자리 평균 색차: 좌우 3.41, 상하 4.84
 - 모선 height source 가장자리 평균 색차: 좌우 3.92, 상하 7.73
-- KTX-Software가 현재 개발 환경에 설치되어 있지 않아 KTX2 생성은 Editor 통합 단계로 보류
+- `toktx`/`basisu`가 현재 개발 환경에 설치되어 있지 않아 KTX2 생성은 보류 중이며, `npm run check:battle:compression`으로 상태를 재현할 수 있다.
 
 ## 배경 공통 제작 규격
 
@@ -243,7 +255,7 @@ parallax · camera · ground lane 설정 적용
 - 불투명 이미지와 알파 이미지를 모두 WebP로 변환하되 가장자리 품질을 검수한다.
 - 일반 배경 타일과 모선 재질은 2048px 이하를 기본으로 한다.
 - 4096px는 실측 화질 이득이 있을 때만 예외로 허용하고 8K 이미지는 금지한다.
-- Babylon Editor의 KTX2 압축을 활성화해 패킹 시 GPU 압축본을 생성한다.
+- Babylon Editor의 KTX2 압축은 encoder 설치와 산출물 검증 후 활성화한다. 현재는 `compressedTexturesEnabled: false`와 WebP fallback을 유지한다.
 - KTX2 미지원 또는 제외 텍스처를 위한 WebP fallback을 유지한다.
 - mipmap이 필요한 이미지와 atlas에는 색 번짐을 막는 padding을 포함한다.
 - 동일 이미지의 PNG, WebP, KTX2가 런타임에서 중복 다운로드되지 않는지 확인한다.
@@ -264,7 +276,7 @@ assets/battlescene/maps/<map-id>/
 └─ backgrounds/                   # 맵별 Editor WebP
 ```
 
-`art-source`는 제작 보관용이며 웹 배포 manifest에 포함하지 않는다. `assets` 아래의 선택된 WebP만 Editor 씬에서 참조하고, `npm run generate`가 필요 파일과 KTX2를 `public/scene`에 출력하게 한다.
+`art-source`는 제작 보관용이며 웹 배포 manifest에 포함하지 않는다. `assets` 아래의 선택된 WebP만 Editor 씬에서 참조하고, `npm run generate:battle`가 배틀 씬과 필요한 런타임 파일을 `public/scene`에 출력한다. KTX2는 encoder 설치 후 같은 경로에 추가한다.
 
 ## 1차 완료 조건
 
