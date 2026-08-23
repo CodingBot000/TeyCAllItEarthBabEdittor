@@ -6,6 +6,8 @@
 - 문서 상태: 초기 구현 기준안
 - 시각 참고: `docs/reference_images/thetcall_inbattle_2d_day.png`
 
+일정, 병렬 개발 경계와 단계별 완료 기준은 [Battle Scene 개발계획서](./BATTLE_SCENE_DEVELOPMENT_PLAN.md)를 따른다.
+
 ## 1. 목적
 
 이 문서는 `thetcall_inbattle_2d_day.png` 초안을 바탕으로 전투 화면을 Babylon.js Editor에서 구현하기 위한 구조와 작업 순서를 정의한다.
