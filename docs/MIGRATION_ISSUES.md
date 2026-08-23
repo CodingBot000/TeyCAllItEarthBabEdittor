@@ -62,7 +62,7 @@
 - 심각도: `S2`
 - 발견 단계: `M1`
 - 발견일: 2026-08-23
-- 관련 커밋: `678954b`
+- 관련 커밋: `1535554`
 - 관련 파일: `tsconfig.json`, `src/game/domain/cohortRules.ts`
 
 ### 증상
@@ -100,7 +100,7 @@ target 변경 후 `npm run typecheck`와 `npm run build`가 통과했다. ES2022
 - 심각도: `S3`
 - 발견 단계: `M1`
 - 발견일: 2026-08-23
-- 관련 커밋: `678954b`
+- 관련 커밋: `1535554`
 - 관련 파일: `next.config.js`
 
 ### 증상
@@ -129,7 +129,7 @@ target 변경 후 `npm run typecheck`와 `npm run build`가 통과했다. ES2022
 - 심각도: `S2`
 - 발견 단계: `M2`
 - 발견일: 2026-08-23
-- 관련 커밋: `678954b`
+- 관련 커밋: `1535554`
 - 관련 파일: `package-lock.json`
 
 ### 증상
@@ -160,7 +160,7 @@ target 변경 후 `npm run typecheck`와 `npm run build`가 통과했다. ES2022
 - 심각도: `S3`
 - 발견 단계: `M7`
 - 발견일: 2026-08-23
-- 관련 커밋: `678954b`
+- 관련 커밋: `1535554`
 - 관련 파일: `src/game/presentation/styles.css`, `package.json`
 
 ### 증상
@@ -194,7 +194,7 @@ Browser/IAB 도구가 제공되면 동일 시나리오를 한 번 더 실행한�
 - 심각도: `S3`
 - 발견 단계: `M7`
 - 발견일: 2026-08-23
-- 관련 커밋: `678954b`
+- 관련 커밋: `1535554`
 - 관련 파일: `package-lock.json`, 개발 환경 Node 버전
 
 ### 증상
@@ -219,7 +219,7 @@ Browser/IAB 도구가 제공되면 동일 시나리오를 한 번 더 실행한�
 - 심각도: `S2`
 - 발견 단계: `M7`
 - 발견일: 2026-08-23
-- 관련 커밋: `678954b`
+- 관련 커밋: `1535554`
 - 관련 파일: `package.json`, `node_modules/babylonjs-editor-cli/bin/babylonjs-editor-cli.js` (외부 패키지)
 
 ### 증상
