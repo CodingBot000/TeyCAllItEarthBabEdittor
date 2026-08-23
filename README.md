@@ -31,6 +31,7 @@ npm run check     # typecheck + test + build
 - [1차 마이그레이션 계획](docs/PHASE_1_MIGRATION_PLAN.md)
 - [마이그레이션 이슈 기록](docs/MIGRATION_ISSUES.md)
 - [전투 런타임 경계 ADR](docs/BATTLE_RUNTIME_BOUNDARY.md)
+- [배틀 씬 개발계획](docs/battlescene/BATTLE_SCENE_DEVELOPMENT_PLAN.md)
 - [전투 장면 후속 계획](docs/battlescene/BATTLE_SCENE_IMPLEMENTATION_PLAN.md)
 
 코드 작업 단위마다 계획서의 실행 현황과 이슈 문서를 함께 갱신한다. 해결되지 않은 이슈도 숨기지 않고 상태·근거·우회책·다음 조치를 기록한 뒤, 독립 작업은 중단하지 않고 계속 진행한다.

@@ -1,5 +1,9 @@
 # 1차 전투 런타임 경계 ADR
 
+- 상태: 1차 결정 이행 완료
+- 후속 작업: [Battle Scene 개발계획서](./battlescene/BATTLE_SCENE_DEVELOPMENT_PLAN.md)
+- 전환 시점: 앞단 시작화면·월드맵 구현 완료 후 B0~B6 배틀 런타임 개발
+
 ## 결정
 
 1차에서는 `src/game/battle/BattleGateway.ts`의 engine-neutral 계약만 실행 경로에 둔다. `UnavailableBattleGateway`는 전투 요청을 명시적으로 거부하고 화면에는 placeholder 안내만 남긴다.
@@ -17,3 +21,9 @@
 ## 검증
 
 `src/game/battle/BattleGateway.test.ts`는 1차 gateway가 unavailable 상태이고 요청 타입에 Babylon/도로/Nav 데이터가 포함되지 않는지 보장한다. `npm run check`와 M7 무반입 검색은 전투 renderer 직접 참조가 없음을 확인한다.
+
+## 후속 전환
+
+이 ADR은 1차 완료 당시의 경계를 보존하는 역사 기록이다. 앞단 구현이 완료됐으므로 새 배틀 개발에서는 엔진 중립 계약을 유지한 채 `BattleLaunchRequest`에 `mapId`를 추가하고, `UnavailableBattleGateway`를 실제 Babylon 배틀 런타임 구현으로 교체한다.
+
+전환 작업은 `BATTLE_SCENE_DEVELOPMENT_PLAN.md`의 B0 계약 단계와 B6 앱 통합 단계에서 수행한다. 새 전투 구현은 legacy tactical 도로/Nav 타입을 다시 활성화하지 않는다.
