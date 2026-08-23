@@ -6,6 +6,7 @@
 		"dev": "next dev",
 		"build": "next build",
 		"generate": "node scripts/pack-editor.mjs",
+		"generate:battle": "node scripts/pack-editor.mjs --battle",
 		"start": "next start",
 		"lint": "eslint .",
 		"typecheck": "tsc --noEmit",

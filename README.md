@@ -21,10 +21,15 @@ npm run typecheck
 npm run test
 npm run build
 npm run generate  # Babylon Editor public/scene 패키징
+npm run generate:battle  # 배틀 Editor 씬과 배틀 에셋까지 패키징
 npm run check     # typecheck + test + build
 ```
 
-`npm run generate`는 `scripts/pack-editor.mjs`를 통해 Babylon Editor CLI의 ESM bin 문제를 우회하고, `assets/battlescene/`을 임시 제외해 1차 public 산출물에 전투 그래픽이 들어가지 않도록 한다.
+`npm run generate`는 `scripts/pack-editor.mjs`를 통해 Babylon Editor CLI의 ESM bin 문제를 우회하고, `assets/battlescene/`과 `assets/battlescene.scene/`을 임시 제외해 1차 public 산출물에 전투 그래픽이 들어가지 않도록 한다.
+
+배틀씬을 실행하거나 웹 배포 산출물을 만들 때는 `npm run generate:battle`을 사용한다. 이 명령은 `assets/battlescene.scene/`과 `assets/battlescene/`을 `public/scene/`에 패키징하고, 맵 이미지 런타임 사본을 `public/assets/runtime/battlescene/`에 동기화한다.
+
+Babylon.js Editor에서 `project.bjseditor`를 열면 마지막 씬이 `assets/battlescene.scene/`으로 지정되어 있다. Editor에서 배치·재질·모델을 수정한 뒤에는 `npm run generate:battle`을 다시 실행해 웹 패키지를 갱신한다. 게임 규칙과 좌우 이동은 `src/game/battle/runtime/`에서 유지하므로 Editor 수정과 런타임 로직을 분리할 수 있다.
 
 ## 문서
 

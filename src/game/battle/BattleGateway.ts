@@ -4,6 +4,7 @@ export interface BattleLaunchRequest {
   campaignId: string;
   cityId: string;
   missionId?: string;
+  mapId: string;
 }
 
 export interface BattleGateway {
@@ -12,9 +13,9 @@ export interface BattleGateway {
 }
 
 /**
- * Phase one deliberately has no tactical renderer. Keeping this boundary
- * engine-neutral lets the new Babylon Editor battle scene replace this
- * implementation without making the map UI depend on Babylon types.
+ * Keep campaign-to-battle selection engine-neutral so the map UI does not
+ * depend on Babylon types. The React adapter builds a request, while the
+ * Babylon runtime owns scene lifecycle and rendering details.
  */
 export class UnavailableBattleGateway implements BattleGateway {
   public isAvailable(): boolean {
@@ -26,6 +27,6 @@ export class UnavailableBattleGateway implements BattleGateway {
   }
 }
 
-export function battleRequestFor(campaign: CampaignState, cityId: string): BattleLaunchRequest {
-  return { campaignId: campaign.campaignId, cityId };
+export function battleRequestFor(campaign: CampaignState, cityId: string, mapId = 'city-day'): BattleLaunchRequest {
+  return { campaignId: campaign.campaignId, cityId, mapId };
 }

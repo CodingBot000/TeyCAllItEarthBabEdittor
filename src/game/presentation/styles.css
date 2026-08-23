@@ -15,6 +15,21 @@
   --red: #ef7785;
 }
 
+/* Battle Editor greybox: the canvas owns the playfield; the controls stay deliberately minimal. */
+.battle-screen { position: relative; width: 100%; height: 100dvh; min-height: 520px; overflow: hidden; background: #102d3c; }
+.battle-canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; touch-action: none; }
+.battle-scene-label { position: absolute; left: 18px; top: 16px; z-index: 2; display: grid; gap: 4px; padding: 8px 10px; border-left: 2px solid rgba(168, 244, 227, .85); background: rgba(4, 16, 23, .46); color: rgba(208, 242, 236, .68); font: 8px 'Space Mono', monospace; letter-spacing: .12em; pointer-events: none; }
+.battle-scene-label strong { color: #ecfffa; font-size: 12px; letter-spacing: .08em; }
+.battle-exit-button { position: absolute; right: 18px; top: 16px; z-index: 3; padding: 9px 12px; border: 1px solid rgba(168, 244, 227, .35); background: rgba(4, 16, 23, .58); color: #c9efea; font: 8px 'Space Mono', monospace; letter-spacing: .08em; cursor: pointer; }
+.battle-exit-button:hover { border-color: #a8f4e3; color: #fff; background: rgba(10, 45, 55, .78); }
+.battle-scene-state { position: absolute; left: 50%; top: 50%; z-index: 4; padding: 12px 16px; transform: translate(-50%, -50%); color: #c9efea; background: rgba(4, 16, 23, .82); border: 1px solid rgba(168, 244, 227, .35); font: 9px 'Space Mono', monospace; letter-spacing: .1em; }
+.battle-scene-error { position: absolute; left: 50%; top: 50%; z-index: 5; display: grid; gap: 12px; width: min(440px, calc(100% - 32px)); padding: 22px; transform: translate(-50%, -50%); color: #f4f8f7; background: rgba(36, 13, 19, .94); border: 1px solid rgba(240, 126, 138, .66); box-shadow: 0 20px 70px rgba(0, 0, 0, .45); font: 10px 'Space Mono', monospace; }
+.battle-scene-error strong { color: #ff9da8; letter-spacing: .09em; }
+.battle-scene-error span { color: #d4c4c7; line-height: 1.45; overflow-wrap: anywhere; }
+.battle-scene-error button { width: fit-content; padding: 8px 10px; border: 1px solid rgba(240, 126, 138, .55); background: rgba(240, 126, 138, .08); color: #ffb0b8; font: 8px 'Space Mono', monospace; cursor: pointer; }
+.battle-control-hint { position: absolute; left: 50%; bottom: 14px; z-index: 2; transform: translateX(-50%); color: rgba(218, 245, 240, .58); font: 8px 'Space Mono', monospace; letter-spacing: .08em; white-space: nowrap; pointer-events: none; }
+@media (max-width: 640px) { .battle-scene-label { left: 10px; top: 10px; }.battle-exit-button { right: 10px; top: 10px; }.battle-control-hint { bottom: 9px; font-size: 6px; }.battle-screen { min-height: 0; } }
+
 /* M6 cohort command surface. */
 .tactical-cohort-panel {
   position: absolute;

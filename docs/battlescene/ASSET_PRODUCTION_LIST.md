@@ -82,17 +82,20 @@ art-source/battlescene/
 
 ### 런타임 경로 규칙
 
-manifest의 에셋 경로는 `/scene/assets/`를 포함하지 않는 프로젝트 상대 key로 저장한다. 전투 로더가 다음처럼 공통 prefix를 붙인다.
+manifest의 에셋 경로는 `/scene/assets/`나 `/assets/runtime/`를 포함하지 않는 프로젝트 상대 key로 저장한다. Editor 패킹 경로와 웹 런타임 경로가 각각 공통 prefix를 붙인다.
 
 ```text
 manifest key:
 battlescene/maps/city-day/backgrounds/city-far-day.webp
 
-runtime URL:
+Editor 패킹 URL:
 /scene/assets/battlescene/maps/city-day/backgrounds/city-far-day.webp
+
+웹 런타임 URL:
+/assets/runtime/battlescene/maps/city-day/backgrounds/city-far-day.webp
 ```
 
-이 규칙을 사용하면 배틀 화면 코드는 `city-day`인지 `desert-day`인지 알 필요 없이 manifest의 동일한 `far`, `middle`, `near`, `ground` 슬롯만 읽으면 된다.
+이 규칙을 사용하면 배틀 화면 코드는 `city-day`인지 `desert-day`인지 알 필요 없이 manifest의 동일한 `far`, `middle`, `near`, `ground` 슬롯만 읽으면 된다. 현재 `battleMapCatalog.ts`가 웹 런타임 prefix를 적용하고, `npm run generate:battle`이 Editor 패킹 산출물을 만든다.
 
 ### 맵 교체 흐름
 

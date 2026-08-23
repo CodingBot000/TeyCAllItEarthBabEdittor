@@ -5,17 +5,20 @@ import { CITIES } from './data/cities';
 import { createNewCampaign } from './domain/campaignRules';
 import type { CampaignState } from './domain/types';
 import { clearCampaign, loadCampaign, saveCampaign } from './infrastructure/persistence/saveRepository';
+import { battleRequestFor, type BattleLaunchRequest } from './battle/BattleGateway';
+import { BattleScreen } from './battle/BattleScreen';
 import { MainMenuScreen } from './presentation/screens/MainMenuScreen';
 import { WorldMapScreen } from './presentation/screens/WorldMapScreen';
 import { useI18n } from './i18n/I18nProvider';
 
-type PhaseOneScreen = 'MAIN_MENU' | 'WORLD_MAP';
+type PhaseOneScreen = 'MAIN_MENU' | 'WORLD_MAP' | 'BATTLE';
 
 export function GameApp() {
   const { t } = useI18n();
   const [campaign, setCampaign] = useState<CampaignState | null>(() => loadCampaign());
   const [screen, setScreen] = useState<PhaseOneScreen>('MAIN_MENU');
   const [selectedCityId, setSelectedCityId] = useState<string | null>(() => campaign?.currentCityId ?? null);
+  const [battleRequest, setBattleRequest] = useState<BattleLaunchRequest | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const startNewGame = () => {
@@ -24,6 +27,7 @@ export function GameApp() {
     setCampaign(next);
     setSelectedCityId(null);
     setNotice(null);
+    setBattleRequest(null);
     setScreen('WORLD_MAP');
   };
 
@@ -34,6 +38,7 @@ export function GameApp() {
     }
     setSelectedCityId(campaign.currentCityId);
     setNotice(null);
+    setBattleRequest(null);
     setScreen('WORLD_MAP');
   };
 
@@ -42,6 +47,7 @@ export function GameApp() {
     setCampaign(null);
     setSelectedCityId(null);
     setNotice(null);
+    setBattleRequest(null);
     setScreen('MAIN_MENU');
   };
 
@@ -49,8 +55,18 @@ export function GameApp() {
     setNotice(t('phaseOne.battleUnavailable'));
   };
 
+  const enterBattle = () => {
+    if (!campaign || !selectedCityId) return;
+    setBattleRequest(battleRequestFor(campaign, selectedCityId));
+    setScreen('BATTLE');
+  };
+
   if (!campaign || screen === 'MAIN_MENU') {
     return <MainMenuScreen hasSave={Boolean(campaign)} onNewGame={startNewGame} onContinue={continueGame} onReset={resetGame} />;
+  }
+
+  if (screen === 'BATTLE' && battleRequest) {
+    return <BattleScreen request={battleRequest} onExit={() => { setBattleRequest(null); setScreen('WORLD_MAP'); }} />;
   }
 
   return <WorldMapScreen
@@ -61,7 +77,7 @@ export function GameApp() {
     notice={notice}
     onSelectCity={(cityId) => { setSelectedCityId(cityId); setNotice(null); }}
     onMove={phaseOneUnavailable}
-    onEngage={phaseOneUnavailable}
+    onEngage={enterBattle}
     onOpenUpgrades={phaseOneUnavailable}
     onReturnMenu={() => { setNotice(null); setScreen('MAIN_MENU'); }}
   />;
