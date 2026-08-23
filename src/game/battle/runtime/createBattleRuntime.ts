@@ -19,7 +19,8 @@ import type { BattleMapDefinition } from '../contracts/BattleMapDefinition';
 import { mapBackgroundUrl, sharedMaterialUrl } from '../maps/battleMapCatalog';
 
 const WORLD_WIDTH = 360;
-const WORLD_HEIGHT = WORLD_WIDTH * 9 / 16;
+const BACKGROUND_TILE_WIDTH = 120;
+const BACKGROUND_REPEAT = WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
 const CAMERA_Y = 5;
 const CAMERA_Z = -92;
 const MOTHERSHIP_Y = 8;
@@ -44,10 +45,10 @@ interface BackgroundLayer {
 
 const BACKGROUND_LAYERS: BackgroundLayer[] = [
   { name: 'SkyRoot', key: 'sky', z: 30, y: 4, parallax: 0, renderingGroupId: 0 },
-  { name: 'CityFarRoot', key: 'far', z: 22, y: 0, parallax: 0.15, renderingGroupId: 0 },
-  { name: 'CityMiddleRoot', key: 'middle', z: 16, y: -1, parallax: 0.35, renderingGroupId: 1 },
-  { name: 'CityNearRoot', key: 'near', z: 10, y: -2, parallax: 0.6, renderingGroupId: 2 },
-  { name: 'GroundRoot', key: 'ground', z: 4, y: -42, parallax: 1, renderingGroupId: 2 },
+  { name: 'CityFarRoot', key: 'far', z: 22, y: 9, parallax: 0.15, renderingGroupId: 0 },
+  { name: 'CityMiddleRoot', key: 'middle', z: 16, y: -6, parallax: 0.35, renderingGroupId: 1 },
+  { name: 'CityNearRoot', key: 'near', z: 10, y: -20, parallax: 0.6, renderingGroupId: 2 },
+  { name: 'GroundRoot', key: 'ground', z: 4, y: -12, parallax: 1, renderingGroupId: 2 },
   { name: 'ForegroundRoot', key: 'foregroundAtmosphere', z: -5, y: 1, parallax: 0.8, renderingGroupId: 3 },
 ];
 
@@ -189,7 +190,7 @@ function createFallbackBackground(scene: Scene, map: BattleMapDefinition): Array
     root.position.set(0, layer.y, layer.z);
     const plane = MeshBuilder.CreatePlane(`${layer.name}Plane`, {
       width: WORLD_WIDTH,
-      height: layer.key === 'ground' ? WORLD_WIDTH * 0.34 : WORLD_HEIGHT,
+      height: getBackgroundPlaneHeight(layer.key),
       sideOrientation: Mesh.DOUBLESIDE,
     }, scene);
     plane.parent = root;
@@ -198,7 +199,7 @@ function createFallbackBackground(scene: Scene, map: BattleMapDefinition): Array
     plane.alwaysSelectAsActiveMesh = true;
     if (layer.key === 'foregroundAtmosphere') plane.visibility = 0;
     const relativeUrl = mapBackgroundUrl(map, layer.key);
-    if (relativeUrl) assignBackgroundMaterial(plane, relativeUrl, scene, layer.key === 'foregroundAtmosphere');
+    if (relativeUrl) assignBackgroundMaterial(plane, relativeUrl, scene, layer.key === 'foregroundAtmosphere', layer.key === 'sky' ? 1 : BACKGROUND_REPEAT);
     else plane.material = fallbackBackgroundMaterial(scene, layer.key);
     return { layer, root, plane };
   });
@@ -216,8 +217,15 @@ function applyEditorBackgroundMaterials(
     plane.setEnabled(true);
     plane.renderingGroupId = layer.renderingGroupId;
     if (layer.key === 'foregroundAtmosphere') plane.visibility = 0;
-    if (url) assignBackgroundMaterial(plane, url, scene, layer.key === 'foregroundAtmosphere');
+    if (url) assignBackgroundMaterial(plane, url, scene, layer.key === 'foregroundAtmosphere', layer.key === 'sky' ? 1 : BACKGROUND_REPEAT);
   }
+}
+
+function getBackgroundPlaneHeight(key: keyof BattleMapDefinition['backgrounds']): number {
+  if (key === 'sky') return 202.5;
+  if (key === 'near') return 60;
+  if (key === 'ground') return 42.4;
+  return 67.5;
 }
 
 function setGameplayRenderingGroup(...roots: TransformNode[]): void {
@@ -249,7 +257,7 @@ function createFallbackMothershipAndUnits(
   createGroundPrototypes(groundBattleRoot, scene);
 }
 
-function assignBackgroundMaterial(mesh: AbstractMesh, url: string, scene: Scene, isAtmosphere: boolean): void {
+function assignBackgroundMaterial(mesh: AbstractMesh, url: string, scene: Scene, isAtmosphere: boolean, repeatX = 1): void {
   const material = new StandardMaterial(`${mesh.name}Material`, scene);
   material.disableLighting = true;
   material.backFaceCulling = false;
@@ -260,6 +268,9 @@ function assignBackgroundMaterial(mesh: AbstractMesh, url: string, scene: Scene,
   material.diffuseColor = new Color3(1, 1, 1);
   material.emissiveColor = new Color3(1, 1, 1);
   const texture = new Texture(url, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
+  texture.uScale = repeatX;
+  texture.vScale = 1;
+  texture.wrapU = Texture.WRAP_ADDRESSMODE;
   texture.hasAlpha = isAtmosphere || !url.endsWith('sky-day-base.webp');
   material.diffuseTexture = texture;
   material.emissiveTexture = texture;

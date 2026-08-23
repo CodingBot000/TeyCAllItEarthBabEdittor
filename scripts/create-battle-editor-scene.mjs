@@ -24,21 +24,34 @@ const textureMaterials = new Map();
 const sceneRootNode = new TransformNode('BattleSceneRoot', scene);
 const environmentRoot = childNode('EnvironmentRoot', sceneRootNode);
 
+const BACKGROUND_WORLD_WIDTH = 360;
+const BACKGROUND_TILE_WIDTH = 120;
+const BACKGROUND_REPEAT = BACKGROUND_WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
+const BACKGROUND_PLANE_HEIGHTS = {
+  SkyRoot: 202.5,
+  CityFarRoot: 67.5,
+  CityMiddleRoot: 67.5,
+  CityNearRoot: 60,
+  GroundRoot: 42.4,
+  ForegroundRoot: 67.5,
+};
+
 const layers = [
   ['SkyRoot', 'backgrounds/sky-day-base.webp', 30, 4, false],
-  ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 0, true],
-  ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, -1, true],
-  ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -2, true],
-  ['GroundRoot', 'backgrounds/ground-road-day.webp', 4, -42, true],
+  ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 9, true],
+  ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, -6, true],
+  ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -20, true],
+  ['GroundRoot', 'backgrounds/ground-road-day.webp', 4, -12, true],
   ['ForegroundRoot', 'backgrounds/foreground-atmosphere-day.webp', -5, 1, true],
 ];
 for (let index = 0; index < layers.length; index += 1) {
   const [name, asset, z, y, hasAlpha] = layers[index];
   const root = childNode(name, environmentRoot);
   root.position.set(0, y, z);
+  const textureUScale = name === 'SkyRoot' ? 1 : BACKGROUND_REPEAT;
   const plane = MeshBuilder.CreatePlane(name + 'Plane', {
-    width: 360,
-    height: name === 'GroundRoot' ? 122 : 202.5,
+    width: BACKGROUND_WORLD_WIDTH,
+    height: BACKGROUND_PLANE_HEIGHTS[name],
     sideOrientation: Mesh.DOUBLESIDE,
   }, scene);
   plane.parent = root;
@@ -52,7 +65,7 @@ for (let index = 0; index < layers.length; index += 1) {
   material.disableDepthWrite = true;
   material.diffuseColor = new Color3(1, 1, 1);
   const textureUrl = 'assets/battlescene/maps/city-day/' + asset;
-  material.metadata = { textureUrl, hasAlpha, useAlphaFromDiffuseTexture: true };
+  material.metadata = { textureUrl, hasAlpha, useAlphaFromDiffuseTexture: true, textureUScale };
   plane.material = material;
   textureMaterials.set(material.id, material.metadata);
 }
@@ -156,7 +169,7 @@ const materialById = new Map((serialized.materials ?? []).map((material) => [mat
 for (const material of materialById.values()) {
   const texture = textureMaterials.get(material.id);
   if (!texture) continue;
-  material.diffuseTexture = textureRecord(texture.textureUrl, texture.hasAlpha);
+  material.diffuseTexture = textureRecord(texture.textureUrl, texture.hasAlpha, texture.textureUScale);
   material.useAlphaFromDiffuseTexture = texture.useAlphaFromDiffuseTexture;
 }
 
@@ -214,13 +227,13 @@ function createMaterial(name, color, textureAsset) {
   return material;
 }
 
-function textureRecord(url, hasAlpha) {
+function textureRecord(url, hasAlpha, uScale = 1) {
   return {
     tags: null,
     url,
     uOffset: 0,
     vOffset: 0,
-    uScale: 1,
+    uScale,
     vScale: 1,
     uAng: 0,
     vAng: 0,
