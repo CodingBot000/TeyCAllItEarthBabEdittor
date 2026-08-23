@@ -5,9 +5,12 @@
 	"scripts": {
 		"dev": "next dev",
 		"build": "next build",
-		"generate": "babylonjs-editor-cli pack",
+		"generate": "node scripts/pack-editor.mjs",
 		"start": "next start",
-		"lint": "next lint"
+		"lint": "eslint .",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"check": "npm run typecheck && npm run test && npm run build"
 	},
 	"dependencies": {
 		"@babylonjs/addons": "9.12.1",
@@ -18,7 +21,8 @@
 		"babylonjs-editor-tools": "^5.4.2",
 		"next": "16.2.6",
 		"react": "18.2.0",
-		"react-dom": "18.2.0"
+		"react-dom": "18.2.0",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@types/node": "^22",
@@ -28,9 +32,11 @@
 		"babylonjs-editor-cli": "^5.4.2",
 		"eslint": "9.29.0",
 		"eslint-config-next": "16.2.6",
+		"playwright-core": "^1.54.2",
 		"postcss": "^8",
 		"raw-loader": "^4.0.2",
 		"tailwindcss": "3.4.4",
-		"typescript": "5.9.3"
+		"typescript": "5.9.3",
+		"vitest": "^3.2.4"
 	}
 }

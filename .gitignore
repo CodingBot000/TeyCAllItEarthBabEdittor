@@ -20,9 +20,14 @@ blob-report/
 .eslintcache
 
 # Babylon.js Editor local/generated caches
-.bjseditor/.textures-cache.json
+.bjseditor/*-cache.json
 .bjseditor/textures/
 assets/.export-cache.json
+.phase-one-battlescene-assets/
+
+# Phase-one battle art is retained locally for the later battle rewrite but is not migrated or committed.
+art-source/
+assets/battlescene/
 
 # Local environment and deployment state
 .env

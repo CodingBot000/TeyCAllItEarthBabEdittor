@@ -3,8 +3,21 @@
 - 작성일: 2026-08-23
 - 원본: `/Users/switch/Development/Game/WebGame/TheyCallItEarth`
 - 대상: `/Users/switch/Development/Game/WebGame/TeyCAllItEarthBabEdittor`
-- 상태: 계획 수립 완료, 구현 전
+- 상태: 1차 구현 완료, 후속 전투 개편 대기
 - 1차 완료 지점: 게임 시작 화면 → 새 게임/이어하기 → 월드 맵 표시 → 국가·도시 선택 및 상세 정보 확인
+
+## 실행 현황
+
+| 단계 | 상태 | 최신 결과 |
+|---|---|---|
+| M0 기준선·보호 장치 | 완료 | Git `main` 초기화, `.gitignore`, 기준선 커밋 완료 |
+| M1 Next.js 게임 셸·3D 지연 로드 경계 | 완료 | 예제 Babylon/Havok 자동 로드 제거, React 게임 셸 연결 |
+| M2 규칙·월드 데이터·저장소 | 완료 | 순수 domain/world/save 이식, `zod`·Vitest 추가 및 10개 테스트 통과 |
+| M3 공통 UI·국제화·스타일 | 완료 | i18n·모바일 guard·스타일 이식, 한영 키 정책 및 fallback 폰트 적용 |
+| M4 게임 시작 화면 | 완료 | Editor 데모 버튼 제거, 새 게임·이어하기·삭제 연결 |
+| M5 월드 맵 선택 | 완료 | 2D 지도 자산, 국가·도시 선택, 상세 패널, 줌/팬 연결 |
+| M6 전투 경계·구형 Nav 차단 | 완료 | `BattleGateway` 추가, 전투 3D/구형 Nav 런타임 참조 차단 |
+| M7 통합 검증·인수 | 완료 | lint/typecheck/test/build/generate 및 데스크톱·모바일 Playwright QA 통과 |
 
 ## 1. 목적
 
@@ -64,7 +77,7 @@ Babylon Editor scene / 3D battle runtime: 1차에서는 로드하지 않음
 - 전투 로딩 및 전투
 - 전투 결과·자원 배분
 
-도시 상세의 행동 버튼은 크래시하거나 빈 화면으로 이동하지 않게 한다. 1차에서는 비활성화하고 “전투 시스템 개편 중” 상태를 표시하거나, 명시적인 전투 플레이스홀더 경계로만 전달한다. 어느 쪽이든 `TacticalScreen`을 import하지 않는다.
+도시 상세의 행동 버튼은 크래시하거나 빈 화면으로 이동하지 않게 한다. 1차에서는 버튼 클릭을 `BattleGateway`의 “전투 시스템 개편 중” placeholder 경계로 전달하고 실제 화면 전환은 하지 않는다. 어느 쪽이든 `TacticalScreen`을 import하지 않는다.
 
 ### 2.4 사용자 노출 문자열의 한·영 대응 규칙
 
@@ -549,6 +562,41 @@ rg -n "@babylonjs|babylonjs-editor-tools" src/game/domain src/game/data
 - 시작 화면과 맵 선택 화면에서 404 asset 요청 0개
 
 권장 커밋: `test: verify phase one migration boundary`
+
+### M7 실행 결과 (2026-08-23)
+
+자동 검증 결과:
+
+```text
+npm run lint       PASS
+npm run typecheck  PASS
+npm run test       PASS (4 files / 10 tests)
+npm run build      PASS (Next static generation 4/4)
+npm run generate   PASS (assets, example.scene, scripts)
+```
+
+`npm run generate`는 `scripts/pack-editor.mjs`를 통해 Babylon Editor CLI의 ESM 실행 경계를 우회한다. 이때 `assets/battlescene/`을 임시 제외하므로 1차 `public/scene/` 산출물에 전투 2D 그래픽이 포함되지 않는다. Editor 산출물(`public/scene/`)과 `docs/`는 Git 추적 대상으로 유지한다.
+
+무반입 검사 결과:
+
+- `src/game/`와 1차 runtime asset 경로에 `.glb`, `.gltf`, `.bin`, `.fbx`, `.obj`, `.mtl` 없음
+- `src/game/presentation`에서 `src/rendering`, Babylon, 구형 전투 화면 직접 import 없음
+- `src/game/domain`, `src/game/data`에서 `@babylonjs/*`, `babylonjs-editor-tools` import 없음
+- `TacticalScreen`, `TACTICAL_PRESETS`, `SimpleTown`, `AssetPreview`, `MegaCity` 실행 경로 참조 없음
+- 전투 진입은 `BattleGateway`의 unavailable placeholder만 사용
+
+브라우저 QA 결과:
+
+- 시스템 Chrome + `playwright-core` fallback으로 1440×900 메뉴/맵, 390×844 세로 모바일, 900×500 가로 모바일을 확인했다.
+- 새 캠페인 → 서울 선택 → 도시 상세 → 전투 버튼 placeholder, 한·영 전환, 메뉴 복귀 → 이어하기를 통과했다.
+- 세로 모바일에서는 가로 전환 guard가 표시되고, 가로 모바일에서는 guard가 숨겨진 맵이 표시됐다.
+- 콘솔 error/warning과 page error는 0건이었다. Browser/IAB 도구 부재와 외부 폰트 fallback은 [`MIGRATION_ISSUES.md`](./MIGRATION_ISSUES.md)의 MIG-004에 기록했다.
+
+알려진 제한:
+
+- `npm audit` 전체 11개 및 `npm audit --omit=dev` 런타임 높음 3개가 남아 있으며, 버전 강제 업그레이드는 후속 작업으로 미뤘다(MIG-003).
+- 현재 Node `v20.15.0`이 일부 전이 패키지 권장 범위 `>=20.19.0`보다 낮다(MIG-005).
+- 전투 화면, 전투 2D/3D 자산, 도로 기반 Nav는 의도적으로 1차 범위에서 제외했다.
 
 ## 8. 테스트 전략
 
