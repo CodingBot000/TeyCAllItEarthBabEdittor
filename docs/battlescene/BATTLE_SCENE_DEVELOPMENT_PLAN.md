@@ -1,0 +1,505 @@
+# Battle Scene 개발계획서
+
+- 작성일: 2026-08-23
+- 대상 프로젝트: `TeyCAllItEarthBabEdittor`
+- 대상 기능: Babylon.js Editor 기반 2.5D 배틀 화면
+- 현재 상태: 설계 및 1차 2D 에셋 완료, 런타임 구현 전
+- 개발 방식: 시작화면·맵선택 화면 개발과 분리하여 병렬 진행
+
+관련 상세 문서:
+
+- [Battle Scene 구현안](./BATTLE_SCENE_IMPLEMENTATION_PLAN.md)
+- [Battle Scene 신규 에셋 제작 목록](./ASSET_PRODUCTION_LIST.md)
+
+## 1. 목표
+
+하나의 공통 Babylon 배틀 씬에서 모선과 전투 유닛은 재사용하고, 맵별 2D 이미지 패키지만 교체할 수 있는 전투 화면을 구현한다.
+
+첫 번째 검증 대상은 `city-day` 맵이다. 이 맵에서 카메라, 좌우 이동, 패럴랙스, 투명 레이어, 웹 성능과 리소스 해제를 검증한 뒤 같은 계약으로 `city-night`, `desert-day` 등 후속 맵을 추가한다.
+
+```text
+공통 Battle Scene
+├─ 공통 카메라·입력·전투 로직
+├─ 공통 3D 모선·전투기·드론·지상 유닛
+└─ 선택된 map manifest
+   ├─ sky
+   ├─ far
+   ├─ middle
+   ├─ near
+   ├─ ground
+   └─ foreground atmosphere
+```
+
+## 2. 확정 사항
+
+| 항목 | 결정 |
+|---|---|
+| 화면 방식 | 고정 측면 시점의 2.5D |
+| 카메라 | 좁은 FOV의 원근 카메라, X축 이동만 허용 |
+| 맵 폭 | 초기 화면 기준 좌우 약 ±100%, 전체 약 3화면 |
+| 모선 | 3D, 일반 조작은 X축만 이동 |
+| 전투기·드론 | 3D, 평상시 XY 전투 평면 사용 |
+| 지상 유닛 | 2D 또는 3D, 차체 이동은 X축만 허용 |
+| 도시 | 여러 개의 투명 2D 패럴랙스 레이어 |
+| 맵 교체 | 공통 씬을 유지하고 map manifest와 이미지 경로만 교체 |
+| HUD | 배틀 렌더링 1차 범위에서 제외 |
+| 물리 | 초기에는 Havok 없이 단순 판정 사용 |
+| 웹 포맷 | WebP fallback, 이후 KTX2 GPU 압축 추가 |
+| 1차 아트 | 2D 에셋만 제작 완료, 3D 최종 에셋은 후속 |
+
+## 3. 현재 기준선
+
+### 완료
+
+- 배틀 씬 기술 및 렌더링 구조 문서화
+- `city-day` 맵의 2D 배경 6종 제작
+- 모선 표면 매핑 이미지 3종 제작
+- PNG 제작 원본과 WebP 런타임본 분리
+- `city-day/map.manifest.json` 생성
+- 맵별 에셋과 공통 에셋 폴더 분리
+- 엔진 중립 `BattleGateway` 경계 존재
+
+### 미구현
+
+- 실제 `battlescene.scene`
+- Babylon canvas를 호스팅하는 `BattleScreen`
+- 배틀 씬 로더와 dispose 처리
+- map manifest 스키마와 카탈로그
+- 카메라와 모선 입력
+- 배경 Plane 및 패럴랙스
+- 전투기·드론·지상 유닛 런타임
+- 회피·추락 cinematic
+- 배틀 전용 Editor 패킹 명령
+- 시작화면/맵 화면과 실제 전투 진입 연결
+
+### 현재 제약
+
+현재 `main` 작업 폴더에는 다른 세션에서 작업 중인 시작화면·맵선택 변경이 커밋되지 않은 상태로 존재한다. 따라서 배틀 개발은 공유 파일을 수정하지 않는 병렬 안전 단계부터 시작한다.
+
+또한 `scripts/pack-editor.mjs`는 1차 메뉴·맵 빌드에 전투 자산이 들어가지 않도록 `assets/battlescene/`을 의도적으로 제외한다. 배틀 패킹은 별도 단계에서 추가한다.
+
+## 4. 세션 분리 및 파일 소유권
+
+### 배틀 세션 전용 경로
+
+다음 경로는 배틀 세션이 소유한다.
+
+```text
+assets/battlescene/**
+art-source/battlescene/**
+docs/battlescene/**
+src/game/battle/**
+src/scripts/battlescene/**
+assets/battlescene.scene/**
+```
+
+### 병렬 개발 중 수정 금지 경로
+
+다른 세션과의 충돌을 피하기 위해 B0~B5 단계에서는 다음 경로를 수정하지 않는다.
+
+```text
+src/app/**
+src/game/GameApp.tsx
+src/game/presentation/**
+src/game/i18n/**
+src/app/globals.css
+package.json
+package-lock.json
+scripts/pack-editor.mjs
+public/scene/**
+```
+
+### Git 작업 방식
+
+시작화면·맵선택 세션이 현재 변경을 커밋한 뒤 다음 구조로 분리한다.
+
+```bash
+git worktree add ../TeyCAllItEarthBabEdittor-battle -b feature/battle-scene
+```
+
+커밋 전에도 배틀 전용 경로 안에서 문서, 에셋, 순수 런타임 모듈 작업은 가능하다. 다만 공통 설정과 생성 산출물을 바꾸는 작업은 worktree 분리 이후로 미룬다.
+
+## 5. 목표 구조
+
+```text
+assets/
+├─ battlescene.scene/                         # 공통 Editor 씬
+└─ battlescene/
+   ├─ shared/
+   │  ├─ mothership/
+   │  │  ├─ mapping/
+   │  │  └─ models/                          # 2차 이후
+   │  ├─ units/                              # 2차 이후
+   │  └─ vfx/
+   └─ maps/
+      ├─ city-day/
+      │  ├─ map.manifest.json
+      │  └─ backgrounds/
+      └─ <next-map-id>/
+
+src/game/battle/
+├─ BattleGateway.ts                           # 기존 엔진 중립 경계
+├─ BattleScreen.tsx                           # 앱 통합 단계에서 추가
+├─ contracts/
+│  ├─ BattleLaunchRequest.ts
+│  └─ BattleMapDefinition.ts
+├─ maps/
+│  ├─ battleMapCatalog.ts
+│  ├─ battleMapManifestSchema.ts
+│  └─ battleMapLoader.ts
+├─ runtime/
+│  ├─ battleSceneLoader.ts
+│  ├─ battleSceneLifecycle.ts
+│  └─ battleAssetUrl.ts
+└─ tests/
+
+src/scripts/battlescene/
+├─ battleSceneController.ts
+├─ horizontalCameraController.ts
+├─ mothershipController.ts
+├─ mothershipCinematicController.ts
+├─ parallaxController.ts
+├─ groundLaneController.ts
+├─ airUnitPoolController.ts
+├─ projectilePoolController.ts
+└─ battleDebugController.ts
+```
+
+Editor가 생성하는 `src/scripts.ts`는 공유 생성 파일이므로 worktree 분리 전에는 직접 수정하지 않는다. Editor 패킹 시 자동 생성되게 한다.
+
+## 6. 런타임 계약
+
+### 배틀 시작 요청
+
+기존 `BattleLaunchRequest`에 `mapId`를 추가하는 것을 목표 계약으로 한다.
+
+```ts
+export interface BattleLaunchRequest {
+  campaignId: string;
+  cityId: string;
+  missionId?: string;
+  mapId: string;
+}
+```
+
+기존 시작·맵선택 개발이 끝나기 전에는 현재 파일을 변경하지 않는다. 배틀 내부 prototype은 별도의 fixture request를 사용하고, B6 통합 단계에서 실제 계약을 확장한다.
+
+### 맵 manifest
+
+각 맵은 동일한 필수 슬롯을 제공한다.
+
+```ts
+interface BattleMapDefinition {
+  id: string;
+  version: number;
+  backgrounds: {
+    sky: string;
+    far: string;
+    middle: string;
+    near: string;
+    ground: string;
+    foregroundAtmosphere?: string;
+  };
+  camera: {
+    viewportSpanScreens: number;
+    travelScreensFromStart: number;
+    fovDegrees: number;
+  };
+  parallax: {
+    sky: number;
+    far: number;
+    middle: number;
+    near: number;
+    ground: number;
+    foregroundAtmosphere?: number;
+  };
+}
+```
+
+manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로더가 공통 prefix를 붙인다.
+
+## 7. 개발 마일스톤
+
+| 단계 | 목표 | 병렬 안전 | 상태 |
+|---|---|---:|---|
+| B0 | 배틀 전용 기반과 테스트 가능한 순수 계약 | 예 | 준비 |
+| B1 | 2D 레이어와 카메라 회색상자 | 예 | 대기 |
+| B2 | 모선 primitive 이동과 카메라 추적 | 예 | 대기 |
+| B3 | 공중·지상 유닛 prototype과 판정 | 예 | 대기 |
+| B4 | 회피·추락 cinematic prototype | 예 | 대기 |
+| B5 | 신규 3D 아트와 VFX 통합 | 예 | 대기 |
+| B6 | React 앱·BattleGateway·패킹 연결 | 아니오 | 대기 |
+| B7 | 다중 맵, 웹 최적화와 최종 QA | 부분 | 대기 |
+
+## 8. 단계별 작업
+
+### B0 — 배틀 기반과 계약
+
+작업:
+
+- `BattleMapDefinition` 타입과 런타임 validation 구현
+- `city-day/map.manifest.json` 검증 테스트
+- asset key를 `/scene/assets/` URL로 변환하는 순수 함수 구현
+- 맵 카탈로그와 알 수 없는 map ID 오류 처리
+- 배틀 씬 lifecycle 상태 정의
+- 배틀 전용 이슈 기록 방식 추가
+
+완료 기준:
+
+- 잘못된 manifest가 명확한 오류로 거부된다.
+- 모든 asset URL이 동일한 규칙으로 생성된다.
+- React와 Babylon import 없이 manifest 테스트가 실행된다.
+- 시작화면·맵선택 파일 변경이 없다.
+
+### B1 — Editor 회색상자와 2D 레이어
+
+작업:
+
+- `assets/battlescene.scene` 생성
+- `BattleSceneRoot`, `CameraRig`, 환경 레이어 root 구성
+- 임시 Plane에 `city-day` 6개 레이어 연결
+- 렌더링 그룹과 Z 범위 확정
+- alpha blend/alpha test 정책 적용
+- 16:9, 18:9, 20:9 표시 검증
+
+완료 기준:
+
+- 모든 배경 레이어가 의도한 순서로 표시된다.
+- 하늘이나 Plane 사이에 빈 영역이 보이지 않는다.
+- 투명 경계의 검은 halo와 checkerboard가 없다.
+- 카메라 이동 중 투명 정렬 순서가 바뀌지 않는다.
+
+### B2 — 모선 이동과 카메라
+
+작업:
+
+- primitive 모선으로 `GameplayRoot`/`VisualRoot` 분리
+- 모선 X축 입력과 월드 경계 구현
+- 카메라 dead zone 및 smooth follow 구현
+- 초기 화면 기준 좌우 ±100% 이동 범위 적용
+- resize 시 frustum과 경계 재계산
+- 패럴랙스 적용
+
+완료 기준:
+
+- 사용자 조작으로 모선의 Y/Z가 변경되지 않는다.
+- 카메라는 X축 외의 이동·회전을 하지 않는다.
+- 프레임률이 달라도 이동 속도와 추적 감각이 동일하다.
+- 맵 끝에서 배경 밖이 노출되지 않는다.
+
+### B3 — 전투 유닛 prototype
+
+작업:
+
+- primitive 전투기·드론 pool
+- XY 공중 전투 평면과 제한된 Z 연출 lane
+- 지상 유닛 ground lane과 X축 이동 제한
+- 단순 sphere/AABB hit volume
+- 발사체 object pool과 화면 밖 회수
+- debug hit volume과 동시 개체 수 표시
+
+완료 기준:
+
+- 지상 차체는 X축 외로 이동하지 않는다.
+- 반복 spawn/despawn에서 객체 수와 observer가 누적되지 않는다.
+- Havok 없이 기본 피격과 발사체 회수가 동작한다.
+
+### B4 — 모선 특수 연출
+
+작업:
+
+- `Gameplay`, `EvasionCinematic`, `CrashCinematic` 상태 분리
+- 회피 원호와 roll/pitch/yaw 조합
+- 추락 시 Y 하강, Z 카메라 접근, pitch/roll 적용
+- 입력·판정·카메라 추적 잠금 정책 구현
+- 연출 완료 후 Transform 정규화
+
+완료 기준:
+
+- 회피 종료 후 정상 조작 위치와 회전으로 복귀한다.
+- 추락 중 near clipping plane을 통과하기 전에 종료된다.
+- 일반 이동과 cinematic이 동일 Transform 값을 경쟁하지 않는다.
+
+### B5 — 신규 3D 에셋과 VFX
+
+작업:
+
+- 신규 모선 GLB와 LOD 통합
+- 모선 base color, normal/height, ORM, emissive 적용
+- 신규 전투기·드론·지상 유닛 통합
+- instance/thin instance 적용
+- 엔진 trail, 폭발, 연기, 에너지 발사체 VFX
+- 실시간 그림자 생성자 제한
+- KTX2 생성 및 fallback 검증
+
+완료 기준:
+
+- 3D 모델 교체가 이동·카메라 코드 변경 없이 가능하다.
+- 반복 유닛은 공통 material과 instance를 사용한다.
+- WebP fallback과 KTX2 경로가 모두 동작한다.
+- 3D와 2D 배경의 광원 방향과 색감이 일치한다.
+
+### B6 — 앱 통합
+
+이 단계는 시작화면·맵선택 세션의 변경이 커밋되고 worktree가 분리된 뒤 수행한다.
+
+작업:
+
+- `BattleLaunchRequest.mapId` 연결
+- `BattleGateway` 실제 구현 추가
+- `BattleScreen`과 canvas lifecycle 연결
+- 전투 진입·로딩·실패·종료 상태 구현
+- `generate:battle` 패킹 경로 추가
+- 기존 `npm run generate`의 1차 경계 유지 여부 결정
+- 전투 종료 후 월드맵 복귀 연결
+
+완료 기준:
+
+- 월드맵에서 선택한 도시와 map ID로 전투가 열린다.
+- 전투를 반복 진입·이탈해도 canvas, observer, texture가 누적되지 않는다.
+- 전투 로딩 실패 시 월드맵이 깨지지 않고 복구 가능하다.
+- 시작화면과 월드맵 회귀 테스트가 통과한다.
+
+### B7 — 다중 맵과 최적화
+
+작업:
+
+- 두 번째 테스트 맵 package 제작
+- 동일 배틀 씬에서 map ID만 바꿔 이미지 교체 검증
+- 선택된 맵만 네트워크 요청하는지 확인
+- desktop/mobile 품질 등급 적용
+- texture와 GLB 캐시 및 해제 정책 검증
+- 장시간 전투와 반복 진입 성능 측정
+
+완료 기준:
+
+- 씬 복제 없이 두 개 이상의 맵이 실행된다.
+- 사용하지 않은 맵의 이미지 요청이 발생하지 않는다.
+- 맵 전환 후 이전 맵 texture가 필요 이상으로 메모리에 남지 않는다.
+
+## 9. 웹 성능 목표
+
+| 항목 | 초기 목표 |
+|---|---:|
+| 데스크톱 | 60 FPS |
+| 지원 모바일 | 30 FPS 이상 |
+| 현재 `city-day` WebP 전체 | 약 2.13 MiB |
+| 모바일 최초 전투 표시 다운로드 | 12 MiB 이하 권장 |
+| 데스크톱 최초 전투 표시 다운로드 | 25 MiB 이하 권장 |
+| 일반 2D texture | 2048px 이하 |
+| 모바일 공통 4K texture | 원칙적으로 금지 |
+| 8K texture | 금지 |
+
+측정 항목:
+
+- frame time과 FPS
+- draw calls
+- active meshes와 triangles
+- texture 메모리
+- 동시 발사체·유닛·particle 수
+- 전투 최초 표시 시간
+- 전투 진입 전후 JS/GPU 메모리
+
+## 10. 테스트 계획
+
+### 단위 테스트
+
+- manifest 정상/오류 schema
+- map ID 조회와 fallback
+- asset URL 조합
+- 카메라 X 경계 계산
+- 화면 비율별 viewport world width
+- 패럴랙스 이동량
+- ground lane X clamp
+- cinematic 상태 전환
+
+### 통합 테스트
+
+- `city-day` manifest → texture load → Plane 적용
+- 전투 씬 load → start → dispose
+- 같은 전투 씬 재진입
+- map ID 교체 후 texture 교체
+- WebP fallback과 KTX2 선택
+
+### 수동 시각 검증
+
+- 16:9, 18:9, 20:9
+- 데스크톱과 모바일 가로 화면
+- 카메라 좌측 끝, 중앙, 우측 끝
+- 투명 레이어 halo와 정렬
+- 모선과 도시의 스케일·광원 일치
+- 회피와 추락 시 카메라 clipping
+
+### 병합 전 전체 검증
+
+```bash
+npm run typecheck
+npm run test
+npm run build
+npm run generate
+```
+
+배틀 패킹 명령이 추가되면 별도로 실행한다. 병렬 개발 중에는 다른 세션이 생성 중인 `public/scene`을 덮어쓰지 않는다.
+
+## 11. 위험과 대응
+
+| 위험 | 대응 |
+|---|---|
+| 두 세션이 공유 파일 수정 | B0~B5는 배틀 전용 경로만 수정, B6는 worktree 분리 후 수행 |
+| 투명 Plane 정렬 오류 | Z 범위와 `renderingGroupId`를 초기에 고정 |
+| 맵 추가 시 씬 복제 | map manifest 필수 슬롯 계약 유지 |
+| 모든 맵 이미지 선로드 | 선택된 manifest만 fetch하고 texture lazy load |
+| 대형 이미지의 GPU 메모리 | 2K 기본, KTX2, 품질 등급, 사용하지 않는 texture dispose |
+| 3D 최종 모델이 카메라와 불일치 | primitive 회색상자로 화면 크기와 FOV 먼저 확정 |
+| Editor 생성 파일 충돌 | `src/scripts.ts`, `public/scene`은 패킹 단계에서만 갱신 |
+| 전투 종료 후 메모리 누수 | lifecycle 소유권과 dispose 통합 테스트 필수 |
+| 기존 `npm run generate`가 배틀 제외 | B6에서 별도 `generate:battle` 또는 제외 정책 변경 |
+
+## 12. 문서 및 이슈 관리
+
+각 작업 단위에서 다음 문서를 함께 갱신한다.
+
+- 이 계획서: 단계 상태와 검증 결과
+- `BATTLE_SCENE_IMPLEMENTATION_PLAN.md`: 기술 설계 변경
+- `ASSET_PRODUCTION_LIST.md`: 신규·교체 에셋과 용량
+
+배틀 전용 이슈는 `docs/battlescene/BATTLE_SCENE_ISSUES.md`에 기록할 예정이다. 시작화면·맵선택 마이그레이션 이슈와 분리하되, 공통 빌드나 앱 통합에 영향을 주는 문제만 상위 `docs/MIGRATION_ISSUES.md`에도 연결한다.
+
+## 13. 첫 실행 순서
+
+현재 공유 작업 상태에서 안전하게 시작할 수 있는 순서다.
+
+1. `BattleMapDefinition`과 manifest validator 작성
+2. `city-day` manifest 단위 테스트 작성
+3. asset URL resolver 작성
+4. 배틀 scene lifecycle 인터페이스 작성
+5. `battlescene.scene` 회색상자 생성
+6. 2D 배경 Plane과 렌더링 그룹 구성
+7. primitive 모선과 카메라 X 이동 구현
+8. 다른 세션의 커밋 이후 worktree 분리
+9. 배틀 패킹과 React 연결
+
+## 14. 1차 플레이 가능 완료 기준
+
+다음 조건을 모두 만족하면 첫 배틀 화면 prototype을 완료로 본다.
+
+- [ ] `city-day`가 공통 map manifest 계약으로 로드된다.
+- [ ] 6개 2D 레이어가 정상 합성된다.
+- [ ] 모선 primitive를 좌우로 조작할 수 있다.
+- [ ] 카메라가 좌우 약 ±100% 범위에서 모선을 추적한다.
+- [ ] 지상 prototype 유닛이 X축으로만 이동한다.
+- [ ] 회피 원호와 추락 prototype을 실행할 수 있다.
+- [ ] HUD 없이 전투 canvas가 독립 실행된다.
+- [ ] 같은 전투를 세 번 이상 재진입해도 리소스가 누적되지 않는다.
+- [ ] 데스크톱 60 FPS 또는 목표 기기 기준 성능 결과가 기록된다.
+- [ ] 시작화면·맵선택 파일과 회귀 동작에 영향이 없다.
+
+## 15. 최종 완료 기준
+
+- [ ] 공통 배틀 씬 하나로 두 개 이상의 맵을 실행한다.
+- [ ] 맵별 이미지 교체에 배틀 코드 수정이 필요 없다.
+- [ ] 최종 신규 모선과 전투 유닛 3D 에셋이 적용된다.
+- [ ] WebP fallback과 KTX2 빌드가 검증된다.
+- [ ] 모바일과 데스크톱 성능 목표를 만족한다.
+- [ ] 전투 진입·종료·실패 복구가 모두 동작한다.
+- [ ] 전체 typecheck, test, production build와 Editor pack이 통과한다.
