@@ -4,7 +4,7 @@
 - 대상 프로젝트: `TeyCAllItEarthBabEdittor`
 - 대상 기능: Babylon.js Editor 기반 2.5D 배틀 화면
 - 작업 브랜치: `feature/battle-scene-editor-first`
-- 현재 상태: 앞단 1차 개발 완료, 배틀 회색상자 런타임과 앱 진입 1차 구현 완료
+- 현재 상태: 앞단 1차 개발 완료, 배틀 회색상자 런타임·도메인 전투 루프·앱 진입·다중 맵 샘플 구현 완료
 - 개발 방식: 완료된 시작화면·맵선택 기반 위에서 배틀 기능을 순차 통합
 
 관련 상세 문서:
@@ -58,7 +58,9 @@
 - `city-day` 맵의 2D 배경 6종 제작
 - 모선 표면 매핑 이미지 3종 제작
 - PNG 제작 원본과 WebP 런타임본 분리
+- 형제 프로젝트의 검증된 VFX WebP를 현재 런타임에 임시 참조 자산으로 복사
 - `city-day/map.manifest.json` 생성
+- `city-night` 배경 6종과 동일 manifest 계약 등록
 - 맵별 에셋과 공통 에셋 폴더 분리
 - 엔진 중립 `BattleGateway` 경계 존재
 
@@ -71,14 +73,25 @@
 - 모선·전투기·드론·지상 포탑 회색상자와 좌우 입력 구현
 - 시작화면 → 월드맵 → 배틀 진입과 맵 복귀 연결
 - `npm run generate:battle` 배틀 전용 Editor 패킹 경로 구현
+- sibling 전투기 구현을 기준으로 `fighter-8way.webp` 4×2 Billboard Plane 매핑 구현
+- 전투기 후방 2중 `TrailMesh` 엔진 트레일과 수명·확대·페이드 연기 퍼프 구현
+- 3대 greybox 전투기의 제한된 3D 비행 경로를 연결해 트레일과 연기 화면 검증
+- sibling 전투 연출을 기준으로 방어막 피격과 선체 피격 VFX 구현
+- EMP·플라즈마 발사체/충격 링·폭발/연기 flipbook VFX 구현
+- 인간 흡입용 시민 Billboard, 흡입 빔·코어·퍼널·목표 링 구현
+- 도메인 `CombatState`와 `mothershipHits`, 미사일, 방공 레이저 이벤트를 VFX에 연결
+- EMP·플라즈마·흡입·방공 레이저 발동 결과를 실제 도메인 규칙에서 구동
+- 모선 회피 원호와 추락 cinematic, 실패 결과 및 월드맵 복귀 연결
+- Coastal/River/Desert 전술 프리셋을 모두 런타임 계약에 연결
+- 현재 greybox 검증용 단축키 연결: `1` 방어막 피격, `2` 선체 피격, `E` EMP, `P` 플라즈마, `B` 인간 흡입 토글, `Q` 회피, `C` 추락, `X` 추출
 
-### 후속 구현
+### 남은 구현
 
 - Editor에서 실제 3D 모선·전투기·드론 모델로 교체하고 소켓/LOD 정리
-- 회피·추락 cinematic 및 전투 규칙·풀링·충돌 판정
-- 맵 manifest를 정적 카탈로그에서 런타임 로더로 확장
-- KTX2/Basis 압축과 배포 번들 예산 측정
-- 모바일 입력, 실제 전투 흐름, 최종 QA
+- `BattleCombatVfx`의 제한된 effect cap을 고정 배열/재사용 풀로 확장
+- 맵 manifest를 정적 카탈로그에서 외부 manifest lazy loader로 확장
+- KTX2/Basis 압축 생성 도구 설치 후 실제 산출물·브라우저 fallback 검증
+- 모바일 입력, 실제 전투 UI, 성능 프로파일링과 최종 QA
 
 ### 현재 제약
 
@@ -258,11 +271,11 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 | B0 | 배틀 전용 기반과 테스트 가능한 순수 계약 | 앞단 완료 | 완료 |
 | B1 | 2D 레이어와 카메라 회색상자 | B0 | 완료 |
 | B2 | 모선 primitive 이동과 카메라 추적 | B1 | 완료 |
-| B3 | 공중·지상 유닛 prototype과 판정 | B2 | 회색상자 완료, 전투 판정 후속 |
-| B4 | 회피·추락 cinematic prototype | B2 | 대기 |
-| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 대기 |
+| B3 | 공중·지상 유닛 prototype과 판정 | B2 | 도메인·발사체·VFX 연결 완료 |
+| B4 | 회피·추락 cinematic prototype | B2 | 완료 |
+| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 회색상자 VFX 완료, 최종 GLB 대기 |
 | B6 | React 앱·BattleGateway·패킹 연결 | B1 이상 | 1차 연결 완료 |
-| B7 | 다중 맵, 웹 최적화와 최종 QA | B5~B6 | 대기 |
+| B7 | 다중 맵, 웹 최적화와 최종 QA | B5~B6 | city-night·WebP 완료, KTX2/최종 QA 진행 |
 
 ## 8. 단계별 작업
 
@@ -330,7 +343,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - XY 공중 전투 평면과 제한된 Z 연출 lane
 - 지상 유닛 ground lane과 X축 이동 제한
 - 단순 sphere/AABB hit volume
-- 발사체 object pool과 화면 밖 회수
+- 발사체 상태 배열과 화면 밖 회수, bounded projectile mesh 관리
 - debug hit volume과 동시 개체 수 표시
 
 완료 기준:
@@ -354,6 +367,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - 회피 종료 후 정상 조작 위치와 회전으로 복귀한다.
 - 추락 중 near clipping plane을 통과하기 전에 종료된다.
 - 일반 이동과 cinematic이 동일 Transform 값을 경쟁하지 않는다.
+- `C` 추락 완료 시 도메인 결과가 `FAILED`가 되고 월드맵으로 복귀한다.
 
 ### B5 — 신규 3D 에셋과 VFX
 
@@ -365,13 +379,13 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - instance/thin instance 적용
 - 엔진 trail, 폭발, 연기, 에너지 발사체 VFX
 - 실시간 그림자 생성자 제한
-- KTX2 생성 및 fallback 검증
+- WebP fallback과 KTX2 도구 감지 스크립트(`npm run check:battle:compression`)
 
 완료 기준:
 
 - 3D 모델 교체가 이동·카메라 코드 변경 없이 가능하다.
 - 반복 유닛은 공통 material과 instance를 사용한다.
-- WebP fallback과 KTX2 경로가 모두 동작한다.
+- WebP fallback이 동작하고, KTX2는 외부 encoder 설치 전까지 명시적으로 비활성화된다.
 - 3D와 2D 배경의 광원 방향과 색감이 일치한다.
 
 ### B6 — 앱 통합
@@ -399,7 +413,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 
 작업:
 
-- 두 번째 테스트 맵 package 제작
+- 두 번째 테스트 맵 `city-night` package 제작
 - 동일 배틀 씬에서 map ID만 바꿔 이미지 교체 검증
 - 선택된 맵만 네트워크 요청하는지 확인
 - desktop/mobile 품질 등급 적용
@@ -411,6 +425,8 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - 씬 복제 없이 두 개 이상의 맵이 실행된다.
 - 사용하지 않은 맵의 이미지 요청이 발생하지 않는다.
 - 맵 전환 후 이전 맵 texture가 필요 이상으로 메모리에 남지 않는다.
+
+현재 카탈로그에는 `city-day`와 `city-night`이 등록되어 있으며, 공통 씬은 `BattleMapDefinition`의 이미지 경로만 교체한다. River/Desert는 동일한 전투 규칙·전술 프리셋 계약으로 먼저 연결했고, 전용 배경 패키지는 후속 맵 아트 작업으로 분리한다.
 
 ## 9. 웹 성능 목표
 
@@ -454,7 +470,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - 전투 씬 load → start → dispose
 - 같은 전투 씬 재진입
 - map ID 교체 후 texture 교체
-- WebP fallback과 KTX2 선택
+- WebP fallback과 KTX2 선택(현재는 encoder 미설치로 WebP 경로만 검증)
 
 ### 수동 시각 검증
 
@@ -524,15 +540,15 @@ npm run generate
 - [ ] 모선 primitive를 좌우로 조작할 수 있다.
 - [ ] 카메라가 좌우 약 ±100% 범위에서 모선을 추적한다.
 - [ ] 지상 prototype 유닛이 X축으로만 이동한다.
-- [ ] 회피 원호와 추락 prototype을 실행할 수 있다.
+- [x] 회피 원호와 추락 prototype을 실행할 수 있다.
 - [ ] HUD 없이 전투 canvas가 독립 실행된다.
-- [ ] 같은 전투를 세 번 이상 재진입해도 리소스가 누적되지 않는다.
+- [x] 같은 전투를 세 번 이상 재진입해도 리소스가 누적되지 않는다.
 - [ ] 데스크톱 60 FPS 또는 목표 기기 기준 성능 결과가 기록된다.
 - [ ] 시작화면·맵선택 파일과 회귀 동작에 영향이 없다.
 
 ## 15. 최종 완료 기준
 
-- [ ] 공통 배틀 씬 하나로 두 개 이상의 맵을 실행한다.
+- [x] 공통 배틀 씬 하나로 두 개 이상의 맵을 실행한다.
 - [ ] 맵별 이미지 교체에 배틀 코드 수정이 필요 없다.
 - [ ] 최종 신규 모선과 전투 유닛 3D 에셋이 적용된다.
 - [ ] WebP fallback과 KTX2 빌드가 검증된다.

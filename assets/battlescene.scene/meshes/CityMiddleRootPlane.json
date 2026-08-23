@@ -17,7 +17,7 @@
       ],
       "scaling": [
         1,
-        0.3333333333333333,
+        1,
         1
       ],
       "localMatrix": {
@@ -88,28 +88,28 @@
       "applyFog": true,
       "positions": [
         -180,
-        -101.25,
+        -33.75,
         0,
         180,
-        -101.25,
+        -33.75,
         0,
         180,
-        101.25,
+        33.75,
         0,
         -180,
-        101.25,
+        33.75,
         0,
         -180,
-        -101.25,
+        -33.75,
         0,
         180,
-        -101.25,
+        -33.75,
         0,
         180,
-        101.25,
+        33.75,
         0,
         -180,
-        101.25,
+        33.75,
         0
       ],
       "normals": [
@@ -270,7 +270,8 @@
       "metadata": {
         "textureUrl": "assets/battlescene/maps/city-day/backgrounds/city-middle-day.webp",
         "hasAlpha": true,
-        "useAlphaFromDiffuseTexture": true
+        "useAlphaFromDiffuseTexture": true,
+        "textureUScale": 3
       },
       "checkReadyOnEveryCall": false,
       "checkReadyOnlyOnce": false,

@@ -17,7 +17,7 @@
       ],
       "scaling": [
         1,
-        0.3475409836065574,
+        1,
         1
       ],
       "localMatrix": {
@@ -88,28 +88,28 @@
       "applyFog": true,
       "positions": [
         -180,
-        -61,
+        -21.2,
         0,
         180,
-        -61,
+        -21.2,
         0,
         180,
-        61,
+        21.2,
         0,
         -180,
-        61,
+        21.2,
         0,
         -180,
-        -61,
+        -21.2,
         0,
         180,
-        -61,
+        -21.2,
         0,
         180,
-        61,
+        21.2,
         0,
         -180,
-        61,
+        21.2,
         0
       ],
       "normals": [
@@ -270,7 +270,8 @@
       "metadata": {
         "textureUrl": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
         "hasAlpha": true,
-        "useAlphaFromDiffuseTexture": true
+        "useAlphaFromDiffuseTexture": true,
+        "textureUScale": 3
       },
       "checkReadyOnEveryCall": false,
       "checkReadyOnlyOnce": false,

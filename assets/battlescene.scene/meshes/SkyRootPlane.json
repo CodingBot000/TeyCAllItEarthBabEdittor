@@ -270,7 +270,8 @@
       "metadata": {
         "textureUrl": "assets/battlescene/maps/city-day/backgrounds/sky-day-base.webp",
         "hasAlpha": false,
-        "useAlphaFromDiffuseTexture": true
+        "useAlphaFromDiffuseTexture": true,
+        "textureUScale": 1
       },
       "checkReadyOnEveryCall": false,
       "checkReadyOnlyOnce": false,

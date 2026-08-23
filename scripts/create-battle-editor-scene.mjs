@@ -9,6 +9,7 @@ import {
   Scene,
   SceneSerializer,
   StandardMaterial,
+  Texture,
   TransformNode,
   UniversalCamera,
   Vector3,
@@ -27,6 +28,10 @@ const environmentRoot = childNode('EnvironmentRoot', sceneRootNode);
 const BACKGROUND_WORLD_WIDTH = 360;
 const BACKGROUND_TILE_WIDTH = 120;
 const BACKGROUND_REPEAT = BACKGROUND_WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
+const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
+const FIGHTER_ATLAS_COLUMNS = 4;
+const FIGHTER_ATLAS_ROWS = 2;
+const FIGHTER_SPRITE_SIZE = 5.4;
 const BACKGROUND_PLANE_HEIGHTS = {
   SkyRoot: 202.5,
   CityFarRoot: 67.5,
@@ -89,35 +94,21 @@ const airRoot = childNode('AirBattleRoot', sceneRootNode);
 const gameplayRoot = childNode('MothershipGameplayRoot', airRoot);
 gameplayRoot.position.set(0, 8, 0);
 const visualRoot = childNode('MothershipVisualRoot', gameplayRoot);
-const hullMaterial = createMaterial('MothershipHullMaterial', new Color3(0.28, 0.37, 0.42), 'mothership-hull-basecolor.webp');
-const hull = MeshBuilder.CreateBox('MothershipModel', { width: 20, height: 4.8, depth: 6.6 }, scene);
+const hullMaterial = createMaterial('MothershipHullMaterial', new Color3(0.62, 0.66, 0.68), 'mothership-hull-disc-basecolor.webp');
+const hull = MeshBuilder.CreateCylinder('MothershipModel', {
+  diameterTop: 18,
+  diameterBottom: 24,
+  height: 3.8,
+  tessellation: 96,
+}, scene);
 hull.parent = visualRoot;
-hull.scaling.z = 0.72;
 hull.material = hullMaterial;
-const bridge = MeshBuilder.CreateSphere('MothershipBridge', { diameter: 5.8, segments: 24 }, scene);
-bridge.parent = visualRoot;
-bridge.position.set(1.5, 2.5, 0);
-bridge.scaling.y = 0.48;
-bridge.material = hullMaterial;
-
-const wingMaterial = createMaterial('MothershipWingMaterial', new Color3(0.12, 0.2, 0.24));
-for (const side of [-1, 1]) {
-  const wing = MeshBuilder.CreateBox('MothershipWing' + (side > 0 ? 'Right' : 'Left'), { width: 8, height: 0.6, depth: 7.2 }, scene);
-  wing.parent = visualRoot;
-  wing.position.set(-2.5, -1.4, side * 3.2);
-  wing.rotation.y = side * 0.14;
-  wing.material = wingMaterial;
-}
-
-const glowMaterial = createMaterial('MothershipEngineGlowMaterial', new Color3(0.05, 0.25, 0.3));
-glowMaterial.emissiveColor = new Color3(0.15, 0.95, 1);
-for (const side of [-1, 1]) {
-  const engineMesh = MeshBuilder.CreateCylinder('MothershipEngine' + (side > 0 ? 'Right' : 'Left'), { diameter: 1.8, height: 4.3, tessellation: 20 }, scene);
-  engineMesh.parent = visualRoot;
-  engineMesh.position.set(-9, 0, side * 1.8);
-  engineMesh.rotation.z = Math.PI / 2;
-  engineMesh.material = glowMaterial;
-}
+const rimMaterial = createMaterial('MothershipRimMaterial', new Color3(0.12, 0.16, 0.18));
+const rim = MeshBuilder.CreateTorus('MothershipRim', { diameter: 22, thickness: 0.38, tessellation: 96 }, scene);
+rim.parent = visualRoot;
+rim.scaling.y = 0.72;
+rim.position.y = -0.2;
+rim.material = rimMaterial;
 
 const weaponSockets = childNode('WeaponSockets', visualRoot);
 childNode('WeaponSocketLeft', weaponSockets).position.set(5, -0.7, -2.1);
@@ -130,13 +121,44 @@ childNode('MothershipVfxSockets', visualRoot);
 
 const fighterRoot = childNode('FighterPoolRoot', airRoot);
 const droneRoot = childNode('DronePoolRoot', airRoot);
-const fighterMaterial = createMaterial('FighterPrototypeMaterial', new Color3(0.65, 0.77, 0.82));
 const droneMaterial = createMaterial('DronePrototypeMaterial', new Color3(0.9, 0.55, 0.24));
 for (let index = 0; index < 3; index += 1) {
-  const fighter = MeshBuilder.CreatePolyhedron('FighterPrototype' + (index + 1), { type: 1, size: 3.2 }, scene);
+  const fighter = MeshBuilder.CreatePlane('FighterPrototype' + (index + 1), { size: 1 }, scene);
   fighter.parent = fighterRoot;
   fighter.position.set(-20 + index * 17, 14 + (index % 2) * 5, 1.5 + index);
-  fighter.scaling.y = 0.35;
+  fighter.scaling.set(FIGHTER_SPRITE_SIZE, FIGHTER_SPRITE_SIZE, 1);
+  fighter.billboardMode = Mesh.BILLBOARDMODE_ALL;
+  fighter.isPickable = false;
+  const fighterMaterial = new StandardMaterial('FighterPrototypeMaterial' + (index + 1), scene);
+  fighterMaterial.diffuseColor = Color3.White();
+  fighterMaterial.emissiveColor = new Color3(0.24, 0.32, 0.38);
+  fighterMaterial.disableLighting = true;
+  fighterMaterial.backFaceCulling = false;
+  fighterMaterial.useAlphaFromDiffuseTexture = true;
+  fighterMaterial.transparencyMode = 2;
+  const fighterTexture = new Texture(FIGHTER_SPRITE_URL, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
+  const fighterFrame = index * 2;
+  const fighterUScale = 1 / FIGHTER_ATLAS_COLUMNS;
+  const fighterVScale = 1 / FIGHTER_ATLAS_ROWS;
+  fighterTexture.uScale = fighterUScale;
+  fighterTexture.vScale = fighterVScale;
+  fighterTexture.uOffset = (fighterFrame % FIGHTER_ATLAS_COLUMNS) * fighterUScale;
+  fighterTexture.vOffset = Math.floor(fighterFrame / FIGHTER_ATLAS_COLUMNS) * fighterVScale;
+  fighterTexture.hasAlpha = true;
+  fighterMaterial.diffuseTexture = fighterTexture;
+  fighterMaterial.emissiveTexture = fighterTexture;
+  fighterMaterial.metadata = {
+    textureUrl: FIGHTER_SPRITE_URL,
+    hasAlpha: true,
+    useAlphaFromDiffuseTexture: true,
+    textureUScale: fighterUScale,
+    textureVScale: fighterVScale,
+    textureUOffset: fighterTexture.uOffset,
+    textureVOffset: fighterTexture.vOffset,
+    textureWrapU: 0,
+    textureWrapV: 0,
+  };
+  textureMaterials.set(fighterMaterial.id, fighterMaterial.metadata);
   fighter.material = fighterMaterial;
   const drone = MeshBuilder.CreateSphere('DronePrototype' + (index + 1), { diameter: 2.2, segments: 12 }, scene);
   drone.parent = droneRoot;
@@ -169,7 +191,16 @@ const materialById = new Map((serialized.materials ?? []).map((material) => [mat
 for (const material of materialById.values()) {
   const texture = textureMaterials.get(material.id);
   if (!texture) continue;
-  material.diffuseTexture = textureRecord(texture.textureUrl, texture.hasAlpha, texture.textureUScale);
+  material.diffuseTexture = textureRecord(
+    texture.textureUrl,
+    texture.hasAlpha,
+    texture.textureUScale,
+    texture.textureVScale,
+    texture.textureUOffset,
+    texture.textureVOffset,
+    texture.textureWrapU,
+    texture.textureWrapV,
+  );
   material.useAlphaFromDiffuseTexture = texture.useAlphaFromDiffuseTexture;
 }
 
@@ -227,14 +258,14 @@ function createMaterial(name, color, textureAsset) {
   return material;
 }
 
-function textureRecord(url, hasAlpha, uScale = 1) {
+function textureRecord(url, hasAlpha, uScale = 1, vScale = 1, uOffset = 0, vOffset = 0, wrapU = 1, wrapV = 1) {
   return {
     tags: null,
     url,
-    uOffset: 0,
-    vOffset: 0,
+    uOffset,
+    vOffset,
     uScale,
-    vScale: 1,
+    vScale,
     uAng: 0,
     vAng: 0,
     wAng: 0,
@@ -250,8 +281,8 @@ function textureRecord(url, hasAlpha, uScale = 1) {
     coordinatesIndex: 0,
     optimizeUVAllocation: true,
     coordinatesMode: 0,
-    wrapU: 1,
-    wrapV: 1,
+    wrapU,
+    wrapV,
     wrapR: 1,
     anisotropicFilteringLevel: 4,
     isCube: false,

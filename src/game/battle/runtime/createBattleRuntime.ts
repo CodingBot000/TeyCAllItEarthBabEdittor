@@ -7,6 +7,7 @@ import {
   Scalar,
   Scene,
   StandardMaterial,
+  TrailMesh,
   Texture,
   TransformNode,
   UniversalCamera,
@@ -15,8 +16,11 @@ import {
 } from '@babylonjs/core';
 import { loadScene } from 'babylonjs-editor-tools';
 import { scriptsMap } from '../../../scripts';
+import { activateAbility, applyMothershipProjectileDamage, commandExtraction, stopBeam, tickCombat } from '../../domain/combatRules';
+import type { CombatState, Vec2 } from '../../domain/types';
 import type { BattleMapDefinition } from '../contracts/BattleMapDefinition';
 import { mapBackgroundUrl, sharedMaterialUrl } from '../maps/battleMapCatalog';
+import { BattleCombatVfx } from './BattleCombatVfx';
 
 const WORLD_WIDTH = 360;
 const BACKGROUND_TILE_WIDTH = 120;
@@ -24,6 +28,21 @@ const BACKGROUND_REPEAT = WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
 const CAMERA_Y = 5;
 const CAMERA_Z = -92;
 const MOTHERSHIP_Y = 8;
+const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
+const FIGHTER_ATLAS_COLUMNS = 4;
+const FIGHTER_ATLAS_ROWS = 2;
+const FIGHTER_SPRITE_SIZE = 5.4;
+const FIGHTER_TRAIL_LENGTH = 72;
+const FIGHTER_TRAIL_SEGMENTS = 24;
+const FIGHTER_TRAIL_DIAMETER = 0.16;
+const FIGHTER_TRAIL_CORE_LENGTH = 26;
+const FIGHTER_TRAIL_CORE_SEGMENTS = 10;
+const FIGHTER_TRAIL_CORE_DIAMETER = 0.065;
+const FIGHTER_TRAIL_NOZZLE_OFFSET = 1.35;
+const FIGHTER_SMOKE_LIFETIME = 1;
+const FIGHTER_SMOKE_INTERVAL = 0.08;
+const CINEMATIC_EVASION_DURATION = 1.25;
+const CINEMATIC_CRASH_DURATION = 2.4;
 
 export interface BattleRuntime {
   engine: Engine;
@@ -32,6 +51,11 @@ export interface BattleRuntime {
   mothershipGameplayRoot: TransformNode;
   setPaused(paused: boolean): void;
   dispose(): void;
+}
+
+export interface BattleRuntimeOptions {
+  combatState?: CombatState;
+  onCombatComplete?: (state: CombatState) => void;
 }
 
 interface BackgroundLayer {
@@ -43,6 +67,40 @@ interface BackgroundLayer {
   renderingGroupId: number;
 }
 
+interface FighterSmokePuff {
+  mesh: Mesh;
+  age: number;
+}
+
+interface FighterTrailVisual {
+  generator: TransformNode;
+  mesh: TrailMesh;
+  coreMesh: TrailMesh;
+  smokeMaterial: StandardMaterial;
+  smokePuffs: FighterSmokePuff[];
+  smokeAccumulator: number;
+  nextSmokeId: number;
+}
+
+interface FighterVisual {
+  mesh: Mesh;
+  fallback: AbstractMesh;
+  trail: FighterTrailVisual;
+  baseX: number;
+  baseY: number;
+  baseZ: number;
+  heading: number;
+  phase: number;
+}
+
+interface MothershipCinematic {
+  kind: 'EVASION' | 'CRASH';
+  elapsed: number;
+  duration: number;
+  origin: Vector3;
+  direction: number;
+}
+
 const BACKGROUND_LAYERS: BackgroundLayer[] = [
   { name: 'SkyRoot', key: 'sky', z: 30, y: 4, parallax: 0, renderingGroupId: 0 },
   { name: 'CityFarRoot', key: 'far', z: 22, y: 9, parallax: 0.15, renderingGroupId: 0 },
@@ -52,7 +110,7 @@ const BACKGROUND_LAYERS: BackgroundLayer[] = [
   { name: 'ForegroundRoot', key: 'foregroundAtmosphere', z: -5, y: 1, parallax: 0.8, renderingGroupId: 3 },
 ];
 
-export async function createBattleRuntime(canvas: HTMLCanvasElement, map: BattleMapDefinition): Promise<BattleRuntime> {
+export async function createBattleRuntime(canvas: HTMLCanvasElement, map: BattleMapDefinition, options: BattleRuntimeOptions = {}): Promise<BattleRuntime> {
   const engine = new Engine(canvas, true, {
     preserveDrawingBuffer: false,
     stencil: true,
@@ -103,19 +161,87 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const dronePoolRoot = getOrCreateNode(scene, 'DronePoolRoot');
   const groundBattleRoot = getOrCreateNode(scene, 'GroundBattleRoot');
   if (!editorSceneLoaded) createFallbackMothershipAndUnits(scene, map, mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
+  const fighterVisuals = createFighterVisuals(scene, fighterPoolRoot);
+  const combatVfx = new BattleCombatVfx(scene, mothershipGameplayRoot);
   setGameplayRenderingGroup(mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
+  for (const fighter of fighterVisuals) {
+    fighter.trail.mesh.renderingGroupId = 3;
+    fighter.trail.coreMesh.renderingGroupId = 3;
+  }
 
   let paused = false;
   let elapsed = 0;
+  let cinematic: MothershipCinematic | null = null;
+  let completedCombat = false;
   let cameraX = mothershipGameplayRoot.position.x;
   camera.position.x = cameraX;
   camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
   const pressedKeys = new Set<string>();
+  const combatState = options.combatState;
+  const combatTarget = (): Vec2 => ({ x: mothershipGameplayRoot.position.x, z: 0 });
+  const triggerCombatAbility = (ability: 'emp' | 'plasma') => {
+    if (!combatState || combatState.result !== 'ACTIVE') return;
+    const target = combatTarget();
+    const result = activateAbility(combatState, ability, target);
+    if (result.ok) combatVfx.triggerAbility(ability, new Vector3(target.x, -4.2, target.z));
+  };
+  const triggerCombatHit = (kind: 'SHIELD' | 'HULL') => {
+    if (!combatState || combatState.result !== 'ACTIVE') {
+      combatVfx.triggerMothershipHit(kind);
+      return;
+    }
+    if (kind === 'SHIELD') combatState.mothership.shield = Math.max(120, combatState.mothership.shield);
+    else combatState.mothership.shield = 0;
+    applyMothershipProjectileDamage(combatState, kind === 'SHIELD' ? 72 : combatState.mothership.hull + 100, 'fighter', { x: 0.72, y: -0.18, z: -1 }, `debug-${kind.toLowerCase()}-hit-${combatState.nextEntityId++}`);
+  };
+  const triggerBeam = () => {
+    if (!combatState || combatState.result !== 'ACTIVE') {
+      combatVfx.toggleAbsorption(new Vector3(mothershipGameplayRoot.position.x, -4.2, 0));
+      return;
+    }
+    if (combatState.activeAbility === 'beam') {
+      stopBeam(combatState, 'MANUAL');
+      return;
+    }
+    const target = combatState.absorbableTargets.find((item) => item.kind === 'ORGANIC' && item.remainingAmount > 0) ?? combatState.absorbableTargets.find((item) => item.remainingAmount > 0);
+    if (target) activateAbility(combatState, 'beam', target.center);
+  };
+  const startCinematic = (kind: MothershipCinematic['kind']) => {
+    if (cinematic || kind === 'CRASH' && completedCombat) return;
+    cinematic = { kind, elapsed: 0, duration: kind === 'CRASH' ? CINEMATIC_CRASH_DURATION : CINEMATIC_EVASION_DURATION, origin: mothershipGameplayRoot.position.clone(), direction: pressedKeys.has('arrowleft') || pressedKeys.has('a') ? -1 : 1 };
+    if (kind === 'CRASH' && combatState && combatState.result === 'ACTIVE') {
+      combatState.mothership.shield = 0;
+      applyMothershipProjectileDamage(combatState, combatState.mothership.hull + 100, 'sam', { x: -0.6, y: -0.4, z: -1 }, `crash-hit-${combatState.nextEntityId++}`);
+    }
+  };
   const keyDown = (event: KeyboardEvent) => {
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key.toLowerCase() === 'a' || event.key.toLowerCase() === 'd') {
       event.preventDefault();
       pressedKeys.add(event.key.toLowerCase());
     }
+    if (event.key === '1') {
+      event.preventDefault();
+      triggerCombatHit('SHIELD');
+    }
+    if (event.key === '2') {
+      event.preventDefault();
+      triggerCombatHit('HULL');
+    }
+    if (event.key.toLowerCase() === 'e') {
+      event.preventDefault();
+      triggerCombatAbility('emp');
+    }
+    if (event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      triggerCombatAbility('plasma');
+    }
+    if (event.key.toLowerCase() === 'b') {
+      event.preventDefault();
+      triggerBeam();
+    }
+    if (event.key.toLowerCase() === 'q') { event.preventDefault(); startCinematic('EVASION'); }
+    if (event.key.toLowerCase() === 'c') { event.preventDefault(); startCinematic('CRASH'); }
+    if (event.key.toLowerCase() === 'x' && combatState) { event.preventDefault(); commandExtraction(combatState); }
     if (event.key === 'Escape') paused = !paused;
   };
   const keyUp = (event: KeyboardEvent) => pressedKeys.delete(event.key.toLowerCase());
@@ -126,23 +252,47 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (paused) return;
     const deltaSeconds = Math.min(engine.getDeltaTime() / 1000, 0.05);
     elapsed += deltaSeconds;
+    if (cinematic) {
+      updateMothershipCinematic(mothershipGameplayRoot, cinematic, deltaSeconds);
+      if (cinematic.elapsed >= cinematic.duration) {
+        const finishedKind = cinematic.kind;
+        cinematic = null;
+        if (finishedKind === 'EVASION') mothershipGameplayRoot.rotation.set(0, 0, 0);
+        if (finishedKind === 'CRASH') {
+          completedCombat = true;
+          if (combatState) {
+            combatState.result = 'FAILED';
+            options.onCombatComplete?.(combatState);
+          }
+        }
+      }
+    }
     const moveLeft = pressedKeys.has('arrowleft') || pressedKeys.has('a');
     const moveRight = pressedKeys.has('arrowright') || pressedKeys.has('d');
     const movement = Number(moveRight) - Number(moveLeft);
     const visibleWidth = getVisibleWidth(camera, engine);
     const cameraTravel = Math.max(0, visibleWidth * map.camera.travelScreensFromStart);
     const mothershipTravel = Math.max(52, cameraTravel + visibleWidth * 0.38);
-    mothershipGameplayRoot.position.x = Scalar.Clamp(
-      mothershipGameplayRoot.position.x + movement * 34 * deltaSeconds,
-      -mothershipTravel,
-      mothershipTravel,
-    );
+    if (!cinematic) mothershipGameplayRoot.position.x = Scalar.Clamp(mothershipGameplayRoot.position.x + movement * 34 * deltaSeconds, -mothershipTravel, mothershipTravel);
+    if (combatState && !cinematic) {
+      combatState.mothership.position.x = mothershipGameplayRoot.position.x;
+      combatState.mothership.position.z = 0;
+      tickCombat(combatState, deltaSeconds);
+      if (combatState.extractionStatus === 'IN_PROGRESS') commandExtraction(combatState, deltaSeconds);
+      mothershipGameplayRoot.position.x = combatState.mothership.position.x;
+      combatVfx.syncCombatState(combatState);
+      if (combatState.result !== 'ACTIVE' && !completedCombat) {
+        completedCombat = true;
+        options.onCombatComplete?.(combatState);
+      }
+    }
     const desiredCameraX = Scalar.Clamp(mothershipGameplayRoot.position.x, -cameraTravel, cameraTravel);
     cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
     camera.position.x = cameraX;
     camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
     for (const { layer, root } of backgroundPlanes) root.position.x = cameraX * (1 - layer.parallax);
-    animatePrototypes(fighterPoolRoot, dronePoolRoot, groundBattleRoot, elapsed);
+    animatePrototypes(fighterVisuals, dronePoolRoot, groundBattleRoot, elapsed, deltaSeconds);
+    combatVfx.update(deltaSeconds, elapsed);
   };
   scene.onBeforeRenderObservable.add(update);
   engine.runRenderLoop(() => scene.render());
@@ -160,10 +310,31 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       window.removeEventListener('keydown', keyDown);
       window.removeEventListener('keyup', keyUp);
       window.removeEventListener('resize', resize);
+      fighterVisuals.forEach((fighter) => disposeFighterVisual(fighter));
+      combatVfx.dispose();
       scene.dispose();
       engine.dispose();
     },
   };
+}
+
+function updateMothershipCinematic(root: TransformNode, cinematic: MothershipCinematic, dt: number): void {
+  cinematic.elapsed = Math.min(cinematic.duration, cinematic.elapsed + dt);
+  const progress = cinematic.elapsed / cinematic.duration;
+  const eased = Math.sin(progress * Math.PI);
+  if (cinematic.kind === 'EVASION') {
+    root.position.x = cinematic.origin.x + cinematic.direction * eased * 8;
+    root.position.y = cinematic.origin.y + eased * 2.2;
+    root.position.z = cinematic.origin.z + Math.sin(progress * Math.PI * 2) * 1.2;
+    root.rotation.z = cinematic.direction * eased * 0.42;
+    root.rotation.y = cinematic.direction * eased * 0.24;
+    return;
+  }
+  root.position.x = cinematic.origin.x + cinematic.direction * eased * 2.5;
+  root.position.y = cinematic.origin.y - progress * 20;
+  root.position.z = cinematic.origin.z - progress * 18;
+  root.rotation.x = progress * 1.1;
+  root.rotation.z = cinematic.direction * progress * 0.75;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -251,7 +422,7 @@ function createFallbackMothershipAndUnits(
   createMothershipSockets(mothershipVisualRoot, scene);
   fighterPoolRoot.parent = airBattleRoot;
   dronePoolRoot.parent = airBattleRoot;
-  createAirPrototypes(fighterPoolRoot, dronePoolRoot, scene);
+  createAirPrototypes(dronePoolRoot, scene);
   const groundLaneDefinitions = getOrCreateNode(scene, 'GroundLaneDefinitions');
   groundLaneDefinitions.parent = groundBattleRoot;
   createGroundPrototypes(groundBattleRoot, scene);
@@ -288,57 +459,28 @@ function fallbackBackgroundMaterial(scene: Scene, key: keyof BattleMapDefinition
 
 function createMothershipVisual(root: TransformNode, map: BattleMapDefinition, scene: Scene): void {
   const hullMaterial = new StandardMaterial('MothershipHullMaterial', scene);
-  hullMaterial.diffuseColor = new Color3(0.28, 0.37, 0.42);
+  hullMaterial.diffuseColor = new Color3(0.62, 0.66, 0.68);
   hullMaterial.specularColor = new Color3(0.1, 0.16, 0.2);
   hullMaterial.roughness = 0.62;
   const hullTextureUrl = sharedMaterialUrl(map, 'mothershipHullBaseColor');
   if (hullTextureUrl) hullMaterial.diffuseTexture = new Texture(hullTextureUrl, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE);
 
-  const hull = MeshBuilder.CreateBox('MothershipModel', { width: 20, height: 4.8, depth: 6.6 }, scene);
+  const hull = MeshBuilder.CreateCylinder('MothershipModel', {
+    diameterTop: 18,
+    diameterBottom: 24,
+    height: 3.8,
+    tessellation: 96,
+  }, scene);
   hull.parent = root;
-  hull.scaling.z = 0.72;
   hull.material = hullMaterial;
-  const bridge = MeshBuilder.CreateSphere('MothershipBridge', { diameter: 5.8, segments: 24 }, scene);
-  bridge.parent = root;
-  bridge.position.set(1.5, 2.5, 0);
-  bridge.scaling.y = 0.48;
-  bridge.material = hullMaterial;
-
-  const wingMaterial = new StandardMaterial('MothershipWingMaterial', scene);
-  wingMaterial.diffuseColor = new Color3(0.12, 0.2, 0.24);
-  wingMaterial.specularColor = new Color3(0.08, 0.12, 0.15);
-  for (const side of [-1, 1]) {
-    const wing = MeshBuilder.CreateBox(`MothershipWing${side > 0 ? 'Right' : 'Left'}`, { width: 8, height: 0.6, depth: 7.2 }, scene);
-    wing.parent = root;
-    wing.position.set(-2.5, -1.4, side * 3.2);
-    wing.rotation.y = side * 0.14;
-    wing.material = wingMaterial;
-  }
-
-  const glowMaterial = new StandardMaterial('MothershipEngineGlowMaterial', scene);
-  glowMaterial.emissiveColor = new Color3(0.15, 0.95, 1);
-  glowMaterial.diffuseColor = new Color3(0.05, 0.25, 0.3);
-  for (const side of [-1, 1]) {
-    const engine = MeshBuilder.CreateCylinder(`MothershipEngine${side > 0 ? 'Right' : 'Left'}`, { diameter: 1.8, height: 4.3, tessellation: 20 }, scene);
-    engine.parent = root;
-    engine.position.set(-9, 0, side * 1.8);
-    engine.rotation.z = Math.PI / 2;
-    engine.material = glowMaterial;
-  }
-
-  const decalUrl = sharedMaterialUrl(map, 'mothershipEmissiveDecals');
-  if (decalUrl) {
-    const decalMaterial = new StandardMaterial('MothershipEmissiveDecalMaterial', scene);
-    decalMaterial.disableLighting = true;
-    decalMaterial.useAlphaFromDiffuseTexture = true;
-    decalMaterial.emissiveColor = new Color3(0.35, 1, 1);
-    decalMaterial.diffuseTexture = new Texture(decalUrl, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE);
-    const decal = MeshBuilder.CreatePlane('MothershipEmissiveDecal', { width: 6, height: 1.2, sideOrientation: Mesh.DOUBLESIDE }, scene);
-    decal.parent = root;
-    decal.position.set(3.3, 0.2, -2.43);
-    decal.rotation.x = Math.PI;
-    decal.material = decalMaterial;
-  }
+  const rimMaterial = new StandardMaterial('MothershipRimMaterial', scene);
+  rimMaterial.diffuseColor = new Color3(0.12, 0.16, 0.18);
+  rimMaterial.specularColor = new Color3(0.08, 0.12, 0.15);
+  const rim = MeshBuilder.CreateTorus('MothershipRim', { diameter: 22, thickness: 0.38, tessellation: 96 }, scene);
+  rim.parent = root;
+  rim.scaling.y = 0.72;
+  rim.position.y = -0.2;
+  rim.material = rimMaterial;
 }
 
 function createMothershipSockets(root: TransformNode, scene: Scene): void {
@@ -360,24 +502,156 @@ function createMothershipSockets(root: TransformNode, scene: Scene): void {
   vfxSockets.parent = root;
 }
 
-function createAirPrototypes(fighterRoot: TransformNode, droneRoot: TransformNode, scene: Scene): void {
-  const fighterMaterial = new StandardMaterial('FighterPrototypeMaterial', scene);
-  fighterMaterial.diffuseColor = new Color3(0.65, 0.77, 0.82);
-  fighterMaterial.emissiveColor = new Color3(0.04, 0.2, 0.24);
+function createAirPrototypes(droneRoot: TransformNode, scene: Scene): void {
   const droneMaterial = new StandardMaterial('DronePrototypeMaterial', scene);
   droneMaterial.diffuseColor = new Color3(0.9, 0.55, 0.24);
   droneMaterial.emissiveColor = new Color3(0.18, 0.05, 0.01);
   for (let index = 0; index < 3; index += 1) {
-    const fighter = MeshBuilder.CreatePolyhedron(`FighterPrototype${index + 1}`, { type: 1, size: 3.2 }, scene);
-    fighter.parent = fighterRoot;
-    fighter.position.set(-20 + index * 17, 14 + (index % 2) * 5, 1.5 + index);
-    fighter.scaling.y = 0.35;
-    fighter.material = fighterMaterial;
     const drone = MeshBuilder.CreateSphere(`DronePrototype${index + 1}`, { diameter: 2.2, segments: 12 }, scene);
     drone.parent = droneRoot;
     drone.position.set(-10 + index * 16, -1 + (index % 2) * 6, -1);
     drone.material = droneMaterial;
   }
+}
+
+function createFighterVisuals(scene: Scene, fighterRoot: TransformNode): FighterVisual[] {
+  const fighterVisuals: FighterVisual[] = [];
+  const headings = [-0.72, 0, 0.72];
+  for (let index = 0; index < 3; index += 1) {
+    const name = `FighterPrototype${index + 1}`;
+    const existing = scene.getMeshByName(name);
+    const mesh = existing instanceof Mesh
+      ? existing
+      : MeshBuilder.CreatePlane(name, { size: 1 }, scene);
+    if (!existing) {
+      mesh.parent = fighterRoot;
+      mesh.position.set(-20 + index * 17, 14 + (index % 2) * 5, 1.5 + index);
+    }
+    mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    mesh.scaling.set(FIGHTER_SPRITE_SIZE, FIGHTER_SPRITE_SIZE, 1);
+    mesh.isPickable = false;
+    const heading = headings[index];
+    const texture = new Texture(FIGHTER_SPRITE_URL, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
+    setAtlasFrame(texture, FIGHTER_ATLAS_COLUMNS, FIGHTER_ATLAS_ROWS, index * 2);
+    texture.hasAlpha = true;
+    const material = new StandardMaterial(`${name}SpriteMaterial`, scene);
+    material.diffuseColor = Color3.White();
+    material.emissiveColor = new Color3(0.24, 0.32, 0.38);
+    material.disableLighting = true;
+    material.backFaceCulling = false;
+    material.useAlphaFromDiffuseTexture = true;
+    material.transparencyMode = Engine.ALPHA_COMBINE;
+    material.diffuseTexture = texture;
+    material.emissiveTexture = texture;
+    mesh.material = material;
+    mesh.metadata = { ...(mesh.metadata ?? {}), battleFighterSprite: true, battleBaseY: mesh.position.y };
+    const fallback = MeshBuilder.CreatePolyhedron(`${name}Fallback`, { type: 1, size: 1.7 }, scene);
+    fallback.parent = fighterRoot;
+    fallback.position = mesh.position.clone();
+    fallback.isVisible = false;
+    fallback.isPickable = false;
+    fallback.metadata = { battleFighterFallback: true, battleBaseY: mesh.position.y };
+    const trail = createFighterTrail(name, scene, mesh.getAbsolutePosition(), heading);
+    fighterVisuals.push({
+      mesh,
+      fallback,
+      trail,
+      baseX: mesh.position.x,
+      baseY: mesh.position.y,
+      baseZ: mesh.position.z,
+      heading,
+      phase: index * 1.7,
+    });
+  }
+  return fighterVisuals;
+}
+
+function createFighterTrail(id: string, scene: Scene, position: Vector3, heading: number): FighterTrailVisual {
+  const generator = new TransformNode(`${id}-engine-nozzle`, scene);
+  positionFighterTrailGenerator(generator, position, heading);
+  generator.computeWorldMatrix(true);
+  const trailMaterial = new StandardMaterial(`${id}-engine-trail-material`, scene);
+  trailMaterial.diffuseColor = new Color3(1, 0.46, 0.12);
+  trailMaterial.emissiveColor = new Color3(0.78, 0.16, 0.025);
+  trailMaterial.alpha = 0.34;
+  trailMaterial.disableLighting = true;
+  trailMaterial.backFaceCulling = false;
+  const mesh = new TrailMesh(`${id}-engine-trail`, generator, scene, {
+    diameter: FIGHTER_TRAIL_DIAMETER,
+    length: FIGHTER_TRAIL_LENGTH,
+    segments: FIGHTER_TRAIL_SEGMENTS,
+    sections: 6,
+    autoStart: true,
+  });
+  mesh.material = trailMaterial;
+  mesh.isPickable = false;
+  const coreMaterial = new StandardMaterial(`${id}-engine-trail-core-material`, scene);
+  coreMaterial.diffuseColor = new Color3(1, 0.88, 0.48);
+  coreMaterial.emissiveColor = new Color3(1, 0.42, 0.05);
+  coreMaterial.alpha = 0.84;
+  coreMaterial.alphaMode = Engine.ALPHA_ADD;
+  coreMaterial.disableLighting = true;
+  coreMaterial.backFaceCulling = false;
+  const coreMesh = new TrailMesh(`${id}-engine-trail-core`, generator, scene, {
+    diameter: FIGHTER_TRAIL_CORE_DIAMETER,
+    length: FIGHTER_TRAIL_CORE_LENGTH,
+    segments: FIGHTER_TRAIL_CORE_SEGMENTS,
+    sections: 6,
+    autoStart: true,
+  });
+  coreMesh.material = coreMaterial;
+  coreMesh.isPickable = false;
+  const smokeMaterial = new StandardMaterial(`${id}-engine-smoke-material`, scene);
+  smokeMaterial.diffuseColor = new Color3(0.28, 0.22, 0.18);
+  smokeMaterial.emissiveColor = new Color3(0.08, 0.025, 0.01);
+  smokeMaterial.alpha = 0.38;
+  smokeMaterial.disableLighting = true;
+  smokeMaterial.backFaceCulling = false;
+  return { generator, mesh, coreMesh, smokeMaterial, smokePuffs: [], smokeAccumulator: 0, nextSmokeId: 0 };
+}
+
+function positionFighterTrailGenerator(generator: TransformNode, position: Vector3, heading: number): void {
+  const direction = new Vector3(Math.sin(heading), 0, Math.cos(heading));
+  generator.position.set(
+    position.x - direction.x * FIGHTER_TRAIL_NOZZLE_OFFSET,
+    position.y - 0.14,
+    position.z - direction.z * FIGHTER_TRAIL_NOZZLE_OFFSET,
+  );
+  generator.rotation.set(0, heading, 0);
+}
+
+function syncFighterSmokeTrail(trail: FighterTrailVisual, scene: Scene, dt: number, emissionEnabled: boolean): void {
+  for (const puff of trail.smokePuffs) {
+    puff.age += dt;
+    const progress = Math.min(1, puff.age / FIGHTER_SMOKE_LIFETIME);
+    puff.mesh.visibility = Math.max(0, 0.44 - progress * 0.44);
+    puff.mesh.scaling.setAll(0.42 + progress * 0.72);
+  }
+  while (trail.smokePuffs.length > 0 && trail.smokePuffs[0].age >= FIGHTER_SMOKE_LIFETIME) {
+    trail.smokePuffs.shift()?.mesh.dispose();
+  }
+  if (!emissionEnabled) return;
+  trail.smokeAccumulator += dt;
+  while (trail.smokeAccumulator >= FIGHTER_SMOKE_INTERVAL) {
+    trail.smokeAccumulator -= FIGHTER_SMOKE_INTERVAL;
+    const puff = MeshBuilder.CreateSphere(`${trail.generator.name}-smoke-${trail.nextSmokeId++}`, { diameter: 0.72, segments: 8 }, scene);
+    puff.position = trail.generator.position.clone();
+    puff.material = trail.smokeMaterial;
+    puff.renderingGroupId = 3;
+    puff.isPickable = false;
+    trail.smokePuffs.push({ mesh: puff, age: 0 });
+  }
+}
+
+function disposeFighterVisual(fighter: FighterVisual): void {
+  fighter.fallback.dispose();
+  fighter.trail.mesh.stop();
+  fighter.trail.coreMesh.stop();
+  fighter.trail.mesh.dispose();
+  fighter.trail.coreMesh.dispose();
+  fighter.trail.smokePuffs.splice(0).forEach((puff) => puff.mesh.dispose());
+  fighter.trail.smokeMaterial.dispose();
+  fighter.trail.generator.dispose();
 }
 
 function createGroundPrototypes(root: TransformNode, scene: Scene): void {
@@ -402,11 +676,26 @@ function createGroundPrototypes(root: TransformNode, scene: Scene): void {
   });
 }
 
-function animatePrototypes(fighterRoot: TransformNode, droneRoot: TransformNode, groundRoot: TransformNode, elapsed: number): void {
-  fighterRoot.getChildMeshes().forEach((fighter, index) => {
-    const metadata = getAnimationMetadata(fighter);
-    fighter.position.y = metadata.baseY + Math.sin(elapsed * 1.8 + index) * 0.28;
-    fighter.rotation.z = Math.sin(elapsed * 1.1 + index) * 0.08;
+function animatePrototypes(fighterVisuals: FighterVisual[], droneRoot: TransformNode, groundRoot: TransformNode, elapsed: number, dt: number): void {
+  fighterVisuals.forEach((fighter) => {
+    const flightCycle = elapsed * 0.42 + fighter.phase;
+    fighter.mesh.position.x = fighter.baseX + Math.sin(flightCycle) * 9;
+    fighter.mesh.position.y = fighter.baseY + Math.sin(elapsed * 1.8 + fighter.phase) * 0.62;
+    fighter.mesh.position.z = fighter.baseZ + Math.cos(flightCycle) * 2.2;
+    fighter.mesh.rotation.z = Math.cos(flightCycle) * 0.13;
+    fighter.fallback.position.copyFrom(fighter.mesh.position);
+    fighter.fallback.rotation.y = fighter.heading;
+    const spriteReady = fighter.mesh.material instanceof StandardMaterial
+      && fighter.mesh.material.diffuseTexture instanceof Texture
+      && fighter.mesh.material.diffuseTexture.isReady();
+    fighter.mesh.isVisible = spriteReady;
+    fighter.fallback.isVisible = !spriteReady;
+    positionFighterTrailGenerator(fighter.trail.generator, fighter.mesh.getAbsolutePosition(), fighter.heading);
+    fighter.trail.mesh.isVisible = spriteReady;
+    fighter.trail.mesh.visibility = 0.52;
+    fighter.trail.coreMesh.isVisible = spriteReady;
+    fighter.trail.coreMesh.visibility = 0.72;
+    syncFighterSmokeTrail(fighter.trail, fighter.mesh.getScene(), dt, spriteReady);
   });
   droneRoot.getChildMeshes().forEach((drone, index) => {
     const metadata = getAnimationMetadata(drone);
@@ -423,6 +712,16 @@ function getAnimationMetadata(mesh: AbstractMesh): { baseY: number } {
   if (typeof metadata.battleBaseY !== 'number') metadata.battleBaseY = mesh.position.y;
   mesh.metadata = metadata;
   return { baseY: metadata.battleBaseY as number };
+}
+
+function setAtlasFrame(texture: Texture, columns: number, rows: number, frame: number): void {
+  const safeColumns = Math.max(1, Math.floor(columns));
+  const safeRows = Math.max(1, Math.floor(rows));
+  const safeFrame = Math.max(0, Math.min(safeColumns * safeRows - 1, Math.floor(frame)));
+  texture.uScale = 1 / safeColumns;
+  texture.vScale = 1 / safeRows;
+  texture.uOffset = (safeFrame % safeColumns) / safeColumns;
+  texture.vOffset = Math.floor(safeFrame / safeColumns) / safeRows;
 }
 
 function getVisibleWidth(camera: UniversalCamera, engine: Engine): number {

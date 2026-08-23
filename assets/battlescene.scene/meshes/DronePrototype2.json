@@ -3,7 +3,7 @@
     {
       "name": "DronePrototype2",
       "id": "DronePrototype2",
-      "uniqueId": 68,
+      "uniqueId": 62,
       "type": "Mesh",
       "position": [
         6,
@@ -60,7 +60,7 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 59,
+      "parentId": 50,
       "isUnIndexed": false,
       "subMeshes": [
         {
@@ -71,7 +71,7 @@
           "indexCount": 2352
         }
       ],
-      "materialUniqueId": 61,
+      "materialUniqueId": 51,
       "materialId": "DronePrototypeMaterial",
       "instances": [],
       "animations": [],
@@ -6067,7 +6067,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 61,
+      "uniqueId": 51,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

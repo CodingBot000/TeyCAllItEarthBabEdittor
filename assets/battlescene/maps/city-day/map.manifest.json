@@ -12,7 +12,7 @@
     "foregroundAtmosphere": "backgrounds/foreground-atmosphere-day.webp"
   },
   "sharedMaterials": {
-    "mothershipHullBaseColor": "battlescene/shared/mothership/mapping/mothership-hull-basecolor.webp",
+    "mothershipHullBaseColor": "battlescene/shared/mothership/mapping/mothership-hull-disc-basecolor.webp",
     "mothershipHullHeightSource": "battlescene/shared/mothership/mapping/mothership-hull-height-source.webp",
     "mothershipEmissiveDecals": "battlescene/shared/mothership/mapping/mothership-emissive-decals.webp"
   },

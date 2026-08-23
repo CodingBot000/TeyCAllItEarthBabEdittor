@@ -17,7 +17,7 @@
 ### 에셋 제작 원칙
 
 - 전투 화면에 사용되는 모든 2D 및 3D 에셋은 새로 제작한다.
-- 기존 프로젝트와 이전 전투 구현의 모델, 텍스처, 스프라이트, VFX atlas를 재사용하지 않는다.
+- 맵·모선 최종 아트는 신규 제작한다. 단, 동작 패리티 검증을 위해 sibling에서 검증된 전투기 Billboard와 VFX flipbook·시민 WebP를 임시 런타임 참조본으로 복사할 수 있으며 최종 아트 교체 대상으로 관리한다.
 - 초안 이미지를 잘라 배경이나 유닛 텍스처로 사용하지 않는다.
 - 새 에셋은 웹 런타임용 최적화본과 편집 가능한 원본을 구분해 관리한다.
 - 외부 제작 도구나 외부 원본을 사용한다면 출처와 라이선스를 별도 manifest에 기록한다.
@@ -530,6 +530,8 @@ Babylon.js Editor의 KTX-Software 방식으로 KTX2 압축을 활성화한다. K
 
 Editor CLI는 프로젝트 설정에서 압축이 활성화되어 있으면 `npm run generate` 시 KTX2 산출물을 생성한다. 압축 산출물의 존재만 확인하지 말고 실제 런타임 네트워크 요청이 KTX2를 선택하는지 브라우저 개발자 도구로 검증한다.
 
+현재 개발 환경에는 `toktx`와 `basisu`가 설치되어 있지 않다. `npm run check:battle:compression`이 이를 확인하며, encoder가 추가되기 전에는 `compressedTexturesEnabled`를 켜지 않고 WebP fallback만 배포한다.
+
 ### 19.4 크기와 해상도 기준
 
 - 일반적인 2D 배경 타일과 PBR 텍스처는 2048px 이하를 기본으로 한다.
@@ -679,7 +681,7 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 - instance/pool 구성
 - 신규 지상 대공포·탱크 반입 또는 Sprite Manager 구성
 - ground lane과 X축 제한 구현
-- 발사체 풀과 단순 피격 판정 구현
+- `CombatState` 발사체 배열, 단순 피격 판정, bounded projectile visual 구현
 
 완료 기준: 목표 최대 수량의 임시 전투를 성능 저하 없이 반복 실행할 수 있다.
 
@@ -688,6 +690,7 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 - 회피 원회전 prototype
 - 카메라 방향 추락 prototype
 - 연출 상태 진입·종료 처리
+- 추락 cinematic 종료 시 `FAILED` 결과를 앱에 전달
 - 입력, 충돌, 카메라 추적과의 충돌 방지
 - near plane과 화면 이탈 조건 처리
 
@@ -697,7 +700,7 @@ HUD는 제외하지만 향후 HUD가 화면 가장자리를 가릴 수 있으므
 
 - 최종 신규 도시 레이어 적용
 - 신규 하늘과 환경광 적용
-- 신규 VFX atlas와 particle 적용
+- 방어막/선체 피격, EMP, 플라즈마, 인간 흡입, 방공 레이저 VFX를 도메인 이벤트에 연결
 - 2D/3D 조명, fog, 색보정 통합
 - 최종 모델 LOD와 texture 압축 적용
 

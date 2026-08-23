@@ -17,7 +17,7 @@
       ],
       "scaling": [
         1,
-        0.2962962962962963,
+        1,
         1
       ],
       "localMatrix": {
@@ -88,28 +88,28 @@
       "applyFog": true,
       "positions": [
         -180,
-        -101.25,
+        -30,
         0,
         180,
-        -101.25,
+        -30,
         0,
         180,
-        101.25,
+        30,
         0,
         -180,
-        101.25,
+        30,
         0,
         -180,
-        -101.25,
+        -30,
         0,
         180,
-        -101.25,
+        -30,
         0,
         180,
-        101.25,
+        30,
         0,
         -180,
-        101.25,
+        30,
         0
       ],
       "normals": [
@@ -270,7 +270,8 @@
       "metadata": {
         "textureUrl": "assets/battlescene/maps/city-day/backgrounds/city-near-day.webp",
         "hasAlpha": true,
-        "useAlphaFromDiffuseTexture": true
+        "useAlphaFromDiffuseTexture": true,
+        "textureUScale": 3
       },
       "checkReadyOnEveryCall": false,
       "checkReadyOnlyOnce": false,

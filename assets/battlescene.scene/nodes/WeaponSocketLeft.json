@@ -24,8 +24,8 @@
   "id": "WeaponSocketLeft",
   "state": "",
   "type": "TransformNode",
-  "uniqueId": 51,
-  "parentId": 50,
+  "uniqueId": 42,
+  "parentId": 41,
   "localMatrix": {
     "0": 1,
     "1": 0,
