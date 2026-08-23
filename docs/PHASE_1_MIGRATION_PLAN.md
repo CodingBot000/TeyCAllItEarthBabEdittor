@@ -590,6 +590,7 @@ npm run generate   PASS (assets, example.scene, scripts)
 - 시스템 Chrome + `playwright-core` fallback으로 1440×900 메뉴/맵, 390×844 세로 모바일, 900×500 가로 모바일을 확인했다.
 - 새 캠페인 → 서울 선택 → 도시 상세 → 전투 버튼 placeholder, 한·영 전환, 메뉴 복귀 → 이어하기를 통과했다.
 - 세로 모바일에서는 가로 전환 guard가 표시되고, 가로 모바일에서는 guard가 숨겨진 맵이 표시됐다.
+- 지도 이미지 요청을 의도적으로 abort한 fallback QA에서 절차형 SVG 국가 도형의 `visibility="visible"`을 확인했다(이 시나리오의 `ERR_FAILED`는 의도된 요청 차단 로그다).
 - 콘솔 error/warning과 page error는 0건이었다. Browser/IAB 도구 부재와 외부 폰트 fallback은 [`MIGRATION_ISSUES.md`](./MIGRATION_ISSUES.md)의 MIG-004에 기록했다.
 
 알려진 제한:
