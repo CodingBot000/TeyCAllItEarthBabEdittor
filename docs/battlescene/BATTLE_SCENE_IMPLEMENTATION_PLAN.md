@@ -6,7 +6,7 @@
 - 문서 상태: 초기 구현 기준안
 - 시각 참고: `docs/reference_images/thetcall_inbattle_2d_day.png`
 
-일정, 병렬 개발 경계와 단계별 완료 기준은 [Battle Scene 개발계획서](./BATTLE_SCENE_DEVELOPMENT_PLAN.md)를 따른다.
+일정, 개발 경계와 단계별 완료 기준은 [Battle Scene 개발계획서](./BATTLE_SCENE_DEVELOPMENT_PLAN.md)를 따른다. 구현 중 발견되는 문제는 [Battle Scene 이슈 기록](./BATTLE_SCENE_ISSUES.md)에 남긴다.
 
 ## 1. 목적
 

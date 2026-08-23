@@ -3,8 +3,8 @@
 - 작성일: 2026-08-23
 - 대상 프로젝트: `TeyCAllItEarthBabEdittor`
 - 대상 기능: Babylon.js Editor 기반 2.5D 배틀 화면
-- 현재 상태: 설계 및 1차 2D 에셋 완료, 런타임 구현 전
-- 개발 방식: 시작화면·맵선택 화면 개발과 분리하여 병렬 진행
+- 현재 상태: 앞단 1차 개발 완료, 배틀 런타임 구현 착수 가능
+- 개발 방식: 완료된 시작화면·맵선택 기반 위에서 배틀 기능을 순차 통합
 
 관련 상세 문서:
 
@@ -51,6 +51,8 @@
 
 ### 완료
 
+- 시작화면·월드맵 1차 구현 및 최종 검증 커밋 완료
+- 현재 `main` 작업트리 clean 상태 확인
 - 배틀 씬 기술 및 렌더링 구조 문서화
 - `city-day` 맵의 2D 배경 6종 제작
 - 모선 표면 매핑 이미지 3종 제작
@@ -74,11 +76,11 @@
 
 ### 현재 제약
 
-현재 `main` 작업 폴더에는 다른 세션에서 작업 중인 시작화면·맵선택 변경이 커밋되지 않은 상태로 존재한다. 따라서 배틀 개발은 공유 파일을 수정하지 않는 병렬 안전 단계부터 시작한다.
+시작화면·맵선택 개발에 따른 병렬 작업 제약은 해제됐다. 배틀 개발에서 `GameApp`, `BattleGateway`, 패키지 스크립트와 생성 산출물을 필요한 시점에 수정할 수 있다.
 
-또한 `scripts/pack-editor.mjs`는 1차 메뉴·맵 빌드에 전투 자산이 들어가지 않도록 `assets/battlescene/`을 의도적으로 제외한다. 배틀 패킹은 별도 단계에서 추가한다.
+남은 구조적 제약은 `scripts/pack-editor.mjs`가 1차 메뉴·맵 빌드에 전투 자산이 들어가지 않도록 `assets/battlescene/`을 의도적으로 제외한다는 점이다. 배틀 통합 시 별도 `generate:battle` 패킹 경로를 추가하거나 기존 제외 정책을 전환한다.
 
-## 4. 세션 분리 및 파일 소유권
+## 4. 개발 경계와 공유 파일
 
 ### 배틀 세션 전용 경로
 
@@ -93,9 +95,9 @@ src/scripts/battlescene/**
 assets/battlescene.scene/**
 ```
 
-### 병렬 개발 중 수정 금지 경로
+### 통합 단계 공유 경로
 
-다른 세션과의 충돌을 피하기 위해 B0~B5 단계에서는 다음 경로를 수정하지 않는다.
+앞단 작업이 완료됐으므로 다음 경로도 배틀 통합에 필요한 범위에서 수정할 수 있다. 다만 B0~B5 회색상자 개발 중에는 변경을 최소화하고, 실제 앱 연결은 B6에서 한 작업 단위로 수행한다.
 
 ```text
 src/app/**
@@ -111,13 +113,13 @@ public/scene/**
 
 ### Git 작업 방식
 
-시작화면·맵선택 세션이 현재 변경을 커밋한 뒤 다음 구조로 분리한다.
+현재 `main`은 앞단 개발과 검증이 커밋된 clean 상태이므로 이 작업 폴더에서 바로 이어서 개발할 수 있다. 배틀 변경을 별도 브랜치로 관리하려면 다음 명령을 선택적으로 사용한다.
 
 ```bash
-git worktree add ../TeyCAllItEarthBabEdittor-battle -b feature/battle-scene
+git switch -c feature/battle-scene
 ```
 
-커밋 전에도 배틀 전용 경로 안에서 문서, 에셋, 순수 런타임 모듈 작업은 가능하다. 다만 공통 설정과 생성 산출물을 바꾸는 작업은 worktree 분리 이후로 미룬다.
+별도 worktree는 더 이상 필수 조건이 아니다. 작업 중에는 배틀 전용 파일을 우선 수정하고, 공유 파일 변경은 B6 앱 통합 커밋에 모아 회귀 범위를 명확하게 유지한다.
 
 ## 5. 목표 구조
 
@@ -165,7 +167,7 @@ src/scripts/battlescene/
 └─ battleDebugController.ts
 ```
 
-Editor가 생성하는 `src/scripts.ts`는 공유 생성 파일이므로 worktree 분리 전에는 직접 수정하지 않는다. Editor 패킹 시 자동 생성되게 한다.
+Editor가 생성하는 `src/scripts.ts`는 직접 수동 편집하지 않고 Editor 패킹 시 자동 생성되게 한다.
 
 ## 6. 런타임 계약
 
@@ -182,7 +184,7 @@ export interface BattleLaunchRequest {
 }
 ```
 
-기존 시작·맵선택 개발이 끝나기 전에는 현재 파일을 변경하지 않는다. 배틀 내부 prototype은 별도의 fixture request를 사용하고, B6 통합 단계에서 실제 계약을 확장한다.
+앞단 개발이 완료됐으므로 B0 계약 작업에서 `mapId` 추가와 호출부 영향 범위를 함께 반영할 수 있다. 실제 화면 전환은 B6에서 연결하되, 타입 계약은 초기에 확정한다.
 
 ### 맵 manifest
 
@@ -220,16 +222,16 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 
 ## 7. 개발 마일스톤
 
-| 단계 | 목표 | 병렬 안전 | 상태 |
-|---|---|---:|---|
-| B0 | 배틀 전용 기반과 테스트 가능한 순수 계약 | 예 | 준비 |
-| B1 | 2D 레이어와 카메라 회색상자 | 예 | 대기 |
-| B2 | 모선 primitive 이동과 카메라 추적 | 예 | 대기 |
-| B3 | 공중·지상 유닛 prototype과 판정 | 예 | 대기 |
-| B4 | 회피·추락 cinematic prototype | 예 | 대기 |
-| B5 | 신규 3D 아트와 VFX 통합 | 예 | 대기 |
-| B6 | React 앱·BattleGateway·패킹 연결 | 아니오 | 대기 |
-| B7 | 다중 맵, 웹 최적화와 최종 QA | 부분 | 대기 |
+| 단계 | 목표 | 선행 조건 | 상태 |
+|---|---|---|---|
+| B0 | 배틀 전용 기반과 테스트 가능한 순수 계약 | 앞단 완료 | 다음 작업 |
+| B1 | 2D 레이어와 카메라 회색상자 | B0 | 대기 |
+| B2 | 모선 primitive 이동과 카메라 추적 | B1 | 대기 |
+| B3 | 공중·지상 유닛 prototype과 판정 | B2 | 대기 |
+| B4 | 회피·추락 cinematic prototype | B2 | 대기 |
+| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 대기 |
+| B6 | React 앱·BattleGateway·패킹 연결 | B1 이상 | 차단 없음 |
+| B7 | 다중 맵, 웹 최적화와 최종 QA | B5~B6 | 대기 |
 
 ## 8. 단계별 작업
 
@@ -249,7 +251,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - 잘못된 manifest가 명확한 오류로 거부된다.
 - 모든 asset URL이 동일한 규칙으로 생성된다.
 - React와 Babylon import 없이 manifest 테스트가 실행된다.
-- 시작화면·맵선택 파일 변경이 없다.
+- 기존 시작화면·맵선택 테스트가 계속 통과한다.
 
 ### B1 — Editor 회색상자와 2D 레이어
 
@@ -341,7 +343,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 
 ### B6 — 앱 통합
 
-이 단계는 시작화면·맵선택 세션의 변경이 커밋되고 worktree가 분리된 뒤 수행한다.
+앞단 구현과 검증이 완료됐으므로 외부 세션 의존 없이 수행할 수 있다. B1 회색상자 로딩이 안정화되면 최종 3D 에셋을 기다리지 않고 조기 통합할 수 있다.
 
 작업:
 
@@ -439,13 +441,13 @@ npm run build
 npm run generate
 ```
 
-배틀 패킹 명령이 추가되면 별도로 실행한다. 병렬 개발 중에는 다른 세션이 생성 중인 `public/scene`을 덮어쓰지 않는다.
+배틀 패킹 명령이 추가되면 별도로 실행한다. `public/scene`은 수동 편집하지 않고 패킹 결과로만 갱신한다.
 
 ## 11. 위험과 대응
 
 | 위험 | 대응 |
 |---|---|
-| 두 세션이 공유 파일 수정 | B0~B5는 배틀 전용 경로만 수정, B6는 worktree 분리 후 수행 |
+| 앞단 화면 회귀 | B0~B5는 배틀 전용 경로 우선, 공유 파일 변경은 B6에 모아 전체 테스트 수행 |
 | 투명 Plane 정렬 오류 | Z 범위와 `renderingGroupId`를 초기에 고정 |
 | 맵 추가 시 씬 복제 | map manifest 필수 슬롯 계약 유지 |
 | 모든 맵 이미지 선로드 | 선택된 manifest만 fetch하고 texture lazy load |
@@ -463,21 +465,22 @@ npm run generate
 - `BATTLE_SCENE_IMPLEMENTATION_PLAN.md`: 기술 설계 변경
 - `ASSET_PRODUCTION_LIST.md`: 신규·교체 에셋과 용량
 
-배틀 전용 이슈는 `docs/battlescene/BATTLE_SCENE_ISSUES.md`에 기록할 예정이다. 시작화면·맵선택 마이그레이션 이슈와 분리하되, 공통 빌드나 앱 통합에 영향을 주는 문제만 상위 `docs/MIGRATION_ISSUES.md`에도 연결한다.
+배틀 전용 이슈는 `docs/battlescene/BATTLE_SCENE_ISSUES.md`에 기록한다. 시작화면·맵선택 마이그레이션 이슈와 분리하되, 공통 빌드나 앱 통합에 영향을 주는 문제만 상위 `docs/MIGRATION_ISSUES.md`에도 연결한다.
 
 ## 13. 첫 실행 순서
 
-현재 공유 작업 상태에서 안전하게 시작할 수 있는 순서다.
+앞단 완료 상태에서 바로 시작할 순서다.
 
-1. `BattleMapDefinition`과 manifest validator 작성
-2. `city-day` manifest 단위 테스트 작성
-3. asset URL resolver 작성
-4. 배틀 scene lifecycle 인터페이스 작성
-5. `battlescene.scene` 회색상자 생성
-6. 2D 배경 Plane과 렌더링 그룹 구성
-7. primitive 모선과 카메라 X 이동 구현
-8. 다른 세션의 커밋 이후 worktree 분리
-9. 배틀 패킹과 React 연결
+1. 배틀 전용 이슈 기록 파일과 B0 상태 갱신
+2. `BattleMapDefinition`과 manifest validator 작성
+3. `city-day` manifest 단위 테스트 작성
+4. asset URL resolver 작성
+5. `BattleLaunchRequest.mapId` 계약 반영
+6. 배틀 scene lifecycle 인터페이스 작성
+7. `battlescene.scene` 회색상자 생성
+8. 2D 배경 Plane과 렌더링 그룹 구성
+9. primitive 모선과 카메라 X 이동 구현
+10. 배틀 패킹과 React 조기 연결
 
 ## 14. 1차 플레이 가능 완료 기준
 
