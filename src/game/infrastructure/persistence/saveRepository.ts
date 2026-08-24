@@ -3,6 +3,9 @@ import { CITIES } from '../../data/cities';
 import { WORLD_DATA_VERSION } from '../../data/world';
 import { createCityConquestState, createCityState, createLogisticsState } from '../../domain/campaignRules';
 import type { CampaignState, CohortState, CityState, MissionLoadout } from '../../domain/types';
+import { createPlannedBattleSetup } from '../../battle/gameplay/battleSetupRules';
+import { createCitySideViewResourceState, legacyTargetInitialAmount } from '../../battle/gameplay/sideViewResourcePools';
+import { TACTICAL_PRESETS } from '../../data/tacticalPresets';
 
 export const SAVE_KEY = 'they-call-it-earth.prototype.save.v1';
 
@@ -52,6 +55,23 @@ const cityV4Schema = legacyCitySchema.extend({
   conquest: cityConquestSchema,
 });
 
+const absorbablePoolSchema = z.object({ initialAmount: nonNegativeNumber, remainingAmount: nonNegativeNumber, destroyedAmount: nonNegativeNumber });
+const sideViewResourcesSchema = z.object({
+  profileId: z.string(),
+  profileVersion: z.number().int().nonnegative(),
+  pools: z.object({
+    ORGANIC: absorbablePoolSchema,
+    POWER: absorbablePoolSchema,
+    VEHICLE: absorbablePoolSchema,
+    MACHINERY: absorbablePoolSchema,
+    DATA: absorbablePoolSchema,
+    RELIC: absorbablePoolSchema,
+  }),
+  migrationBackup: z.record(z.string(), absorbableSchema),
+});
+
+const cityV5Schema = cityV4Schema.extend({ sideViewResources: sideViewResourcesSchema });
+
 const logisticsSchema = z.object({
   coreCharge: nonNegativeNumber,
   maxCoreCharge: nonNegativeNumber,
@@ -82,7 +102,7 @@ const cohortSchema = z.object({
   createdAtBattle: nonNegativeNumber,
 });
 
-const missionLoadoutSchema = z.object({
+const missionLoadoutV4Schema = z.object({
   id: z.string(),
   cityId: z.string(),
   missionType: z.enum(['RAID', 'OCCUPATION']),
@@ -92,6 +112,16 @@ const missionLoadoutSchema = z.object({
   cellChargeCost: nonNegativeNumber,
   createdAtMinutes: nonNegativeNumber,
 });
+
+const battleSetupSchema = z.object({
+  missionId: z.string(),
+  mapId: z.string(),
+  gameplayProfileId: z.string(),
+  gameplayProfileVersion: z.number().int().nonnegative(),
+  layoutSeed: z.number().int().nonnegative(),
+});
+
+const missionLoadoutSchema = missionLoadoutV4Schema.extend({ battleSetup: battleSetupSchema });
 
 const transitSchema = z.object({
   fromCityId: z.string().nullable(),
@@ -124,6 +154,14 @@ const pendingDebriefSchema = z.object({
   destruction: boundedPercentage,
   globalThreatDelta: nonNegativeNumber,
   createdAtMinutes: nonNegativeNumber,
+  repairAssessment: z.object({
+    hullDamageRatio: boundedProgress,
+    biomassCost: nonNegativeNumber,
+    alloyCost: nonNegativeNumber,
+    unpaidBiomass: nonNegativeNumber,
+    unpaidAlloy: nonNegativeNumber,
+  }).nullable().optional(),
+  endReason: z.enum(['EXTRACTED', 'MOTHERSHIP_DISABLED', 'ABORTED']).nullable().optional(),
 });
 
 export const campaignV4Schema = z.object({
@@ -131,6 +169,19 @@ export const campaignV4Schema = z.object({
   worldDataVersion: z.string(),
   ...campaignFields,
   cities: z.record(z.string(), cityV4Schema),
+  logistics: logisticsSchema,
+  cohorts: z.record(z.string(), cohortSchema),
+  nextCohortId: z.number().int().positive(),
+  plannedMission: missionLoadoutV4Schema.nullable(),
+  activeTransit: transitSchema.nullable(),
+  pendingDebrief: pendingDebriefSchema.nullable(),
+});
+
+export const campaignV5Schema = z.object({
+  schemaVersion: z.literal(5),
+  worldDataVersion: z.string(),
+  ...campaignFields,
+  cities: z.record(z.string(), cityV5Schema),
   logistics: logisticsSchema,
   cohorts: z.record(z.string(), cohortSchema),
   nextCohortId: z.number().int().positive(),
@@ -150,11 +201,19 @@ export function loadCampaign(): CampaignState | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    const current = campaignV4Schema.safeParse(parsed);
+    const current = campaignV5Schema.safeParse(parsed);
     if (current.success) {
       const reconciled = reconcileCampaign(current.data);
       if (JSON.stringify(reconciled) !== JSON.stringify(current.data)) saveCampaign(reconciled);
       return reconciled;
+    }
+
+    const previousV4 = campaignV4Schema.safeParse(parsed);
+    if (previousV4.success) {
+      preserveMigrationBackup(`${SAVE_KEY}.preMigrationV4`, raw);
+      const migrated = migrateV4Campaign(previousV4.data);
+      saveCampaign(migrated);
+      return migrated;
     }
 
     const previousV3 = campaignV3Schema.safeParse(parsed);
@@ -202,9 +261,9 @@ function migrateLegacyCampaign(campaign: z.infer<typeof campaignV1Schema> | z.in
       ...city,
       absorbables,
       conquest: createCityConquestState(city.alert, city.visits),
-    } satisfies CityState];
+    }];
   }));
-  return reconcileCampaign({
+  return migrateV4Campaign({
     schemaVersion: 4,
     worldDataVersion: WORLD_DATA_VERSION,
     campaignId: campaign.campaignId,
@@ -224,7 +283,55 @@ function migrateLegacyCampaign(campaign: z.infer<typeof campaignV1Schema> | z.in
     plannedMission: null,
     activeTransit: null,
     pendingDebrief: null,
-  });
+  } as z.infer<typeof campaignV4Schema>);
+}
+
+function migrateV4Campaign(campaign: z.infer<typeof campaignV4Schema>): CampaignState {
+  const cities = Object.fromEntries(Object.entries(campaign.cities).map(([cityId, city]) => {
+    const definition = CITIES.find((candidate) => candidate.id === cityId);
+    const sideViewResources = definition
+      ? migrateCitySideViewResources(definition, city)
+      : createCitySideViewResourceState(CITIES[0]);
+    return [cityId, { ...city, sideViewResources } satisfies CityState];
+  }));
+  const base: CampaignState = {
+    ...campaign,
+    schemaVersion: 5,
+    worldDataVersion: WORLD_DATA_VERSION,
+    cities,
+    plannedMission: null,
+  };
+  const plannedMission = campaign.plannedMission
+    ? migrateMissionLoadout(base, campaign.plannedMission)
+    : null;
+  return reconcileCampaign({ ...base, plannedMission });
+}
+
+function migrateCitySideViewResources(city: (typeof CITIES)[number], legacyCity: z.infer<typeof cityV4Schema>): CityState['sideViewResources'] {
+  const base = createCitySideViewResourceState(city);
+  const pools = Object.fromEntries(Object.entries(base.pools).map(([kind, pool]) => [kind, { ...pool }])) as CityState['sideViewResources']['pools'];
+  const migrationBackup: CityState['sideViewResources']['migrationBackup'] = {};
+  const sourceTargets = TACTICAL_PRESETS[city.tacticalPresetId]?.absorbableTargets ?? [];
+  for (const [id, persisted] of Object.entries(legacyCity.absorbables)) {
+    const target = sourceTargets.find((candidate) => candidate.id === id || id.endsWith(`:${candidate.id}`) || candidate.id.endsWith(`:${id}`));
+    if (!target) {
+      migrationBackup[id] = { ...persisted };
+      continue;
+    }
+    const pool = pools[target.kind];
+    const legacyInitialAmount = legacyTargetInitialAmount(city, target, legacyCity.destruction);
+    const depletedAmount = Math.max(0, legacyInitialAmount - persisted.remainingAmount);
+    const appliedDepletion = Math.min(pool.remainingAmount, depletedAmount);
+    pool.remainingAmount = Math.max(0, pool.remainingAmount - appliedDepletion);
+    pool.destroyedAmount = Math.min(pool.initialAmount - pool.remainingAmount, pool.destroyedAmount + Math.min(appliedDepletion, persisted.destroyedAmount));
+  }
+  return { ...base, pools, migrationBackup };
+}
+
+function migrateMissionLoadout(campaign: CampaignState, mission: z.infer<typeof missionLoadoutV4Schema>): MissionLoadout | null {
+  const city = CITIES.find((candidate) => candidate.id === mission.cityId);
+  if (!city) return null;
+  return { ...mission, battleSetup: createPlannedBattleSetup(campaign, city, mission.id) };
 }
 
 function reconcileCampaign(campaign: CampaignState): CampaignState {
@@ -278,7 +385,7 @@ function reconcileCampaign(campaign: CampaignState): CampaignState {
 
   return {
     ...campaign,
-    schemaVersion: 4,
+    schemaVersion: 5,
     worldDataVersion: WORLD_DATA_VERSION,
     cities: reconciledCities,
     cohorts,

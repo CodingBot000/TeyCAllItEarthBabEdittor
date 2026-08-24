@@ -72,6 +72,22 @@ Editor 패커가 씬에 물리 메타데이터를 포함하면 웹 런타임에�
 
 배틀 전용 패킹 경로에 정확한 씬 파일 대상의 물리 메타데이터 정리 단계를 추가했고, 패킹 결과와 브라우저 진입을 확인했다.
 
+## BAT-002 — Editor 모선이 원본 런타임 모선과 다른 단순 원반으로 저장됨
+
+- 상태: `RESOLVED`
+- 심각도: `S2`
+- 발견 단계: `B5`
+- 발견일: 2026-08-24
+- 관련 파일: `scripts/create-battle-editor-scene.mjs`, `assets/battlescene.scene/`, `assets/battlescene/shared/mothership/mapping/mothership-saucer-atlas.png`
+
+### 증상
+
+원본 게임은 Babylon 런타임에서 상판·돔·장갑 패널·발광 링·하부 반응로를 조립하지만, Editor 씬에는 원반형 hull과 rim만 있어 실루엣과 표면 디테일이 크게 달랐다. Editor 저장본의 부모 참조도 빠져 모선 루트 이동을 모든 부품이 안정적으로 따르는지 보장할 수 없었다.
+
+### 해결 기록
+
+원본 `MothershipVisual.ts`의 치수, UV, 재질, 발광색과 루트 스케일을 재현하는 씬 생성기를 추가했다. `MothershipVisualRoot` 아래 59개 메시와 원본 atlas를 Editor 자산으로 생성하고, `npm run generate:battle` 패키징 후 서울 전투 진입·우측 이동을 브라우저에서 검증했다. 최종 검증에서 콘솔 오류와 4xx 응답은 없었다.
+
 ## 현재 이슈
 
 현재 개발을 막는 배틀 씬 이슈는 없다. 최종 3D 모델·VFX·KTX2 통합 단계에서 성능 이슈를 별도 등록한다.

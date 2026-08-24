@@ -5,15 +5,18 @@
 	"scripts": {
 		"dev": "next dev",
 		"build": "next build",
-    "generate": "node scripts/pack-editor.mjs",
-    "generate:battle": "node scripts/pack-editor.mjs --battle",
+		"generate": "node scripts/pack-editor.mjs",
+		"generate:battle": "node scripts/pack-editor.mjs --battle",
     "generate:battle:night": "node scripts/generate-battle-night-assets.mjs",
-    "check:battle:compression": "node scripts/check-battle-compression.mjs",
+    "generate:battle:biomes": "node scripts/build-battle-biome-layers.mjs",
+		"check:battle:compression": "node scripts/check-battle-compression.mjs",
 		"start": "next start",
 		"lint": "eslint .",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
-		"check": "npm run typecheck && npm run test && npm run build"
+		"check": "npm run typecheck && npm run test && npm run build",
+		"test:e2e:side-view": "node scripts/run-side-view-verification.mjs",
+		"check:full": "npm run check && npm run lint && npm run test:e2e:side-view"
 	},
 	"dependencies": {
 		"@babylonjs/addons": "9.12.1",
@@ -35,6 +38,7 @@
 		"babylonjs-editor-cli": "^5.4.2",
 		"eslint": "9.29.0",
 		"eslint-config-next": "16.2.6",
+		"playwright": "^1.54.2",
 		"playwright-core": "^1.54.2",
 		"postcss": "^8",
 		"raw-loader": "^4.0.2",

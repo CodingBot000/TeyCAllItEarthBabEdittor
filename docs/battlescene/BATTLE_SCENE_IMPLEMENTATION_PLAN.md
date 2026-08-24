@@ -12,7 +12,7 @@
 
 이 문서는 `thetcall_inbattle_2d_day.png` 초안을 바탕으로 전투 화면을 Babylon.js Editor에서 구현하기 위한 구조와 작업 순서를 정의한다.
 
-초안 이미지의 HUD는 구현 범위에서 제외하고 게임이 렌더링되는 전투 공간만 다룬다. 초안 이미지는 화면 구성과 분위기를 설명하기 위한 참고 자료이며, 이미지 안의 모선·전투기·드론·전차·도시·하늘·이펙트를 런타임 에셋으로 사용하지 않는다.
+초안 이미지의 HUD는 이 문서의 초기 **시각 에셋 범위**에서는 제외한다. 현재 구현에는 전투 상태·목표·능력·모바일 이동·포기 확인을 위한 React DOM HUD가 있으며, HUD 최종 아트는 별도 튜닝 범위다. 초안 이미지는 화면 구성과 분위기를 설명하기 위한 참고 자료이며, 이미지 안의 모선·전투기·드론·전차·도시·하늘·이펙트를 런타임 에셋으로 사용하지 않는다.
 
 ### 에셋 제작 원칙
 
@@ -58,7 +58,7 @@ Babylon.js Editor는 다음 작업에 사용한다.
 | 도시 | 거리별로 분리한 2D 레이어 |
 | 하늘 | Skybox를 우선 사용 |
 | 특수 모선 연출 | 전용 cinematic 상태에서 Y/Z 이동과 3축 회전 허용 |
-| HUD | 본 문서 및 Babylon 전투 씬 범위에서 제외 |
+| HUD | Babylon scene에는 포함하지 않음; React DOM HUD는 구현 완료 |
 | 물리 엔진 | 초기 구현에서는 사용하지 않음 |
 
 ## 4. 좌표계
@@ -785,7 +785,7 @@ npm run generate:battle
 
 Editor에서 조정해도 유지해야 하는 노드 이름은 `BattleCamera`, `EnvironmentRoot/*Root`, `MothershipGameplayRoot`, `MothershipVisualRoot`, `WeaponSockets`, `DroneSpawnSockets`, `GroundLaneDefinitions`이다. 정적 배치·재질·모델은 Editor에서 수정하고, 입력·카메라 경계·패럴랙스·맵 선택은 TypeScript가 소유한다.
 
-다음 작업은 최종 신규 3D 모델을 이 고정 계층에 교체하고, 회피·추락 cinematic과 실제 전투 판정/풀링을 추가하는 것이다. 새 맵은 `src/game/battle/maps/battleMapCatalog.ts`에 동일한 manifest 계약으로 등록하고 `public/assets/runtime/battlescene/maps/<map-id>/`에 이미지 패키지를 추가한다.
+다음 작업은 최종 신규 3D 모델·투명 레이어 아트·성능 예산을 다듬는 것이다. 회피·추락 cinematic, 실제 전투 판정, 상태 기반 visual pool, 2D 바이옴 맵과 React HUD는 구현돼 있다. 새 맵은 `src/game/battle/maps/battleMapCatalog.ts`에 동일한 manifest 계약으로 등록하고 `public/assets/runtime/battlescene/maps/<map-id>/`에 이미지 패키지를 추가한다.
 
 ## 참고 문서
 

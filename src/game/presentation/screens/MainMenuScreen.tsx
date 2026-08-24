@@ -1,3 +1,5 @@
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
+
 interface MainMenuScreenProps {
   hasSave: boolean;
   onNewGame: () => void;
@@ -9,6 +11,7 @@ export function MainMenuScreen({ hasSave, onNewGame, onContinue, onReset }: Main
   const { t } = useI18n();
   return (
     <main className="menu-screen scanlines">
+      <LanguageSwitcher />
       <img className="menu-key-art" src="/assets/runtime/cards/main-menu-key-art.webp" alt="" aria-hidden="true" />
       <div className="menu-orbit orbit-a" />
       <div className="menu-orbit orbit-b" />

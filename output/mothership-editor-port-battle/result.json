@@ -1,0 +1,15 @@
+{
+  "phase": "ready",
+  "canvas": {
+    "width": 1280,
+    "height": 720,
+    "clientWidth": 1280,
+    "clientHeight": 720
+  },
+  "errors": [
+    {
+      "type": "console.error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ]
+}

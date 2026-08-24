@@ -1,0 +1,18 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          babylonCore: ['@babylonjs/core'],
+          babylonMaterials: ['@babylonjs/materials'],
+        },
+      },
+    },
+  },
+});

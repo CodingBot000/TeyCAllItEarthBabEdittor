@@ -135,10 +135,12 @@ parallax · camera · ground lane 설정 적용
 | `2D-007` | `assets/battlescene/shared/mothership/mapping/mothership-hull-basecolor.webp` | 1024×1024 | 없음 | 121.3 KiB |
 | `2D-008` | `assets/battlescene/shared/mothership/mapping/mothership-hull-height-source.webp` | 1024×1024 | 없음 | 310.9 KiB |
 | `2D-009` | `assets/battlescene/shared/mothership/mapping/mothership-emissive-decals.webp` | 1024×1024 | 0~255 | 677.3 KiB |
+| `2D-010` | `assets/battlescene/shared/mothership/mapping/mothership-saucer-atlas.png` | 1254×1254 | 없음 | 3055.4 KiB |
 
 - 런타임 WebP 전체: 약 2.13 MiB
 - `2D-002`부터 `2D-006`, `2D-009`까지 실제 alpha channel 검사 완료
 - `2D-008`은 grayscale lossless WebP로 변환
+- `2D-010`은 원본 플레이 모선과 동일한 Editor-visible 기준 모델을 위해 기존 런타임 파일을 SHA-256 일치 상태로 가져온 호환 atlas
 - 모선 base color 가장자리 평균 색차: 좌우 3.41, 상하 4.84
 - 모선 height source 가장자리 평균 색차: 좌우 3.92, 상하 7.73
 - `toktx`/`basisu`가 현재 개발 환경에 설치되어 있지 않아 KTX2 생성은 보류 중이며, `npm run check:battle:compression`으로 상태를 재현할 수 있다.
@@ -289,3 +291,20 @@ assets/battlescene/maps/<map-id>/
 - [x] 런타임 WebP와 제작 원본이 분리되어 있다.
 - [x] 생성 이미지의 픽셀 크기, alpha, WebP 용량을 manifest에 기록한다.
 - [x] 1차 작업에서 `3D-*` 파일을 만들지 않는다.
+
+## 2026-08-24 — River/Desert v2 투명 레이어
+
+`2D-011`~`2D-018`은 마스터 이미지를 세로 마스크로 자르던 1차 레이어를 대체한다. 각 레이어는 built-in ImageGen으로 독립 생성한 alpha PNG 원본이며, `npm run generate:battle:biomes`가 2048×724 alpha WebP와 manifest v2를 만든다.
+
+| ID | 맵 | 레이어 | 원본 | 런타임 파일 | 상태 |
+|---|---|---|---|---|---|
+| `2D-011` | River | Far | `art-source/battlescene/maps/river/layers-v2/river-far-v2.png` | `city-far-river-day-v2.webp` | 완료 |
+| `2D-012` | River | Middle | `river-middle-v2.png` | `city-middle-river-day-v2.webp` | 완료 |
+| `2D-013` | River | Near | `river-near-v2.png` | `city-near-river-day-v2.webp` | 완료 |
+| `2D-014` | River | Ground | `river-ground-v2.png` | `ground-river-day-v2.webp` | 완료 |
+| `2D-015` | Desert | Far | `art-source/battlescene/maps/desert/layers-v2/desert-far-v2.png` | `city-far-desert-day-v2.webp` | 완료 |
+| `2D-016` | Desert | Middle | `desert-middle-v2.png` | `city-middle-desert-day-v2.webp` | 완료 |
+| `2D-017` | Desert | Near | `desert-near-v2.png` | `city-near-desert-day-v2.webp` | 완료 |
+| `2D-018` | Desert | Ground | `desert-ground-v2.png` | `ground-desert-day-v2.webp` | 완료 |
+
+Sky, cloud, foreground-atmosphere는 별도 기존 레이어를 유지한다. v2 manifest는 River/Desert의 Far/Middle/Near/Ground만 v2 파일로 전환한다.

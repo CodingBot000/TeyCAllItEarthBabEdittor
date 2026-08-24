@@ -5,6 +5,7 @@ export interface BattleMapDefinition {
   assetRoot: string;
   backgrounds: {
     sky: string;
+    clouds: string;
     far: string;
     middle: string;
     near: string;
@@ -23,6 +24,7 @@ export interface BattleMapDefinition {
   };
   parallax: {
     sky: number;
+    clouds: number;
     far: number;
     middle: number;
     near: number;
@@ -33,7 +35,7 @@ export interface BattleMapDefinition {
 
 export type BattleMapAssetKey = keyof BattleMapDefinition['backgrounds'];
 
-const REQUIRED_BACKGROUND_KEYS: BattleMapAssetKey[] = ['sky', 'far', 'middle', 'near', 'ground'];
+const REQUIRED_BACKGROUND_KEYS: BattleMapAssetKey[] = ['sky', 'clouds', 'far', 'middle', 'near', 'ground'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -60,6 +62,7 @@ function parseParallax(value: unknown): BattleMapDefinition['parallax'] {
   if (!isRecord(value)) throw new Error('manifest.parallax must be an object.');
   const result = {
     sky: requireNumber(value, 'sky', 'manifest.parallax'),
+    clouds: requireNumber(value, 'clouds', 'manifest.parallax'),
     far: requireNumber(value, 'far', 'manifest.parallax'),
     middle: requireNumber(value, 'middle', 'manifest.parallax'),
     near: requireNumber(value, 'near', 'manifest.parallax'),
@@ -83,6 +86,7 @@ export function parseBattleMapDefinition(value: unknown): BattleMapDefinition {
 
   const backgrounds = {
     sky: requireString(backgroundsValue, 'sky', 'manifest.backgrounds'),
+    clouds: requireString(backgroundsValue, 'clouds', 'manifest.backgrounds'),
     far: requireString(backgroundsValue, 'far', 'manifest.backgrounds'),
     middle: requireString(backgroundsValue, 'middle', 'manifest.backgrounds'),
     near: requireString(backgroundsValue, 'near', 'manifest.backgrounds'),
@@ -112,4 +116,3 @@ export function parseBattleMapDefinition(value: unknown): BattleMapDefinition {
     parallax: parseParallax(value.parallax),
   };
 }
-

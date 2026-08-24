@@ -10,6 +10,8 @@
 관련 상세 문서:
 
 - [Battle Scene 구현안](./BATTLE_SCENE_IMPLEMENTATION_PLAN.md)
+- [2D Battle Gameplay 개발계획서](./BATTLE_2D_GAMEPLAY_DEVELOPMENT_PLAN.md)
+- [2D Battle Gameplay 수정 전용 개발계획서](./BATTLE_2D_GAMEPLAY_CORRECTION_PLAN.md)
 - [Battle Scene 신규 에셋 제작 목록](./ASSET_PRODUCTION_LIST.md)
 
 ## 1. 목표
@@ -43,7 +45,7 @@
 | 지상 유닛 | 2D 또는 3D, 차체 이동은 X축만 허용 |
 | 도시 | 여러 개의 투명 2D 패럴랙스 레이어 |
 | 맵 교체 | 공통 씬을 유지하고 map manifest와 이미지 경로만 교체 |
-| HUD | 배틀 렌더링 1차 범위에서 제외 |
+| HUD | Babylon scene 밖 React DOM HUD 구현 완료; 최종 HUD 아트는 별도 튜닝 범위 |
 | 물리 | 초기에는 Havok 없이 단순 판정 사용 |
 | 웹 포맷 | WebP fallback, 이후 KTX2 GPU 압축 추가 |
 | 1차 아트 | 2D 에셋만 제작 완료, 3D 최종 에셋은 후속 |
@@ -91,7 +93,7 @@
 - `BattleCombatVfx`의 제한된 effect cap을 고정 배열/재사용 풀로 확장
 - 맵 manifest를 정적 카탈로그에서 외부 manifest lazy loader로 확장
 - KTX2/Basis 압축 생성 도구 설치 후 실제 산출물·브라우저 fallback 검증
-- 모바일 입력, 실제 전투 UI, 성능 프로파일링과 최종 QA
+- 최종 3D 유닛 아트 교체, 성능 프로파일링과 최종 QA
 
 ### 현재 제약
 
@@ -273,7 +275,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 | B2 | 모선 primitive 이동과 카메라 추적 | B1 | 완료 |
 | B3 | 공중·지상 유닛 prototype과 판정 | B2 | 도메인·발사체·VFX 연결 완료 |
 | B4 | 회피·추락 cinematic prototype | B2 | 완료 |
-| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 회색상자 VFX 완료, 최종 GLB 대기 |
+| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 원본 런타임 모선의 Editor 메시 전환 완료, 신규 유닛/최종 GLB 대기 |
 | B6 | React 앱·BattleGateway·패킹 연결 | B1 이상 | 1차 연결 완료 |
 | B7 | 다중 맵, 웹 최적화와 최종 QA | B5~B6 | city-night·WebP 완료, KTX2/최종 QA 진행 |
 
@@ -387,6 +389,8 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - 반복 유닛은 공통 material과 instance를 사용한다.
 - WebP fallback이 동작하고, KTX2는 외부 encoder 설치 전까지 명시적으로 비활성화된다.
 - 3D와 2D 배경의 광원 방향과 색감이 일치한다.
+
+2026-08-24에는 원본 `TheyCallItEarth/src/rendering/babylon/tactical/MothershipVisual.ts`의 절차형 모선을 `MothershipVisualRoot` 아래 59개 실제 Editor 메시로 전환했다. 원본 1254×1254 atlas, 메시 치수, UV 영역, 재질색, 발광색, 루트 스케일을 그대로 사용하며 상판·하판·돔·동심 링·장갑 패널·반응로·하부 emitter를 Editor에서 개별 선택할 수 있다. Editor 계층은 `MothershipModelRoot` 아래 Hull/Ring/Armor/Reactor/Emitter `TransformNode` 그룹으로 접을 수 있게 정리하고, Weapon/Drone/VFX 소켓은 `MothershipVisualRoot`의 별도 child로 유지한다. 이는 최종 신규 GLB가 아니라 기존 플레이 모선의 Editor-visible 기준 모델이다.
 
 ### B6 — 앱 통합
 
@@ -541,7 +545,7 @@ npm run generate
 - [ ] 카메라가 좌우 약 ±100% 범위에서 모선을 추적한다.
 - [ ] 지상 prototype 유닛이 X축으로만 이동한다.
 - [x] 회피 원호와 추락 prototype을 실행할 수 있다.
-- [ ] HUD 없이 전투 canvas가 독립 실행된다.
+- [x] React HUD와 canvas가 독립 레이어로 실행된다.
 - [x] 같은 전투를 세 번 이상 재진입해도 리소스가 누적되지 않는다.
 - [ ] 데스크톱 60 FPS 또는 목표 기기 기준 성능 결과가 기록된다.
 - [ ] 시작화면·맵선택 파일과 회귀 동작에 영향이 없다.
@@ -553,5 +557,11 @@ npm run generate
 - [ ] 최종 신규 모선과 전투 유닛 3D 에셋이 적용된다.
 - [ ] WebP fallback과 KTX2 빌드가 검증된다.
 - [ ] 모바일과 데스크톱 성능 목표를 만족한다.
-- [ ] 전투 진입·종료·실패 복구가 모두 동작한다.
+- [x] 전투 진입·추출·포기·대파 실패·Debrief 복구가 모두 동작한다.
 - [ ] 전체 typecheck, test, production build와 Editor pack이 통과한다.
+
+## 16. 2026-08-24 2D 게임플레이 이행 상태
+
+- 시민 덩어리, 자동 SCAN, 능력 availability, 시간 기반 철수, 임무 포기, save v5 도시 자원 풀, RAID/OCCUPATION 코호트 분기와 상태 기반 적/지상 visual pool을 구현했다.
+- River/Desert는 3D Coastal clone 대신 `sideViewBiomeCatalog`과 프로필로 2D 전투 데이터를 생성한다.
+- `npm run test:e2e:side-view`는 정상 RAID·대파·모바일 900/640·포기·visual sync·production debug을 실행한다. 최종 3D 모델·KTX2·성능 예산은 아직 후속 범위다.

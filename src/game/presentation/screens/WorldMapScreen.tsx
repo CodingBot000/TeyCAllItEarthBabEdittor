@@ -6,6 +6,7 @@ import { lonLatToNormalized } from '../../domain/travelRules';
 import type { CampaignState, CityDefinition, CountryDefinition } from '../../domain/types';
 import { useI18n } from '../../i18n/I18nProvider';
 import { displayCityName, displayCountryName, displayEnum } from '../../i18n/gameContent';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
@@ -279,6 +280,7 @@ export function WorldMapScreen({ campaign, cities, selectedCityId, travel, notic
 
   return (
     <main className="map-screen">
+      <LanguageSwitcher />
       <header className="topbar">
         <button className="brand-button" onClick={onReturnMenu}>
           <span className="brand-mark" aria-hidden="true">◈</span> {t('brand.theyCallIt')} <span>{t('brand.earth')}</span>
@@ -394,7 +396,7 @@ export function WorldMapScreen({ campaign, cities, selectedCityId, travel, notic
           </button>
           <div className="city-panel-content">
             <div className="city-panel-head"><div className="panel-kicker">{t('map.strategicTheater')} / {String(cityTierLimit).padStart(2, '0')}</div><button className="city-panel-close" type="button" aria-label={t('map.closeDetails')} onClick={() => setIsPanelOpen(false)}>×</button></div>
-            {selectedCity ? <CityDetails city={selectedCity} campaign={campaign} playable={isPlayableCity(selectedCity.id)} canEngage={(campaign.currentCityId === selectedCity.id || campaign.currentCityId === null) && !travel} onMove={onMove} onEngage={onEngage} /> : selectedCountry ? <CountryDetails country={selectedCountry} playableCityCount={selectedCountryPlayableCityCount} /> : null}
+            {selectedCity ? <CityDetails city={selectedCity} campaign={campaign} playable={isPlayableCity(selectedCity.id)} canEngage={campaign.currentCityId === selectedCity.id && !travel} onMove={onMove} onEngage={onEngage} /> : selectedCountry ? <CountryDetails country={selectedCountry} playableCityCount={selectedCountryPlayableCityCount} /> : null}
           </div>
         </aside>
       </section>

@@ -8,6 +8,7 @@ const targetRoot = path.join(projectRoot, 'public/assets/runtime/battlescene/map
 const editorTargetRoot = path.join(projectRoot, 'assets/battlescene/maps/city-night/backgrounds');
 const files = [
   'sky-day-base.webp',
+  'clouds-day.webp',
   'city-far-day.webp',
   'city-middle-day.webp',
   'city-near-day.webp',
