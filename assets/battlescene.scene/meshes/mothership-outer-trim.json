@@ -3,7 +3,7 @@
     {
       "name": "mothership-outer-trim",
       "id": "mothership-outer-trim",
-      "uniqueId": 52,
+      "uniqueId": 58,
       "type": "Mesh",
       "position": [
         0,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 36,
       "isUnIndexed": false,
-      "geometryUniqueId": 53,
+      "geometryUniqueId": 59,
       "geometryId": "mothership-outer-trim-geometry",
       "subMeshes": null,
-      "materialUniqueId": 39,
+      "materialUniqueId": 45,
       "materialId": "mothership-edge-material",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 39,
+      "uniqueId": 45,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

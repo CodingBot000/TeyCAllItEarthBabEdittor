@@ -3,7 +3,7 @@
     {
       "name": "mothership-underside-emitter-6",
       "id": "mothership-underside-emitter-6",
-      "uniqueId": 148,
+      "uniqueId": 154,
       "type": "Mesh",
       "position": [
         5.755839955992561e-16,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 40,
       "isUnIndexed": false,
-      "geometryUniqueId": 149,
+      "geometryUniqueId": 155,
       "geometryId": "mothership-underside-emitter-6-geometry",
       "subMeshes": null,
-      "materialUniqueId": 40,
+      "materialUniqueId": 46,
       "materialId": "mothership-violet-material",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 40,
+      "uniqueId": 46,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

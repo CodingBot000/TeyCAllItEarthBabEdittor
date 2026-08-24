@@ -388,7 +388,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - WebP fallback이 동작하고, KTX2는 외부 encoder 설치 전까지 명시적으로 비활성화된다.
 - 3D와 2D 배경의 광원 방향과 색감이 일치한다.
 
-2026-08-24에는 원본 `TheyCallItEarth/src/rendering/babylon/tactical/MothershipVisual.ts`의 절차형 모선을 `MothershipVisualRoot` 아래 59개 실제 Editor 메시로 전환했다. 원본 1254×1254 atlas, 메시 치수, UV 영역, 재질색, 발광색, 루트 스케일을 그대로 사용하며 상판·하판·돔·동심 링·장갑 패널·반응로·하부 emitter를 Editor에서 개별 선택할 수 있다. 이는 최종 신규 GLB가 아니라 기존 플레이 모선의 Editor-visible 기준 모델이다.
+2026-08-24에는 원본 `TheyCallItEarth/src/rendering/babylon/tactical/MothershipVisual.ts`의 절차형 모선을 `MothershipVisualRoot` 아래 59개 실제 Editor 메시로 전환했다. 원본 1254×1254 atlas, 메시 치수, UV 영역, 재질색, 발광색, 루트 스케일을 그대로 사용하며 상판·하판·돔·동심 링·장갑 패널·반응로·하부 emitter를 Editor에서 개별 선택할 수 있다. Editor 계층은 `MothershipModelRoot` 아래 Hull/Ring/Armor/Reactor/Emitter `TransformNode` 그룹으로 접을 수 있게 정리하고, Weapon/Drone/VFX 소켓은 `MothershipVisualRoot`의 별도 child로 유지한다. 이는 최종 신규 GLB가 아니라 기존 플레이 모선의 Editor-visible 기준 모델이다.
 
 ### B6 — 앱 통합
 

@@ -3,7 +3,7 @@
     {
       "name": "mothership-hull",
       "id": "mothership-hull",
-      "uniqueId": 42,
+      "uniqueId": 48,
       "type": "Mesh",
       "position": [
         0,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 36,
       "isUnIndexed": false,
-      "geometryUniqueId": 43,
+      "geometryUniqueId": 49,
       "geometryId": "mothership-hull-geometry",
       "subMeshes": null,
-      "materialUniqueId": 35,
+      "materialUniqueId": 41,
       "materialId": "mothership-hull-material",
       "instances": [],
       "animations": [],
@@ -273,7 +273,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 35,
+      "uniqueId": 41,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

@@ -45,6 +45,7 @@ const BACKGROUND_PLANE_HEIGHTS = {
 
 const layers = [
   ['SkyRoot', 'backgrounds/sky-day-base.webp', 30, 4, false],
+  ['CloudRoot', 'backgrounds/clouds-day.webp', 27, 4, true],
   ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 9, true],
   ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, -6, true],
   ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -20, true],
@@ -55,7 +56,7 @@ for (let index = 0; index < layers.length; index += 1) {
   const [name, asset, z, y, hasAlpha] = layers[index];
   const root = childNode(name, environmentRoot);
   root.position.set(0, y, z);
-  const textureUScale = name === 'SkyRoot' ? 1 : BACKGROUND_REPEAT;
+  const textureUScale = name === 'SkyRoot' || name === 'CloudRoot' ? 1 : BACKGROUND_REPEAT;
   const plane = MeshBuilder.CreatePlane(name + 'Plane', {
     width: BACKGROUND_WORLD_WIDTH,
     height: BACKGROUND_PLANE_HEIGHTS[name],
@@ -63,7 +64,9 @@ for (let index = 0; index < layers.length; index += 1) {
   }, scene);
   plane.parent = root;
   plane.renderingGroupId = name === 'SkyRoot' || name === 'CityFarRoot' ? 0 : name === 'CityMiddleRoot' ? 1 : name === 'ForegroundRoot' ? 3 : 2;
-  plane.isPickable = false;
+  // Keep the editor preview directly adjustable. Runtime disables picking after
+  // loading this scene so background planes cannot intercept gameplay input.
+  plane.isPickable = true;
   const material = new StandardMaterial(name + 'Material', scene);
   material.disableLighting = true;
   material.backFaceCulling = false;
@@ -94,7 +97,7 @@ light.groundColor = new Color3(0.1, 0.16, 0.19);
 
 const airRoot = childNode('AirBattleRoot', sceneRootNode);
 const gameplayRoot = childNode('MothershipGameplayRoot', airRoot);
-gameplayRoot.position.set(0, 8, 0);
+gameplayRoot.position.set(0, 16.5, 0);
 const visualRoot = childNode('MothershipVisualRoot', gameplayRoot);
 createEditorMothership(visualRoot);
 
@@ -271,6 +274,15 @@ function createMaterial(name, color, textureAsset) {
 
 function createEditorMothership(root) {
   root.scaling.set(1.55, 1.15, 1.55);
+  // Babylon TransformNodes are the Editor equivalent of empty Unity
+  // GameObjects. Keep gameplay/VFX sockets beside one collapsible model root,
+  // then split the visual parts into small logical groups for authoring.
+  const modelRoot = childNode('MothershipModelRoot', root);
+  const hullGroup = childNode('MothershipHullGroup', modelRoot);
+  const ringGroup = childNode('MothershipRingGroup', modelRoot);
+  const armorGroup = childNode('MothershipArmorGroup', modelRoot);
+  const reactorGroup = childNode('MothershipReactorGroup', modelRoot);
+  const emitterGroup = childNode('MothershipEmitterGroup', modelRoot);
 
   const hullMaterial = createMothershipMaterial(
     'mothership-hull-material',
@@ -301,33 +313,33 @@ function createEditorMothership(root) {
   const softVioletMaterial = createMothershipMaterial('mothership-soft-violet-material', new Color3(0.2, 0.05, 0.35), new Color3(0.35, 0.025, 0.55));
 
   const hull = MeshBuilder.CreateCylinder('mothership-hull', { diameterTop: 13.8, diameterBottom: 15.4, height: 1.15, tessellation: 64 }, scene);
-  hull.parent = root;
+  hull.parent = hullGroup;
   hull.material = hullMaterial;
 
   const topPlate = createTexturedRadialPlate('mothership-top-plate', 6.95, 0.59, topMaterial, { u0: 0.02, v0: 0.01, u1: 0.98, v1: 0.58 }, 64, 1);
-  topPlate.parent = root;
+  topPlate.parent = hullGroup;
   const undersidePlate = createTexturedRadialPlate('mothership-underside-plate', 6.3, -0.59, undersideMaterial, { u0: 0.04, v0: 0.58, u1: 0.96, v1: 0.99 }, 64, -1);
-  undersidePlate.parent = root;
+  undersidePlate.parent = hullGroup;
 
   const upper = MeshBuilder.CreateCylinder('mothership-upper', { diameterTop: 4.8, diameterBottom: 10.8, height: 1.25, tessellation: 64 }, scene);
-  upper.parent = root;
+  upper.parent = hullGroup;
   upper.position.y = 0.73;
   upper.material = armorMaterial;
 
   const dome = MeshBuilder.CreateSphere('mothership-dome', { diameter: 5.8, segments: 32 }, scene);
-  dome.parent = root;
+  dome.parent = hullGroup;
   dome.position.y = 1.22;
   dome.scaling.y = 0.32;
   dome.material = topMaterial;
 
   const outerTrim = MeshBuilder.CreateTorus('mothership-outer-trim', { diameter: 14.6, thickness: 0.3, tessellation: 64 }, scene);
-  outerTrim.parent = root;
+  outerTrim.parent = hullGroup;
   outerTrim.position.y = 0.04;
   outerTrim.material = edgeMaterial;
 
   [6.35, 5.2, 3.95, 2.75].forEach((radius, index) => {
     const ring = MeshBuilder.CreateTorus(`mothership-top-ring-${index}`, { diameter: radius * 2, thickness: index === 0 ? 0.16 : 0.11, tessellation: 64 }, scene);
-    ring.parent = root;
+    ring.parent = ringGroup;
     ring.position.y = 0.66 + index * 0.015;
     ring.material = index === 1 || index === 3 ? softVioletMaterial : armorMaterial;
   });
@@ -335,37 +347,37 @@ function createEditorMothership(root) {
   for (let index = 0; index < 16; index += 1) {
     const angle = (index / 16) * Math.PI * 2;
     const panel = MeshBuilder.CreateBox(`mothership-armor-panel-${index}`, { width: 1.65, height: 0.16, depth: 0.74 }, scene);
-    panel.parent = root;
+    panel.parent = armorGroup;
     panel.position = new Vector3(Math.sin(angle) * 6.1, 0.72, Math.cos(angle) * 6.1);
     panel.rotation.y = angle;
     panel.material = armorMaterial;
 
     const light = MeshBuilder.CreateBox(`mothership-armor-light-${index}`, { width: 0.12, height: 0.045, depth: 0.48 }, scene);
-    light.parent = root;
+    light.parent = armorGroup;
     light.position = new Vector3(Math.sin(angle) * 6.1, 0.83, Math.cos(angle) * 6.1);
     light.rotation.y = angle;
     light.material = violetMaterial;
   }
 
   const lower = MeshBuilder.CreateCylinder('mothership-lower-body', { diameterTop: 12.4, diameterBottom: 5.4, height: 0.9, tessellation: 64 }, scene);
-  lower.parent = root;
+  lower.parent = hullGroup;
   lower.position.y = -0.58;
   lower.material = undersideMaterial;
 
   const reactorHousing = MeshBuilder.CreateCylinder('mothership-reactor-housing', { diameterTop: 4.4, diameterBottom: 3.1, height: 0.5, tessellation: 48 }, scene);
-  reactorHousing.parent = root;
+  reactorHousing.parent = reactorGroup;
   reactorHousing.position.y = -0.96;
   reactorHousing.material = armorMaterial;
   const reactorRing = MeshBuilder.CreateTorus('mothership-reactor-ring', { diameter: 3.9, thickness: 0.28, tessellation: 48 }, scene);
-  reactorRing.parent = root;
+  reactorRing.parent = reactorGroup;
   reactorRing.position.y = -1.23;
   reactorRing.material = violetMaterial;
   const reactorCore = MeshBuilder.CreateCylinder('mothership-reactor-core', { diameter: 2.35, height: 0.18, tessellation: 48 }, scene);
-  reactorCore.parent = root;
+  reactorCore.parent = reactorGroup;
   reactorCore.position.y = -1.24;
   reactorCore.material = softVioletMaterial;
   const reactorGlow = MeshBuilder.CreateDisc('mothership-reactor-glow', { radius: 1.1, tessellation: 48 }, scene);
-  reactorGlow.parent = root;
+  reactorGlow.parent = reactorGroup;
   reactorGlow.rotation.x = Math.PI / 2;
   reactorGlow.position.y = -1.35;
   reactorGlow.material = violetMaterial;
@@ -373,7 +385,7 @@ function createEditorMothership(root) {
   for (let index = 0; index < 12; index += 1) {
     const angle = (index / 12) * Math.PI * 2;
     const emitter = MeshBuilder.CreateCylinder(`mothership-underside-emitter-${index}`, { diameter: 0.42, height: 0.12, tessellation: 12 }, scene);
-    emitter.parent = root;
+    emitter.parent = emitterGroup;
     emitter.position = new Vector3(Math.sin(angle) * 4.7, -1.05, Math.cos(angle) * 4.7);
     emitter.material = index % 2 === 0 ? violetMaterial : softVioletMaterial;
   }

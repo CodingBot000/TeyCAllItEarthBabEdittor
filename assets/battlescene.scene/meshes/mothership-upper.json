@@ -3,7 +3,7 @@
     {
       "name": "mothership-upper",
       "id": "mothership-upper",
-      "uniqueId": 48,
+      "uniqueId": 54,
       "type": "Mesh",
       "position": [
         0,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 36,
       "isUnIndexed": false,
-      "geometryUniqueId": 49,
+      "geometryUniqueId": 55,
       "geometryId": "mothership-upper-geometry",
       "subMeshes": null,
-      "materialUniqueId": 38,
+      "materialUniqueId": 44,
       "materialId": "mothership-armor-material",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 38,
+      "uniqueId": 44,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

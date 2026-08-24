@@ -3,7 +3,7 @@
     {
       "name": "mothership-armor-panel-7",
       "id": "mothership-armor-panel-7",
-      "uniqueId": 90,
+      "uniqueId": 96,
       "type": "Mesh",
       "position": [
         2.3343689374270484,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 38,
       "isUnIndexed": false,
-      "geometryUniqueId": 91,
+      "geometryUniqueId": 97,
       "geometryId": "mothership-armor-panel-7-geometry",
       "subMeshes": null,
-      "materialUniqueId": 38,
+      "materialUniqueId": 44,
       "materialId": "mothership-armor-material",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 38,
+      "uniqueId": 44,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

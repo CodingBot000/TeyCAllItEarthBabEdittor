@@ -3,7 +3,7 @@
     {
       "name": "mothership-armor-light-8",
       "id": "mothership-armor-light-8",
-      "uniqueId": 96,
+      "uniqueId": 102,
       "type": "Mesh",
       "position": [
         7.470345474798854e-16,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 38,
       "isUnIndexed": false,
-      "geometryUniqueId": 97,
+      "geometryUniqueId": 103,
       "geometryId": "mothership-armor-light-8-geometry",
       "subMeshes": null,
-      "materialUniqueId": 40,
+      "materialUniqueId": 46,
       "materialId": "mothership-violet-material",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 40,
+      "uniqueId": 46,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

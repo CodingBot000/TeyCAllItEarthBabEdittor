@@ -3,7 +3,7 @@
     {
       "name": "mothership-underside-plate",
       "id": "mothership-underside-plate",
-      "uniqueId": 46,
+      "uniqueId": 52,
       "type": "Mesh",
       "position": [
         0,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 36,
       "isUnIndexed": false,
-      "geometryUniqueId": 47,
+      "geometryUniqueId": 53,
       "geometryId": "mothership-underside-plate-geometry",
       "subMeshes": null,
-      "materialUniqueId": 37,
+      "materialUniqueId": 43,
       "materialId": "mothership-underside-material",
       "instances": [],
       "animations": [],
@@ -273,7 +273,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 37,
+      "uniqueId": 43,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

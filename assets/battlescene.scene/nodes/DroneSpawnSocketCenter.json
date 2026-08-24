@@ -24,8 +24,8 @@
   "id": "DroneSpawnSocketCenter",
   "state": "",
   "type": "TransformNode",
-  "uniqueId": 165,
-  "parentId": 163,
+  "uniqueId": 171,
+  "parentId": 169,
   "localMatrix": {
     "0": 1,
     "1": 0,

@@ -9,6 +9,7 @@ import type { BattleLaunchRequest } from './BattleGateway';
 import { getBattleMapDefinition, loadBattleMapDefinition } from './maps/battleMapCatalog';
 import { TACTICAL_PRESETS } from '../data/tacticalPresets';
 import type { BattleRuntime } from './runtime/createBattleRuntime';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface BattleScreenProps {
   request: BattleLaunchRequest;
@@ -17,6 +18,7 @@ interface BattleScreenProps {
 }
 
 export function BattleScreen({ request, onExit, onComplete }: BattleScreenProps) {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<BattleRuntime | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -80,6 +82,35 @@ export function BattleScreen({ request, onExit, onComplete }: BattleScreenProps)
         <strong>{map.displayName.toUpperCase()}</strong>
       </div>
       <button className="battle-exit-button" type="button" onClick={onExit}>← BACK TO MAP</button>
+      <div className="battle-action-bar" role="toolbar" aria-label={t('tactical.resources')}>
+        <button
+          className="battle-action-button battle-action-emp"
+          type="button"
+          data-testid="battle-action-emp"
+          disabled={phase !== 'ready'}
+          onClick={() => runtimeRef.current?.triggerAbility('emp')}
+        >
+          <kbd>E</kbd><span>{t('tactical.emp')}</span>
+        </button>
+        <button
+          className="battle-action-button battle-action-plasma"
+          type="button"
+          data-testid="battle-action-plasma"
+          disabled={phase !== 'ready'}
+          onClick={() => runtimeRef.current?.triggerAbility('plasma')}
+        >
+          <kbd>P</kbd><span>{t('tactical.plasma')}</span>
+        </button>
+        <button
+          className="battle-action-button battle-action-absorb"
+          type="button"
+          data-testid="battle-action-absorb"
+          disabled={phase !== 'ready'}
+          onClick={() => runtimeRef.current?.toggleAbsorption()}
+        >
+          <kbd>B</kbd><span>{t('tactical.absorb')}</span>
+        </button>
+      </div>
       {phase === 'loading' ? <div className="battle-scene-state">LOADING BATTLE SCENE</div> : null}
       {phase === 'error' ? <div className="battle-scene-error" role="alert"><strong>BATTLE SCENE ERROR</strong><span>{error}</span><button type="button" onClick={onExit}>RETURN TO MAP</button></div> : null}
       <div className="battle-control-hint" aria-hidden="true">A / D or ← / → MOVE · 1 SHIELD · 2 HULL · E EMP · P PLASMA · B ABSORB · Q EVADE · C CRASH · X EXTRACT · ESC PAUSE</div>

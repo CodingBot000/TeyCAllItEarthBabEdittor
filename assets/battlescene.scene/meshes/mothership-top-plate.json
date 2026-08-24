@@ -3,7 +3,7 @@
     {
       "name": "mothership-top-plate",
       "id": "mothership-top-plate",
-      "uniqueId": 44,
+      "uniqueId": 50,
       "type": "Mesh",
       "position": [
         0,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 34,
+      "parentId": 36,
       "isUnIndexed": false,
-      "geometryUniqueId": 45,
+      "geometryUniqueId": 51,
       "geometryId": "mothership-top-plate-geometry",
       "subMeshes": null,
-      "materialUniqueId": 36,
+      "materialUniqueId": 42,
       "materialId": "mothership-top-material",
       "instances": [],
       "animations": [],
@@ -273,7 +273,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 36,
+      "uniqueId": 42,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

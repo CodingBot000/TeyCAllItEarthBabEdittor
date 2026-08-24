@@ -3,7 +3,7 @@
     {
       "name": "FighterPrototype1",
       "id": "FighterPrototype1",
-      "uniqueId": 171,
+      "uniqueId": 177,
       "type": "Mesh",
       "position": [
         -20,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 168,
+      "parentId": 174,
       "isUnIndexed": false,
-      "geometryUniqueId": 172,
+      "geometryUniqueId": 178,
       "geometryId": "FighterPrototype1-geometry",
       "subMeshes": null,
-      "materialUniqueId": 173,
+      "materialUniqueId": 179,
       "materialId": "FighterPrototypeMaterial1",
       "instances": [],
       "animations": [],
@@ -364,7 +364,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 173,
+      "uniqueId": 179,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

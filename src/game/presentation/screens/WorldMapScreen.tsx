@@ -6,6 +6,7 @@ import { lonLatToNormalized } from '../../domain/travelRules';
 import type { CampaignState, CityDefinition, CountryDefinition } from '../../domain/types';
 import { useI18n } from '../../i18n/I18nProvider';
 import { displayCityName, displayCountryName, displayEnum } from '../../i18n/gameContent';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
@@ -279,6 +280,7 @@ export function WorldMapScreen({ campaign, cities, selectedCityId, travel, notic
 
   return (
     <main className="map-screen">
+      <LanguageSwitcher />
       <header className="topbar">
         <button className="brand-button" onClick={onReturnMenu}>
           <span className="brand-mark" aria-hidden="true">◈</span> {t('brand.theyCallIt')} <span>{t('brand.earth')}</span>

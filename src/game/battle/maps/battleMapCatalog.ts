@@ -9,6 +9,7 @@ export const CITY_DAY_MAP: BattleMapDefinition = {
   assetRoot: 'battlescene/maps/city-day',
   backgrounds: {
     sky: 'backgrounds/sky-day-base.webp',
+    clouds: 'backgrounds/clouds-day.webp',
     far: 'backgrounds/city-far-day.webp',
     middle: 'backgrounds/city-middle-day.webp',
     near: 'backgrounds/city-near-day.webp',
@@ -27,6 +28,7 @@ export const CITY_DAY_MAP: BattleMapDefinition = {
   },
   parallax: {
     sky: 0,
+    clouds: 0,
     far: 0.15,
     middle: 0.35,
     near: 0.6,
@@ -42,6 +44,7 @@ export const CITY_NIGHT_MAP: BattleMapDefinition = {
   assetRoot: 'battlescene/maps/city-night',
   backgrounds: {
     sky: 'backgrounds/sky-night-base.webp',
+    clouds: 'backgrounds/clouds-night.webp',
     far: 'backgrounds/city-far-night.webp',
     middle: 'backgrounds/city-middle-night.webp',
     near: 'backgrounds/city-near-night.webp',

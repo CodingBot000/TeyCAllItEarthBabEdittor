@@ -41,7 +41,7 @@
       "isEnabled": true,
       "isVisible": true,
       "infiniteDistance": false,
-      "pickable": false,
+      "pickable": true,
       "receiveShadows": false,
       "billboardMode": 0,
       "visibility": 1,

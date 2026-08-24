@@ -25,9 +25,10 @@ import { BattleCombatVfx } from './BattleCombatVfx';
 const WORLD_WIDTH = 360;
 const BACKGROUND_TILE_WIDTH = 120;
 const BACKGROUND_REPEAT = WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
+const CLOUD_DRIFT_SPEED = 0.0015;
 const CAMERA_Y = 5;
 const CAMERA_Z = -92;
-const MOTHERSHIP_Y = 8;
+const MOTHERSHIP_Y = 16.5;
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 2;
@@ -49,6 +50,8 @@ export interface BattleRuntime {
   scene: Scene;
   camera: UniversalCamera;
   mothershipGameplayRoot: TransformNode;
+  triggerAbility(ability: 'emp' | 'plasma'): void;
+  toggleAbsorption(): void;
   setPaused(paused: boolean): void;
   dispose(): void;
 }
@@ -103,6 +106,7 @@ interface MothershipCinematic {
 
 const BACKGROUND_LAYERS: BackgroundLayer[] = [
   { name: 'SkyRoot', key: 'sky', z: 30, y: 4, parallax: 0, renderingGroupId: 0 },
+  { name: 'CloudRoot', key: 'clouds', z: 27, y: 4, parallax: 0, renderingGroupId: 0 },
   { name: 'CityFarRoot', key: 'far', z: 22, y: 9, parallax: 0.15, renderingGroupId: 0 },
   { name: 'CityMiddleRoot', key: 'middle', z: 16, y: -6, parallax: 0.35, renderingGroupId: 1 },
   { name: 'CityNearRoot', key: 'near', z: 10, y: -20, parallax: 0.6, renderingGroupId: 2 },
@@ -173,6 +177,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   let elapsed = 0;
   let cinematic: MothershipCinematic | null = null;
   let completedCombat = false;
+  let cloudTextureOffset = 0;
   let cameraX = mothershipGameplayRoot.position.x;
   camera.position.x = cameraX;
   camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
@@ -291,6 +296,12 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     camera.position.x = cameraX;
     camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
     for (const { layer, root } of backgroundPlanes) root.position.x = cameraX * (1 - layer.parallax);
+    cloudTextureOffset = (cloudTextureOffset + deltaSeconds * CLOUD_DRIFT_SPEED) % 1;
+    for (const { layer, plane } of backgroundPlanes) {
+      if (layer.key !== 'clouds' || !(plane?.material instanceof StandardMaterial)) continue;
+      const texture = plane.material.diffuseTexture;
+      if (texture instanceof Texture) texture.uOffset = cloudTextureOffset;
+    }
     animatePrototypes(fighterVisuals, dronePoolRoot, groundBattleRoot, elapsed, deltaSeconds);
     combatVfx.update(deltaSeconds, elapsed);
   };
@@ -304,6 +315,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     scene,
     camera,
     mothershipGameplayRoot,
+    triggerAbility: triggerCombatAbility,
+    toggleAbsorption: triggerBeam,
     setPaused(nextPaused: boolean) { paused = nextPaused; },
     dispose() {
       scene.onBeforeRenderObservable.removeCallback(update);
@@ -370,7 +383,7 @@ function createFallbackBackground(scene: Scene, map: BattleMapDefinition): Array
     plane.alwaysSelectAsActiveMesh = true;
     if (layer.key === 'foregroundAtmosphere') plane.visibility = 0;
     const relativeUrl = mapBackgroundUrl(map, layer.key);
-    if (relativeUrl) assignBackgroundMaterial(plane, relativeUrl, scene, layer.key === 'foregroundAtmosphere', layer.key === 'sky' ? 1 : BACKGROUND_REPEAT);
+    if (relativeUrl) assignBackgroundMaterial(plane, relativeUrl, scene, layer.key === 'foregroundAtmosphere', getBackgroundTextureRepeat(layer.key));
     else plane.material = fallbackBackgroundMaterial(scene, layer.key);
     return { layer, root, plane };
   });
@@ -386,17 +399,22 @@ function applyEditorBackgroundMaterials(
     const url = mapBackgroundUrl(map, layer.key);
     plane.isVisible = true;
     plane.setEnabled(true);
+    plane.isPickable = false;
     plane.renderingGroupId = layer.renderingGroupId;
     if (layer.key === 'foregroundAtmosphere') plane.visibility = 0;
-    if (url) assignBackgroundMaterial(plane, url, scene, layer.key === 'foregroundAtmosphere', layer.key === 'sky' ? 1 : BACKGROUND_REPEAT);
+    if (url) assignBackgroundMaterial(plane, url, scene, layer.key === 'foregroundAtmosphere', getBackgroundTextureRepeat(layer.key));
   }
 }
 
 function getBackgroundPlaneHeight(key: keyof BattleMapDefinition['backgrounds']): number {
-  if (key === 'sky') return 202.5;
+  if (key === 'sky' || key === 'clouds') return 202.5;
   if (key === 'near') return 60;
   if (key === 'ground') return 42.4;
   return 67.5;
+}
+
+function getBackgroundTextureRepeat(key: keyof BattleMapDefinition['backgrounds']): number {
+  return key === 'sky' || key === 'clouds' ? 1 : BACKGROUND_REPEAT;
 }
 
 function setGameplayRenderingGroup(...roots: TransformNode[]): void {

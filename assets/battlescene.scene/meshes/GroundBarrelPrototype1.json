@@ -3,7 +3,7 @@
     {
       "name": "GroundBarrelPrototype1",
       "id": "GroundBarrelPrototype1",
-      "uniqueId": 195,
+      "uniqueId": 201,
       "type": "Mesh",
       "position": [
         1,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 192,
+      "parentId": 198,
       "isUnIndexed": false,
-      "geometryUniqueId": 196,
+      "geometryUniqueId": 202,
       "geometryId": "GroundBarrelPrototype1-geometry",
       "subMeshes": null,
-      "materialUniqueId": 191,
+      "materialUniqueId": 197,
       "materialId": "GroundPrototypeMaterial",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 191,
+      "uniqueId": 197,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,

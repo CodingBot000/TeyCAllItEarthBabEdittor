@@ -3,7 +3,7 @@
     {
       "name": "GroundTurretPrototype3",
       "id": "GroundTurretPrototype3",
-      "uniqueId": 203,
+      "uniqueId": 209,
       "type": "Mesh",
       "position": [
         0,
@@ -60,12 +60,12 @@
       "doNotSyncBoundingInfo": false,
       "isBlocker": false,
       "sideOrientation": 1,
-      "parentId": 202,
+      "parentId": 208,
       "isUnIndexed": false,
-      "geometryUniqueId": 204,
+      "geometryUniqueId": 210,
       "geometryId": "GroundTurretPrototype3-geometry",
       "subMeshes": null,
-      "materialUniqueId": 191,
+      "materialUniqueId": 197,
       "materialId": "GroundPrototypeMaterial",
       "instances": [],
       "animations": [],
@@ -268,7 +268,7 @@
         "mask": 255,
         "enabled": false
       },
-      "uniqueId": 191,
+      "uniqueId": 197,
       "plugins": {
         "DetailMapConfiguration": {
           "tags": null,
