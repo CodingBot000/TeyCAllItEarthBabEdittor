@@ -34,7 +34,7 @@ const CAMERA_Y = 5;
 const CAMERA_Z = -92;
 const MOTHERSHIP_Y = 16.5;
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
-const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/_weapon-temp/ground-sam-mobile-side-elevated.png';
+const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 2;
 const FIGHTER_SPRITE_SIZE = 5.4;
@@ -923,7 +923,7 @@ function createGroundSamPrototype(root: TransformNode, scene: Scene): void {
 
   const vehicle = MeshBuilder.CreatePlane('GroundSamPrototype', { width: 16, height: 16 }, scene);
   vehicle.parent = anchor;
-  vehicle.position.set(0, 0.3, -1);
+  vehicle.position.set(0, -2.5, -1);
   vehicle.renderingGroupId = 3;
   vehicle.isPickable = false;
   vehicle.alwaysSelectAsActiveMesh = true;
