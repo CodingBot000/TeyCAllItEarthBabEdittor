@@ -1,0 +1,21 @@
+{
+  "id": "building-001",
+  "displayName": "Brown Mid-rise Texture Test",
+  "dimensions": {
+    "width": 6,
+    "height": 11,
+    "depth": 5
+  },
+  "atlas": "buildings/building-001/atlas.webp",
+  "faces": {
+    "front": "buildings/building-001/front.webp",
+    "back": "buildings/building-001/back.webp",
+    "right": "buildings/building-001/right.webp",
+    "left": "buildings/building-001/left.webp",
+    "roof": "buildings/building-001/roof.webp",
+    "bottom": "buildings/building-001/bottom.webp"
+  },
+  "mappingPreset": "src/domain/buildingCatalog.ts",
+  "sourceReference": "art-source/references/thetcall_inbattle_2d_day.png",
+  "notes": "Generated as a new texture set from the reference image; the reference screenshot is not used as a runtime texture."
+}
