@@ -11,6 +11,7 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import type { CombatState } from '../../domain/types';
+import { GROUND_ATTACK_TARGET_Y } from './battleVisualCoordinates';
 
 type HeavyAbility = 'emp' | 'plasma';
 type DamageKind = 'SHIELD' | 'HULL';
@@ -289,7 +290,7 @@ export class BattleCombatVfx {
     beam.material = this.beamMaterial;
     const core = MeshBuilder.CreateCylinder('battle-abduction-beam-core', { diameter: 0.17, height: 1, tessellation: 18 }, this.scene);
     core.material = this.beamCoreMaterial;
-    const funnel = MeshBuilder.CreateCylinder('battle-abduction-beam-funnel', { diameterTop: 0.56, diameterBottom: BEAM_RADIUS * 2, height: 1, tessellation: 48 }, this.scene);
+    const funnel = MeshBuilder.CreateCylinder('battle-abduction-beam-funnel', { diameterTop: BEAM_RADIUS * 2, diameterBottom: 0.56, height: 1, tessellation: 48 }, this.scene);
     funnel.material = this.beamFunnelMaterial;
     const ring = MeshBuilder.CreateTorus('battle-abduction-beam-target', { diameter: BEAM_RADIUS * 2.05, thickness: 0.24, tessellation: 40 }, this.scene);
     ring.material = this.beamRingMaterial;
@@ -575,7 +576,7 @@ export class BattleCombatVfx {
       const weave = Math.sin(progress * Math.PI * 4 + projectile.weavePhase) * (1 - progress) * 1.1;
       visual.mesh.position.set(
         projectile.startX + (projectile.targetX - projectile.startX) * eased + weave * direction,
-        12.8 + (-4.25 - 12.8) * progress + Math.sin(progress * Math.PI) * projectile.arcHeight,
+        12.8 + (GROUND_ATTACK_TARGET_Y - 12.8) * progress + Math.sin(progress * Math.PI) * projectile.arcHeight,
         1.2 + Math.sin(progress * Math.PI * 3 + projectile.weavePhase) * (1 - progress) * 1.35,
       );
       visual.mesh.scaling.setAll(0.72 + Math.sin(progress * Math.PI) * 0.36);
@@ -605,7 +606,7 @@ export class BattleCombatVfx {
       expired.flash.dispose();
       expired.ring.dispose();
     }
-    const position = new Vector3(x, -4.2, 1.1);
+    const position = new Vector3(x, GROUND_ATTACK_TARGET_Y, 1.1);
     const flash = MeshBuilder.CreateSphere('battle-ground-swarm-impact', { diameter: 1.5, segments: 12 }, this.scene);
     flash.position = position;
     flash.material = this.groundSwarmCoreMaterial;

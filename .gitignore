@@ -14,6 +14,25 @@ coverage/
 test-results/
 playwright-report/
 blob-report/
+/output/
+
+# Local visual checks and one-off image editing artifacts
+/cloud-battle-after.png
+/cloud-battle.png
+/cloud-dev-check.png
+/ground-final.png
+/ground-fixed-1339x309.png
+/ground-lower-final.png
+/mothership-raised.png
+/road-layer-lifted.png
+/sam-facility-replaced-1672.png
+/sam-facility-replaced.png
+/sam-road-layout-adjusted.png
+/sam-road-layout.png
+/test-build-battle-final.png
+/test-build-battle.png
+/test-build-home.png
+/test-build-reopen.png
 
 # Local caches
 .cache/

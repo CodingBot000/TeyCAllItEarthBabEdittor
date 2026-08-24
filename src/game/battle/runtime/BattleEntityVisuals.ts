@@ -1,5 +1,6 @@
 import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, type Scene } from '@babylonjs/core';
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
+import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y } from './battleVisualCoordinates';
 
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
@@ -190,19 +191,19 @@ export class BattleEntityVisuals {
       ? MeshBuilder.CreatePlane(`${root.name}-sprite`, { width: 8, height: 8 }, this.scene)
       : MeshBuilder.CreateBox(`${root.name}-body`, { width: kind === 'FACILITY' ? 6.8 : 4.8, height: kind === 'FACILITY' ? 2.8 : 1.8, depth: 1.4 }, this.scene);
     body.parent = root;
-    body.position.set(0, isSam ? 2 : kind === 'FACILITY' ? 1.4 : 0.9, isSam ? -1 : 0);
+    body.position.set(0, isSam ? GROUND_SAM_BODY_LOCAL_Y : kind === 'FACILITY' ? 1.4 : 0.9, isSam ? -1 : 0);
     body.renderingGroupId = 3;
     body.isPickable = false;
     if (isSam) body.material = this.samMaterial;
     const healthTrack = MeshBuilder.CreateBox(`${root.name}-health-track`, { width: 4.4, height: 0.22, depth: 0.08 }, this.scene);
     healthTrack.parent = root;
-    healthTrack.position.set(0, isSam ? 6.4 : kind === 'FACILITY' ? 3.35 : 2.45, -0.2);
+    healthTrack.position.set(0, isSam ? GROUND_SAM_HEALTH_BAR_LOCAL_Y : kind === 'FACILITY' ? 3.35 : 2.45, -0.2);
     healthTrack.material = this.healthTrackMaterial;
     healthTrack.renderingGroupId = 3;
     healthTrack.isPickable = false;
     const healthFill = MeshBuilder.CreateBox(`${root.name}-health-fill`, { width: 4.2, height: 0.12, depth: 0.1 }, this.scene);
     healthFill.parent = root;
-    healthFill.position.set(-2.1, isSam ? 6.4 : kind === 'FACILITY' ? 3.35 : 2.45, -0.28);
+    healthFill.position.set(-2.1, isSam ? GROUND_SAM_HEALTH_BAR_LOCAL_Y : kind === 'FACILITY' ? 3.35 : 2.45, -0.28);
     healthFill.material = this.healthFillMaterial;
     healthFill.renderingGroupId = 3;
     healthFill.isPickable = false;
@@ -212,7 +213,7 @@ export class BattleEntityVisuals {
   }
 
   private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean, facilityKind?: FacilityKind): void {
-    visual.root.position.set(x, -14.5, 1.1);
+    visual.root.position.set(x, GROUND_ENTITY_ROOT_Y, 1.1);
     visual.destroyed = destroyed;
     const ratio = Math.max(0, Math.min(1, health / Math.max(1, visual.maximumHealth)));
     visual.healthFill.scaling.x = ratio;
