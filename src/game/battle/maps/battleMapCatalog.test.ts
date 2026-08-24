@@ -22,8 +22,10 @@ describe('battle map catalog', () => {
   it('registers independent River and Desert parallax packages', () => {
     expect(getBattleMapDefinition('river-day')).toBe(RIVER_DAY_MAP);
     expect(getBattleMapDefinition('desert-day')).toBe(DESERT_DAY_MAP);
-    expect(mapBackgroundUrl(RIVER_DAY_MAP, 'ground')).toContain('/river-day/backgrounds/ground-river-day.webp');
-    expect(mapBackgroundUrl(DESERT_DAY_MAP, 'far')).toContain('/desert-day/backgrounds/city-far-desert-day.webp');
+    expect(RIVER_DAY_MAP.version).toBe(2);
+    expect(DESERT_DAY_MAP.version).toBe(2);
+    expect(mapBackgroundUrl(RIVER_DAY_MAP, 'ground')).toContain('/river-day/backgrounds/ground-river-day-v2.webp');
+    expect(mapBackgroundUrl(DESERT_DAY_MAP, 'far')).toContain('/desert-day/backgrounds/city-far-desert-day-v2.webp');
   });
 
   it('returns the catalog fallback for an unknown manifest request', async () => {

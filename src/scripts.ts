@@ -7,6 +7,7 @@ import { loadScene, scriptsDictionary, scriptAssetsCache, _applyScriptsForObject
 
 
 export const scriptsMap = {
+
 };
 
 export { loadScene, scriptsDictionary, scriptAssetsCache, _applyScriptsForObject, _removeRegisteredScriptInstance, _preloadScriptsAssets };

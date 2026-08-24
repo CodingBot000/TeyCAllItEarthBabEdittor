@@ -11,6 +11,8 @@ import type { CampaignState, CampaignTransitState, CombatState, DebriefSummary, 
 import { clearCampaign, loadCampaign, saveCampaign } from './infrastructure/persistence/saveRepository';
 import { battleRequestFor, type BattleLaunchRequest } from './battle/BattleGateway';
 import { BattleScreen } from './battle/BattleScreen';
+import { getBattleDebugOptions } from './battle/gameplay/BattleDebug';
+import { battleMapIdForCity } from './battle/gameplay/battleSetupRules';
 import { MainMenuScreen } from './presentation/screens/MainMenuScreen';
 import { MissionLoadoutScreen } from './presentation/screens/MissionLoadoutScreen';
 import { WorldMapScreen } from './presentation/screens/WorldMapScreen';
@@ -29,23 +31,24 @@ export function GameApp() {
   const [battleRequest, setBattleRequest] = useState<BattleLaunchRequest | null>(null);
   const [debrief, setDebrief] = useState<DebriefSummary | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isDebugSession, setIsDebugSession] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const query = new URLSearchParams(window.location.search);
-    const debugBattle = query.get('debug') === 'battle';
-    const requestedCityId = query.get('city');
-    const debugCityId = requestedCityId && CITY_BY_ID[requestedCityId] ? requestedCityId : 'seoul';
+    const debugOptions = getBattleDebugOptions(window.location.search);
+    const debugCityId = debugOptions.cityId && CITY_BY_ID[debugOptions.cityId] ? debugOptions.cityId : 'seoul';
     const saved = loadCampaign();
-    if (debugBattle) {
-      const debugCampaign = { ...(saved ?? createNewCampaign(90210)), currentCityId: debugCityId };
-      saveCampaign(debugCampaign);
+    if (debugOptions.directBattle) {
+      const debugCampaign = structuredClone(saved ?? createNewCampaign(90210));
+      debugCampaign.currentCityId = debugCityId;
       setCampaign(debugCampaign);
+      setIsDebugSession(true);
       setSelectedCityId(debugCityId);
-      setBattleRequest(battleRequestFor(debugCampaign, debugCityId, query.get('map') ?? battleMapIdForCity(CITY_BY_ID[debugCityId])));
+      setBattleRequest(battleRequestFor(debugCampaign, debugCityId, debugOptions.mapId ?? battleMapIdForCity(CITY_BY_ID[debugCityId])));
       setScreen('BATTLE');
     } else {
       setCampaign(saved);
+      setIsDebugSession(false);
       setSelectedCityId(saved?.pendingDebrief?.cityId ?? saved?.activeTransit?.toCityId ?? saved?.plannedMission?.cityId ?? saved?.currentCityId ?? null);
       setTravel(saved?.activeTransit ?? null);
     }
@@ -59,7 +62,7 @@ export function GameApp() {
       setCampaign((previous) => {
         if (!previous?.activeTransit) return previous;
         const next = advanceCampaignTransit(previous, 0.05);
-        saveCampaign(next);
+        if (!isDebugSession) saveCampaign(next);
         setTravel(next.activeTransit);
         if (!next.activeTransit) {
           setSelectedCityId(next.currentCityId);
@@ -71,11 +74,12 @@ export function GameApp() {
     return () => window.clearInterval(interval);
   // The interval body uses a functional state update; only a new transit identity should restart it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaign?.activeTransit?.loadoutId]);
+  }, [campaign?.activeTransit?.loadoutId, isDebugSession]);
 
   const startNewGame = () => {
     const next = createNewCampaign(Date.now() % 1_000_000);
     saveCampaign(next);
+    setIsDebugSession(false);
     setCampaign(next);
     setSelectedCityId(null);
     setTravel(null);
@@ -110,6 +114,7 @@ export function GameApp() {
 
   const resetGame = () => {
     clearCampaign();
+    setIsDebugSession(false);
     setCampaign(null);
     setSelectedCityId(null);
     setTravel(null);
@@ -129,7 +134,7 @@ export function GameApp() {
     if (!campaign) return;
     const next = commitMissionLaunch(campaign, loadout);
     if (!next.activeTransit) return;
-    saveCampaign(next);
+    if (!isDebugSession) saveCampaign(next);
     setCampaign(next);
     setTravel(next.activeTransit);
     setSelectedCityId(next.activeTransit.toCityId);
@@ -139,7 +144,7 @@ export function GameApp() {
   const requestEmergencyCharge = () => {
     if (!campaign) return;
     const next = grantEmergencyTravelCharge(campaign);
-    saveCampaign(next);
+    if (!isDebugSession) saveCampaign(next);
     setCampaign(next);
   };
 
@@ -172,13 +177,13 @@ export function GameApp() {
       shieldRatio: combat.mothership.shield / combat.mothership.maxShield,
       repairAssessment: next.pendingDebrief?.repairAssessment,
     };
-    saveCampaign(next);
+    if (!isDebugSession) saveCampaign(next);
     setCampaign(next);
     setDebrief(summary);
     setSelectedCityId(combat.cityId);
     setBattleRequest(null);
     setScreen('DEBRIEF');
-  }, [campaign]);
+  }, [campaign, isDebugSession]);
 
   if (!storageReady || !campaign || screen === 'MAIN_MENU') {
     return <MainMenuScreen hasSave={Boolean(campaign)} onNewGame={startNewGame} onContinue={continueGame} onReset={resetGame} />;
@@ -196,7 +201,7 @@ export function GameApp() {
   }
 
   if (screen === 'BATTLE' && battleRequest) {
-    return <BattleScreen request={battleRequest} onComplete={completeBattle} onExit={() => { setBattleRequest(null); setScreen(campaign.plannedMission ? 'MISSION_LOADOUT' : 'WORLD_MAP'); }} />;
+    return <BattleScreen campaign={campaign} request={battleRequest} onComplete={completeBattle} />;
   }
 
   if (screen === 'DEBRIEF' && debrief) {
@@ -207,7 +212,7 @@ export function GameApp() {
     return <DebriefAllocationScreen campaign={campaign} pending={campaign.pendingDebrief} onFinalize={(plan) => {
       const finalized = finalizeDebriefAllocation(campaign, plan);
       if (finalized === campaign) return;
-      saveCampaign(finalized);
+      if (!isDebugSession) saveCampaign(finalized);
       setCampaign(finalized);
       setSelectedCityId(campaign.pendingDebrief?.cityId ?? null);
       setScreen('WORLD_MAP');
@@ -215,14 +220,8 @@ export function GameApp() {
   }
 
   if (screen === 'UPGRADE') {
-    return <UpgradeScreen campaign={campaign} onSave={(next) => { saveCampaign(next); setCampaign(next); }} onBack={() => setScreen('WORLD_MAP')} />;
+    return <UpgradeScreen campaign={campaign} onSave={(next) => { if (!isDebugSession) saveCampaign(next); setCampaign(next); }} onBack={() => setScreen('WORLD_MAP')} />;
   }
 
   return null;
-}
-
-function battleMapIdForCity(city: (typeof CITY_BY_ID)[string]): string {
-  if (city.tacticalPresetId === 'river-metropolis') return 'river-day';
-  if (city.tacticalPresetId === 'desert-tech-hub') return 'desert-day';
-  return 'city-day';
 }

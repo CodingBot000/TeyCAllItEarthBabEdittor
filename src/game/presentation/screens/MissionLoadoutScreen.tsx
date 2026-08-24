@@ -8,6 +8,7 @@ import { BALANCE } from '../../domain/balance';
 import { upgradeLevel } from '../../domain/campaignRules';
 import { calculateCellChargeCost, calculateTravelChargeCost, canStartOccupation, validateMissionLoadout } from '../../domain/logisticsRules';
 import type { CampaignState, CityDefinition, CohortState, MissionLoadout, MissionType } from '../../domain/types';
+import { createPlannedBattleSetup } from '../../battle/gameplay/battleSetupRules';
 
 interface MissionLoadoutScreenProps {
   campaign: CampaignState;
@@ -30,8 +31,9 @@ export function MissionLoadoutScreen({ campaign, city, existingLoadout, onCancel
   const travelCost = existingLoadout?.travelChargeCost ?? calculateTravelChargeCost(campaign, origin, city);
   const cellCost = existingLoadout?.cellChargeCost ?? calculateCellChargeCost(overchargeCells);
   const totalCost = travelCost + cellCost;
+  const draftMissionId = `mission-${campaign.campaignId}-${Math.round(campaign.currentTimeMinutes * 60)}-${city.id}`;
   const draft = existingLoadout ?? {
-    id: `mission-${campaign.campaignId}-${Math.round(campaign.currentTimeMinutes * 60)}-${city.id}`,
+    id: draftMissionId,
     cityId: city.id,
     missionType,
     cohortIds: selectedCohortIds,
@@ -39,6 +41,7 @@ export function MissionLoadoutScreen({ campaign, city, existingLoadout, onCancel
     travelChargeCost: travelCost,
     cellChargeCost: cellCost,
     createdAtMinutes: campaign.currentTimeMinutes,
+    battleSetup: createPlannedBattleSetup(campaign, city, draftMissionId),
   } satisfies MissionLoadout;
   const validation = existingLoadout ? { ok: true } : validateMissionLoadout(campaign, draft);
   const maxCohorts = Math.min(campaign.logistics.dropCapacity, campaign.logistics.commandBandwidth);

@@ -104,6 +104,9 @@ export const BALANCE = {
     maximumWalletRatio: 0.45,
     emergencyHullRatio: 0.5,
   },
+  abort: {
+    cargoRecoveryRate: 0.35,
+  },
   sideViewCohort: {
     deploymentDelay: 1.25,
     deploymentSpacing: 2.8,

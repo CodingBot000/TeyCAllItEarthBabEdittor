@@ -8,7 +8,8 @@ export function tickSideViewCohortAi(state: CombatState): void {
   for (const cohort of state.deployedCohorts) {
     if (!cohort.deployed || !cohort.recoverable || cohort.strength <= 0) continue;
     if (state.extractionStatus === 'IN_PROGRESS' || state.extractionStatus === 'COMPLETE') {
-      if (cohort.order !== 'RETREAT') commandCohortRetreat(state, cohort.cohortId);
+      const occupationGarrisonHold = state.missionType === 'OCCUPATION' && state.occupationReady;
+      if (!occupationGarrisonHold && cohort.order !== 'RETREAT') commandCohortRetreat(state, cohort.cohortId);
       continue;
     }
     const currentTargetAlive = cohort.targetEntityId ? targetAlive(state, cohort.targetEntityId) : false;

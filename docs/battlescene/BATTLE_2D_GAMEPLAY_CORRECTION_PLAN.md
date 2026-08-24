@@ -2,10 +2,24 @@
 
 - 작성일: 2026-08-24
 - 대상 프로젝트: `TheyCallItEarthBabEditor`
-- 문서 상태: 구현 대기
+- 문서 상태: 구현 진행 중
 - 목적: 2D 배틀 1차 구현 이후 확인된 플레이 차단·저장 지속성·점령·표현 동기화·검증 누락 수정
 - 상위 기준: [2D Battle Gameplay 개발계획서](./BATTLE_2D_GAMEPLAY_DEVELOPMENT_PLAN.md)
 - 시각 기준: [Battle Scene 구현안](./BATTLE_SCENE_IMPLEMENTATION_PLAN.md)
+
+## 0. 구현 현황
+
+| 단계 | 상태 | 비고 |
+|---|---|---|
+| C0 | 완료 | `npm run check` 26/26·production build·기준선 문서 고정 |
+| C1 | 완료 | 모바일 입력·디버그 격리·임무 포기 — 단위·브라우저·production 검증 완료 |
+| C2 | 완료 | save v5·도시 자원 풀·배치 스냅샷 — 단위·브라우저·migration 검증 완료 |
+| C3 | 완료 | 시민 덩어리·자동 SCAN·목표 HUD — 단위·브라우저 검증 완료 |
+| C4 | 완료 | 능력 가용 상태·프로필 실적용 — 단위·브라우저 검증 완료 |
+| C5 | 완료 | RAID/OCCUPATION 코호트 분기 — 단위·회귀 검증 완료 |
+| C6 | 완료 | 전투 엔티티와 시각 객체 동기화 — browser visual-sync 검증 완료 |
+| C7 | 완료 | 회귀·E2E·CI·문서 정리 — 8개 browser E2E·CI workflow 완료 |
+| C8 | 완료 | River/Desert 최종 투명 레이어 아트 — v2 alpha 원본·runtime 검증 완료 |
 
 ## 1. 문서 권위와 수정 원칙
 
@@ -440,12 +454,12 @@ BattleGameplayProfile
 
 ```json
 {
-  "test:e2e:side-view": "node scripts/verify-side-view-flow.mjs && node scripts/verify-side-view-failure.mjs && node scripts/verify-side-view-mobile.mjs",
+  "test:e2e:side-view": "node scripts/run-side-view-verification.mjs",
   "check:full": "npm run check && npm run lint && npm run test:e2e:side-view"
 }
 ```
 
-CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chromium 또는 환경 변수 경로를 사용한다.
+이 runner는 dev 서버에서 정상 RAID·대파·모바일 900/640·포기·visual sync를, production 서버에서 debug query 무효화를 실행한다. CI에서는 Playwright Chromium을 설치하고, 로컬 Chrome을 사용할 때만 `SIDE_VIEW_BROWSER_EXECUTABLE` 환경 변수를 지정한다.
 
 ## 13. 문서 수정
 
@@ -497,6 +511,12 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - 수정 전 동작을 재현할 수 있음
 - 신규 실패가 기존 문제인지 수정 회귀인지 구분 가능
 
+완료 기록 (2026-08-24):
+
+- `npm run check` 통과: TypeScript, Vitest 26/26, Next.js production build.
+- `npm run lint` 오류 0건. 기존 `<img>` 최적화 경고 2건은 이번 수정 범위 밖으로 유지.
+- 현재 `main` 기준 커밋은 `d262530`이며, 사용자/로컬 이미지와 `output/**`를 보존했다.
+
 ### C1 — 모바일·디버그·포기 P0 수정
 
 작업:
@@ -511,6 +531,17 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - 모바일에서 대상까지 이동·흡수 가능
 - 프로덕션 쿼리로 시간·셀·도시 상태 변경 불가
 - 뒤로 가기로 실패와 수리비를 회피할 수 없음
+
+완료 기록 (2026-08-24):
+
+- `BattleRuntime.setMovementInput()`을 추가해 키보드와 포인터 입력을 합산하고, blur·pointer 해제 시 이동을 0으로 복구한다.
+- 화면의 기존 무료 `BACK TO MAP`을 확인 모달 기반 `임무 포기`로 바꾸고, 확인 시 `FAILED / ABORTED` 디브리핑으로 연결했다.
+- `ABORTED`는 전용 `BALANCE.abort.cargoRecoveryRate = 0.35`를 사용하며 대파 긴급 수리비/강제 Hull 복구는 적용하지 않는다.
+- `getBattleDebugOptions()`로 직접 진입·빠른 전투·강제 키를 개발 환경으로 한정하고, 직접 진입 캠페인은 저장본을 복제한 인메모리 상태만 사용한다.
+- coarse pointer 화면에서는 목표 HUD를 위로 옮겨 44px 이상인 좌우 홀드 버튼과 겹치지 않게 했다.
+- `npm run check` 통과: TypeScript, Vitest 29/29, production build. `npm run lint`는 오류 0건이며 기존 `<img>` 경고 2건만 남는다. `git diff --check`도 통과했다.
+- 브라우저 검증: 900×500·640×360에서 양방향 hold, pointerup·pointercancel 정지, 이동 후 흡수와 HUD/버튼 화면 내 배치를 통과했다. 확인 모달→`ABORTED` 디브리핑은 수리비가 없고 실제 저장본이 불변임을 확인했다.
+- production 서버에서 `debug=battle&battle-fast=1&battle-debug=1`은 전투 진입과 저장 변경을 모두 일으키지 않았다. 정상 전체 전투 흐름과 일반 캠페인의 대파 수리비 회귀도 오류 없이 통과했다.
 
 ### C2 — save v5와 도시 자원 풀
 
@@ -528,6 +559,15 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - 도시 총 자원은 복구되지 않음
 - 기존 v4 저장 손실 없음
 
+완료 기록 (2026-08-24):
+
+- `CampaignState`를 v5로 올리고, 도시마다 `sideViewResources`(프로필 ID/버전, 6종 자원 풀, migration backup)를 생성했다.
+- 출격 전 `MissionLoadout.battleSetup`에 맵·프로필·배치 seed를 저장한다. 같은 미션은 seed 기반으로 동일 배치를 재생성하고, 다음 방문은 새 seed를 사용한다.
+- 동적 클러스터는 종류별 풀 잔량 이하로만 할당되며, 전투 종료 시 흡수/파괴량만큼 해당 풀을 차감한다. 더는 방문별 target ID를 저장 키로 추가하지 않는다.
+- v4→v5 마이그레이션은 정적/namespace ID를 종류별 풀에 반영하고 판별 불가 방문형 ID를 `migrationBackup`과 원본 localStorage backup에 보존한다.
+- 현재 TypeScript·Vitest 31/31 및 정상 브라우저 전투에서 v5 setup 저장과 ORGANIC 풀 `43,764 → 25,735` 차감이 확인됐다.
+- `npm run check`는 TypeScript·Vitest 31/31·production build를 통과했고, `npm run lint`는 오류 0건(기존 `<img>` 경고 2건), `git diff --check`는 통과했다.
+
 ### C3 — 시민 덩어리·목표 HUD
 
 작업:
@@ -544,6 +584,14 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - 흡수 중 숫자·크기 감소
 - Scanner 업그레이드별 탐지 거리 차이 검증
 
+완료 기록 (2026-08-24):
+
+- `BattleCombatVfx`의 고정 18명 시민 sprite와 고정 X 위치를 제거했다.
+- `BattleAbsorbableRegions`에 교체 가능한 `OrganicClusterVisualAdapter`를 추가했다. ORGANIC target만 단일 군집/잔량 링/메시 연결 숫자를 표시하며, `1.7만 → 1.4만`처럼 흡수 중 실제 `remainingAmount`와 함께 줄어든다.
+- 자동 SCAN은 `gameplayProfile.autoScanRange + modifiers.scanRangeBonus`를 사용한다. scanner-array 1단계가 기존 범위 밖 신호를 발견하는 단위 테스트를 추가했다.
+- snapshot에 effective scan range와 offscreen guidance target(좌/우/화면 내, 거리, 발견 여부)을 추가했고, HUD는 가까운 표적이 없을 때 방향 화살표와 거리를 표시한다.
+- `npm run check` 통과: TypeScript·Vitest 32/32·production build. lint 오류 0건(기존 `<img>` 경고 2건), `git diff --check` 통과.
+
 ### C4 — 능력 버튼과 프로필 적용
 
 작업:
@@ -557,6 +605,14 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 
 - 불가능한 능력 입력이 자원을 소비하지 않음
 - River/Desert의 적·방어·점령 구성이 수치상 다름
+
+완료 기록 (2026-08-24):
+
+- `battleAbilityAvailability`가 EMP/Plasma/Absorb/Overdrive/Extract의 enabled, 이유, 쿨다운, 에너지/셀 비용을 snapshot에 제공한다. 버튼은 불가능한 명령을 disabled·짧은 이유로 표시한다.
+- 브라우저에서 EMP 사용 직후 셀이 `3 → 2`, cooldown `16s`, 버튼 disabled 상태가 실제 snapshot과 화면에 일치함을 확인했다.
+- `enemyPressureMultiplier`는 웨이브 수와 적 공격 간격에, `defenseWeights`는 시설 수에, `groundPressureMultiplier`는 지상 방어 체력/피해와 swarm 피해에, `occupationNodeCount`는 필수 노드 수에 적용했다.
+- 2D `sideViewBiomeCatalog`을 추가해 River/Desert 전투 세션은 더 이상 Coastal 3D preset clone의 표적·시설·노드·도로 좌표를 사용하지 않는다. River는 시설 5/필수 노드 2, Desert는 시설 6/필수 노드 3·더 높은 적/지상 압력으로 browser snapshot에서 확인됐다.
+- `npm run check` 통과: TypeScript·Vitest 35/35·production build. lint 오류 0건(기존 `<img>` 경고 2건), `git diff --check` 통과.
 
 ### C5 — 코호트 점령 수정
 
@@ -573,6 +629,13 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - 선택한 코호트만 도시 주둔
 - 미선택 후보는 Reserve 복귀
 
+완료 기록 (2026-08-24):
+
+- RAID는 기존처럼 extraction에서 RETREAT로 전환한다. OCCUPATION은 `occupationReady` 뒤 extraction이 시작되어도 노드 유지 코호트를 RETREAT로 덮어쓰지 않는다.
+- 회수 결과는 FAILED/전멸을 먼저 LOST로 처리한 뒤, OCCUPATION SUCCESS + COMPLETE + 필수 ALIEN 노드 안의 생존 코호트를 recovery radius보다 먼저 `GARRISON_CANDIDATE`로 판정한다.
+- 점령 단위 테스트는 extraction 직후 RETREAT 미전환, 모선과 노드가 겹쳐도 candidate 우선 판정, stage된 candidate 존재를 확인한다. garrison 배분 테스트는 선택 코호트만 도시 GARRISON, 나머지 후보 Reserve 복귀를 확인한다.
+- `npm run check` 통과: TypeScript·Vitest 36/36·production build. lint 오류 0건(기존 `<img>` 경고 2건), `git diff --check` 통과.
+
 ### C6 — 전투 시각 동기화
 
 작업:
@@ -586,6 +649,13 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 
 - 화면 객체 위치·개수·파괴 상태가 `render_game_to_text`와 일치
 - 반복 진입과 10분 soak에서 누적 없음
+
+완료 기록 (2026-08-24):
+
+- `BattleEntityVisuals`를 추가했다. 실제 `EnemyState.id`마다 fighter sprite/fallback을, `GroundDefenderState.id`·`CombatFacilityState.id`마다 지상 body/health bar를 생성·갱신·제거한다.
+- `render_game_to_text`는 적/지상 도메인 상태와 시각 객체 ID·좌표 summary를 함께 반환한다. debug가 아닌 전투에서는 독립 Fighter/Drone/Ground prototype을 숨기고, 기존 prototype은 dev debug 제어에서만 생성한다.
+- `verify-side-view-visual-sync.mjs`는 82초 시점의 fighter 4개와 visual 4개의 ID, X/Z 변환을 비교하고, 지상 defender/facility 8개의 ID를 비교한다. 브라우저 오류 0건으로 통과했다.
+- `npm run check` 통과: TypeScript·Vitest 36/36·production build. lint 오류 0건(기존 `<img>` 경고 2건), `git diff --check` 통과.
 
 ### C7 — 자동 검증과 문서 정리
 
@@ -601,6 +671,14 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - `npm run check:full` 한 번으로 정적 검사·단위·build·E2E 통과
 - 현재 코드와 문서의 상태 설명이 일치
 
+완료 기록 (2026-08-24):
+
+- `scripts/run-side-view-verification.mjs`, `npm run test:e2e:side-view`, `npm run check:full`을 추가했다. runner는 로컬 Chrome 자동 탐지 또는 Playwright Chromium을 사용하며 서버를 기동·종료한다.
+- 8개 browser E2E가 모두 통과했다: 정상 RAID, 대파 수리, 모바일 900×500, 모바일 640×360, 포기/저장 격리, entity visual sync, River/Desert v2 biome art, production debug query 무효화. 모든 result의 `errors`는 비어 있다.
+- `.github/workflows/ci.yml`은 npm ci, Playwright Chromium 설치, check, lint, side-view E2E를 실행한다.
+- README와 Battle Runtime ADR/개발계획/구현안은 현재 React HUD, save v5, 2D 바이옴, 상태 기반 visual pool, E2E 명령을 반영했다.
+- 최종 `npm run check`는 TypeScript·Vitest 36/36·production build를 통과했고 lint 오류 0건(기존 `<img>` 경고 2건), `git diff --check` 통과.
+
 ### C8 — River/Desert 최종 레이어 마감
 
 작업:
@@ -614,6 +692,13 @@ CI에서는 Playwright 브라우저 경로를 고정하지 않고 설치된 Chro
 - 수직·수평 이음새 없음
 - 레이어 중복 실루엣 없음
 - 세 맵의 가독성과 게임 판정 표시 대비 유지
+
+완료 기록 (2026-08-24):
+
+- built-in ImageGen으로 River와 Desert의 Far/Middle/Near/Ground 독립 alpha PNG 원본 8개를 생성했다. 원본은 `art-source/battlescene/maps/*/layers-v2/`에 보존한다.
+- `npm run generate:battle:biomes`는 이 원본을 2048×724 alpha WebP v2로 변환하고, River/Desert manifest version을 2로 올려 v2 Far/Middle/Near/Ground를 가리킨다. sky/cloud/foreground atmosphere는 독립 기존 레이어를 유지한다.
+- Flattened preview와 실제 battle screenshot을 확인했다. `verify-side-view-biome-art.mjs`는 River 왼쪽 및 Desert 오른쪽 카메라 구간에서 v2 manifest/path와 맵 로드를 검증한다.
+- 최종 `npm run check:full` 통과: TypeScript·Vitest 36/36·production build·linter 오류 0건(기존 `<img>` 경고 2건)·browser E2E 8/8·`git diff --check` 통과.
 
 ## 16. 최종 완료 기준
 

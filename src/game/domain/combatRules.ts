@@ -79,8 +79,8 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     };
   });
   const absorbableTargets: AbsorbableTargetState[] = preset.absorbableTargets.map((target) => {
-    const initialAmount = Math.round(target.baseAmount * targetAmountScale(city, target.kind) * Math.max(0.4, 1 - cityState.destruction / 140));
-    const saved = cityState.absorbables[target.id];
+    const initialAmount = Math.max(0, Math.round(target.initialAmountOverride ?? target.baseAmount * targetAmountScale(city, target.kind) * Math.max(0.4, 1 - cityState.destruction / 140)));
+    const saved = target.initialAmountOverride === undefined ? cityState.absorbables[target.id] : undefined;
     const remainingAmount = clamp(saved?.remainingAmount ?? initialAmount, 0, initialAmount);
     const destroyedAmount = clamp(saved?.destroyedAmount ?? 0, 0, initialAmount - remainingAmount);
     const discovered = saved?.discovered === true || distance(initialPosition, target.center) <= BALANCE.scan.autoRevealRange + target.radius;
@@ -142,6 +142,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     plasmaUses: 0,
     extractionStatus: 'AVAILABLE',
     result: 'ACTIVE',
+    endReason: null,
     activeAbility: null,
     abilityTarget: null,
     selectedTargetId: null,
@@ -151,6 +152,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     lastScanDiscovered: 0,
     defenseRating: city.defenseRating,
     defenseMultiplier,
+    enemyPressureMultiplier: 1,
     modifiers,
     cooldowns: { beam: 0, scan: 0, plasma: 0, emp: 0, overdrive: 0 },
     disabledUntil: {},
@@ -632,7 +634,10 @@ export function tickCombat(state: CombatState, dt: number): void {
   state.occupationReady = occupationRequirements(state).occupationReady;
   runPointDefense(state);
   updateObjectives(state);
-  if (state.mothership.hull <= 0) state.result = 'FAILED';
+  if (state.mothership.hull <= 0) {
+    state.result = 'FAILED';
+    state.endReason = 'MOTHERSHIP_DISABLED';
+  }
   if (state.mothership.extractionStatus === 'COMPLETE') state.result = resolveMissionOutcome(state);
 }
 
@@ -786,7 +791,7 @@ function tickWaves(state: CombatState): void {
     state.lastWaveAlert = threshold;
     if (!airbaseAlive && threshold > 40) continue;
     const baseCount = threshold >= 80 ? 6 : threshold >= 40 ? 5 : BALANCE.defense.fighterMinSquadSize;
-    const requestedCount = baseCount + Math.max(0, Math.round((state.defenseMultiplier - 1) * 4));
+    const requestedCount = Math.round((baseCount + Math.max(0, Math.round((state.defenseMultiplier - 1) * 4))) * state.enemyPressureMultiplier);
     const count = Math.max(0, Math.min(requestedCount, BALANCE.defense.fighterMaxCount - state.enemies.length));
     for (let index = 0; index < count; index += 1) spawnFighter(state, index, threshold);
   }
@@ -798,7 +803,7 @@ function tickSamSites(state: CombatState, dt: number): void {
     if (facility.kind !== 'SAM' || facility.destroyed || facility.disabledUntil > state.elapsedSeconds) continue;
     const distanceToShip = distance(facility.position, state.mothership.position);
     if (distanceToShip > 45) continue;
-    const cooldown = Math.max(1.5, (BALANCE.defense.missileInterval - state.localAlert / 45) / state.defenseMultiplier);
+    const cooldown = Math.max(1.5, (BALANCE.defense.missileInterval - state.localAlert / 45) / (state.defenseMultiplier * state.enemyPressureMultiplier));
     state.facilityCooldowns[facility.id] = Math.max(0, (state.facilityCooldowns[facility.id] ?? 0) - dt);
     if (state.facilityCooldowns[facility.id] > 0) continue;
     state.facilityCooldowns[facility.id] = cooldown;
@@ -859,7 +864,7 @@ function tickEnemies(state: CombatState, dt: number): void {
     const inAttackEnvelope = distanceToShip >= BALANCE.defense.fighterMinAttackRange && distanceToShip <= BALANCE.defense.fighterAttackRange;
     if (enemy.attackCooldown <= 0 && inAttackEnvelope) {
       if (state.missiles.length < 16) spawnHostileProjectile(state, 'fighter', enemy.position, enemy.altitude, BALANCE.defense.fighterProjectileSpeed * state.defenseMultiplier, BALANCE.defense.fighterDamage * state.defenseMultiplier);
-      enemy.attackCooldown = (BALANCE.defense.fighterInterval + enemy.formationSlot * 0.12) / state.defenseMultiplier;
+      enemy.attackCooldown = (BALANCE.defense.fighterInterval + enemy.formationSlot * 0.12) / (state.defenseMultiplier * state.enemyPressureMultiplier);
     }
   }
   state.enemies = state.enemies.filter((enemy) => enemy.health > 0);

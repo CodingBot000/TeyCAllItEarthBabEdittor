@@ -1,15 +1,15 @@
 {
   "id": "river-day",
-  "version": 1,
+  "version": 2,
   "displayName": "River Metropolis",
   "assetRoot": "battlescene/maps/river-day",
   "backgrounds": {
     "sky": "backgrounds/sky-river-day-base.webp",
     "clouds": "backgrounds/clouds-river-day.webp",
-    "far": "backgrounds/city-far-river-day.webp",
-    "middle": "backgrounds/city-middle-river-day.webp",
-    "near": "backgrounds/city-near-river-day.webp",
-    "ground": "backgrounds/ground-river-day.webp",
+    "far": "backgrounds/city-far-river-day-v2.webp",
+    "middle": "backgrounds/city-middle-river-day-v2.webp",
+    "near": "backgrounds/city-near-river-day-v2.webp",
+    "ground": "backgrounds/ground-river-day-v2.webp",
     "foregroundAtmosphere": "backgrounds/foreground-atmosphere-river-day.webp"
   },
   "sharedMaterials": {
