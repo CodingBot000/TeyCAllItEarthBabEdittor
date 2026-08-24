@@ -1,42 +1,41 @@
 {
-    "tags": null,
-    "groundColor": [
-        0.1,
-        0.16,
-        0.19
-    ],
-    "direction": [
-        0,
-        1,
-        -1
-    ],
-    "diffuse": [
-        0.82,
-        0.94,
-        1
-    ],
-    "specular": [
-        1,
-        1,
-        1
-    ],
-    "falloffType": 0,
-    "intensity": 0.9,
-    "range": 1.7976931348623157e+308,
-    "intensityMode": 0,
-    "radius": 0.00001,
-    "_renderPriority": 0,
-    "shadowEnabled": true,
-    "excludeWithLayerMask": 0,
-    "includeOnlyWithLayerMask": 0,
-    "lightmapMode": 0,
-    "name": "BattleSkyLight",
-    "id": "BattleSkyLight",
-    "state": "",
-    "metadata": {},
-    "uniqueId": 31,
-    "type": 3,
-    "animations": [],
-    "ranges": [],
-    "isEnabled": true
+  "tags": null,
+  "groundColor": [
+    0.1,
+    0.16,
+    0.19
+  ],
+  "direction": [
+    0,
+    1,
+    -1
+  ],
+  "diffuse": [
+    0.82,
+    0.94,
+    1
+  ],
+  "specular": [
+    1,
+    1,
+    1
+  ],
+  "falloffType": 0,
+  "intensity": 0.9,
+  "range": 1.7976931348623157e+308,
+  "intensityMode": 0,
+  "radius": 0.00001,
+  "_renderPriority": 0,
+  "shadowEnabled": true,
+  "excludeWithLayerMask": 0,
+  "includeOnlyWithLayerMask": 0,
+  "lightmapMode": 0,
+  "name": "BattleSkyLight",
+  "id": "BattleSkyLight",
+  "state": "",
+  "uniqueId": 31,
+  "type": 3,
+  "animations": [],
+  "ranges": [],
+  "isEnabled": true
 }

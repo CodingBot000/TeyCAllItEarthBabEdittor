@@ -273,7 +273,7 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 | B2 | 모선 primitive 이동과 카메라 추적 | B1 | 완료 |
 | B3 | 공중·지상 유닛 prototype과 판정 | B2 | 도메인·발사체·VFX 연결 완료 |
 | B4 | 회피·추락 cinematic prototype | B2 | 완료 |
-| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 회색상자 VFX 완료, 최종 GLB 대기 |
+| B5 | 신규 3D 아트와 VFX 통합 | B3~B4 | 원본 런타임 모선의 Editor 메시 전환 완료, 신규 유닛/최종 GLB 대기 |
 | B6 | React 앱·BattleGateway·패킹 연결 | B1 이상 | 1차 연결 완료 |
 | B7 | 다중 맵, 웹 최적화와 최종 QA | B5~B6 | city-night·WebP 완료, KTX2/최종 QA 진행 |
 
@@ -387,6 +387,8 @@ manifest 경로에는 `/scene/assets/`를 저장하지 않는다. 런타임 로�
 - 반복 유닛은 공통 material과 instance를 사용한다.
 - WebP fallback이 동작하고, KTX2는 외부 encoder 설치 전까지 명시적으로 비활성화된다.
 - 3D와 2D 배경의 광원 방향과 색감이 일치한다.
+
+2026-08-24에는 원본 `TheyCallItEarth/src/rendering/babylon/tactical/MothershipVisual.ts`의 절차형 모선을 `MothershipVisualRoot` 아래 59개 실제 Editor 메시로 전환했다. 원본 1254×1254 atlas, 메시 치수, UV 영역, 재질색, 발광색, 루트 스케일을 그대로 사용하며 상판·하판·돔·동심 링·장갑 패널·반응로·하부 emitter를 Editor에서 개별 선택할 수 있다. 이는 최종 신규 GLB가 아니라 기존 플레이 모선의 Editor-visible 기준 모델이다.
 
 ### B6 — 앱 통합
 

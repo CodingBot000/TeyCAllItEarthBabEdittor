@@ -1,52 +1,52 @@
 {
-    "tags": null,
-    "ellipsoid": [
-        0.5,
-        1,
-        0.5
-    ],
-    "ellipsoidOffset": [
-        0,
-        0,
-        0
-    ],
-    "checkCollisions": false,
-    "applyGravity": false,
-    "updateUpVectorFromRotation": false,
-    "rotation": [
-        0,
-        0,
-        0
-    ],
-    "speed": 2,
-    "position": [
-        0,
-        5,
-        -92
-    ],
-    "upVector": [
-        0,
-        1,
-        0
-    ],
-    "fov": 0.6108652381980153,
-    "projectionPlaneTilt": 0,
-    "minZ": 0.1,
-    "maxZ": 1000,
-    "inertia": 0.9,
-    "mode": 0,
-    "layerMask": 268435455,
-    "fovMode": 0,
-    "cameraRigMode": 0,
-    "ignoreCameraMaxZ": false,
-    "name": "BattleCamera",
-    "id": "BattleCamera",
-    "state": "",
-    "metadata": {},
-    "uniqueId": 30,
-    "type": "UniversalCamera",
-    "inputsmgr": {},
-    "animations": [],
-    "ranges": [],
-    "isEnabled": true
+  "tags": null,
+  "ellipsoid": [
+    0.5,
+    1,
+    0.5
+  ],
+  "ellipsoidOffset": [
+    0,
+    0,
+    0
+  ],
+  "checkCollisions": false,
+  "applyGravity": false,
+  "updateUpVectorFromRotation": false,
+  "rotation": [
+    0,
+    0,
+    0
+  ],
+  "speed": 2,
+  "position": [
+    0,
+    5,
+    -92
+  ],
+  "upVector": [
+    0,
+    1,
+    0
+  ],
+  "fov": 0.6108652381980153,
+  "projectionPlaneTilt": 0,
+  "minZ": 0.1,
+  "maxZ": 1000,
+  "inertia": 0.9,
+  "mode": 0,
+  "layerMask": 268435455,
+  "fovMode": 0,
+  "cameraRigMode": 0,
+  "ignoreCameraMaxZ": false,
+  "name": "BattleCamera",
+  "id": "BattleCamera",
+  "state": "",
+  "uniqueId": 30,
+  "type": "UniversalCamera",
+  "parentId": 29,
+  "inputsmgr": {},
+  "animations": [],
+  "ranges": [],
+  "isEnabled": true
 }

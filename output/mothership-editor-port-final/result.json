@@ -1,0 +1,11 @@
+{
+  "phase": "ready",
+  "canvas": {
+    "width": 1280,
+    "height": 720,
+    "clientWidth": 1280,
+    "clientHeight": 720
+  },
+  "errors": [],
+  "failedResponses": []
+}

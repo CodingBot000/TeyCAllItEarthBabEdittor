@@ -12,6 +12,7 @@ import {
   Texture,
   TransformNode,
   UniversalCamera,
+  VertexData,
   Vector3,
 } from '@babylonjs/core';
 
@@ -28,10 +29,11 @@ const environmentRoot = childNode('EnvironmentRoot', sceneRootNode);
 const BACKGROUND_WORLD_WIDTH = 360;
 const BACKGROUND_TILE_WIDTH = 120;
 const BACKGROUND_REPEAT = BACKGROUND_WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
-const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
+const FIGHTER_SPRITE_URL = 'assets/battlescene/shared/units/fighter-8way.webp';
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 2;
 const FIGHTER_SPRITE_SIZE = 5.4;
+const MOTHERSHIP_ATLAS_ASSET = 'mothership-saucer-atlas.png';
 const BACKGROUND_PLANE_HEIGHTS = {
   SkyRoot: 202.5,
   CityFarRoot: 67.5,
@@ -94,21 +96,7 @@ const airRoot = childNode('AirBattleRoot', sceneRootNode);
 const gameplayRoot = childNode('MothershipGameplayRoot', airRoot);
 gameplayRoot.position.set(0, 8, 0);
 const visualRoot = childNode('MothershipVisualRoot', gameplayRoot);
-const hullMaterial = createMaterial('MothershipHullMaterial', new Color3(0.62, 0.66, 0.68), 'mothership-hull-disc-basecolor.webp');
-const hull = MeshBuilder.CreateCylinder('MothershipModel', {
-  diameterTop: 18,
-  diameterBottom: 24,
-  height: 3.8,
-  tessellation: 96,
-}, scene);
-hull.parent = visualRoot;
-hull.material = hullMaterial;
-const rimMaterial = createMaterial('MothershipRimMaterial', new Color3(0.12, 0.16, 0.18));
-const rim = MeshBuilder.CreateTorus('MothershipRim', { diameter: 22, thickness: 0.38, tessellation: 96 }, scene);
-rim.parent = visualRoot;
-rim.scaling.y = 0.72;
-rim.position.y = -0.2;
-rim.material = rimMaterial;
+createEditorMothership(visualRoot);
 
 const weaponSockets = childNode('WeaponSockets', visualRoot);
 childNode('WeaponSocketLeft', weaponSockets).position.set(5, -0.7, -2.1);
@@ -201,9 +189,22 @@ for (const material of materialById.values()) {
     texture.textureWrapU,
     texture.textureWrapV,
   );
+  if (texture.useAsEmissiveTexture) {
+    material.emissiveTexture = textureRecord(
+      texture.textureUrl,
+      texture.hasAlpha,
+      texture.textureUScale,
+      texture.textureVScale,
+      texture.textureUOffset,
+      texture.textureVOffset,
+      texture.textureWrapU,
+      texture.textureWrapV,
+    );
+  }
   material.useAlphaFromDiffuseTexture = texture.useAlphaFromDiffuseTexture;
 }
 
+const existingPreview = await readOptionalFile(path.join(sceneRoot, 'preview.png'));
 await fs.rm(sceneRoot, { recursive: true, force: true });
 await Promise.all(['cameras', 'lights', 'meshes', 'nodes', 'geometries', 'shadowGenerators', 'animationGroups', 'sprite-managers', 'sprite-maps'].map((directory) => fs.mkdir(path.join(sceneRoot, directory), { recursive: true })));
 await fs.writeFile(path.join(sceneRoot, 'config.json'), JSON.stringify({
@@ -213,7 +214,7 @@ await fs.writeFile(path.join(sceneRoot, 'config.json'), JSON.stringify({
   fog: { fogEnabled: false, fogMode: 0, fogStart: 10, fogEnd: 1000, fogDensity: 0.001, fogColor: [0.04, 0.12, 0.17] },
   physics: { gravity: [0, -9.81, 0] },
   rendering: [],
-  metadata: { battleScene: { mapPreview: 'city-day', cameraMode: 'horizontal-only', editorGreybox: true } },
+  metadata: { battleScene: { mapPreview: 'city-day', cameraMode: 'horizontal-only', editorGreybox: false, mothershipSource: 'TheyCallItEarth/MothershipVisual.ts' } },
   animations: [],
   editorCamera: { position: [0, 5, -92], rotation: [0, 0, 0], fov: 0.610865, name: 'Editor preview', id: 'editor-camera', uniqueId: 999999, type: 'EditorCamera', isEnabled: true },
 }, null, 2));
@@ -223,22 +224,32 @@ for (const item of serialized.lights ?? []) await writeJson(path.join(sceneRoot,
 for (const item of serialized.transformNodes ?? []) await writeJson(path.join(sceneRoot, 'nodes', item.id + '.json'), item);
 for (const mesh of serialized.meshes ?? []) {
   const geometry = geometryById.get(mesh.geometryId);
-  if (geometry) {
-    mesh.positions = geometry.positions;
-    mesh.normals = geometry.normals;
-    mesh.uvs = geometry.uvs;
-    mesh.indices = geometry.indices;
-    mesh.hasUVs = Boolean(geometry.uvs?.length);
-    delete mesh.geometryId;
-    delete mesh.geometryUniqueId;
-    delete mesh.delayLoadingFile;
-    delete mesh._binaryInfo;
-  }
+  if (geometry) await externalizeGeometry(mesh, geometry);
   const material = mesh.materialId ? materialById.get(mesh.materialId) : null;
   await writeJson(path.join(sceneRoot, 'meshes', mesh.id + '.json'), { meshes: [mesh], materials: material ? [material] : [] });
 }
 await fs.writeFile(path.join(sceneRoot, 'attributes.json'), JSON.stringify({ doNotExport: false }, null, 2));
-await fs.writeFile(path.join(projectRoot, 'project.bjseditor'), JSON.stringify({ plugins: [], version: '5.4.2', packageManager: 'npm', lastOpenedScene: '/assets/battlescene.scene', compressedTexturesEnabled: false, compressedTexturesEnabledInPreview: false }, null, 2));
+if (existingPreview) await fs.writeFile(path.join(sceneRoot, 'preview.png'), existingPreview);
+await fs.writeFile(path.join(projectRoot, 'project.bjseditor'), JSON.stringify({
+  plugins: [],
+  version: '5.4.2',
+  packageManager: 'npm',
+  lastOpenedScene: '/assets/battlescene.scene',
+  compressedTextureSoftware: 'PVRTexTool',
+  compressedTexturesEnabled: false,
+  compressedTexturesEnabledInPreview: false,
+  compressedEtc2Enabled: false,
+  compressedPvrtcEnabled: false,
+  compressedTextureQuality: 'very-fast',
+  gizmoSnap: {
+    translationEnabled: false,
+    translationStep: 1,
+    rotationEnabled: false,
+    rotationStepDegrees: 15,
+    scaleEnabled: false,
+    scaleStep: 0.25,
+  },
+}, null, 4) + '\n');
 
 function childNode(name, parent) {
   const node = new TransformNode(name, scene);
@@ -256,6 +267,174 @@ function createMaterial(name, color, textureAsset) {
     textureMaterials.set(material.id, material.metadata);
   }
   return material;
+}
+
+function createEditorMothership(root) {
+  root.scaling.set(1.55, 1.15, 1.55);
+
+  const hullMaterial = createMothershipMaterial(
+    'mothership-hull-material',
+    new Color3(0.055, 0.07, 0.1),
+    new Color3(0.12, 0.025, 0.22),
+    { textured: true, specular: new Color3(0.28, 0.32, 0.38), specularPower: 64 },
+  );
+  const topMaterial = createMothershipMaterial(
+    'mothership-top-material',
+    new Color3(0.1, 0.11, 0.14),
+    new Color3(0.18, 0.035, 0.3),
+    { textured: true, specular: new Color3(0.35, 0.38, 0.44), specularPower: 70, backFaceCulling: false },
+  );
+  const undersideMaterial = createMothershipMaterial(
+    'mothership-underside-material',
+    new Color3(0.1, 0.11, 0.14),
+    new Color3(0.18, 0.035, 0.3),
+    { textured: true, specular: new Color3(0.35, 0.38, 0.44), specularPower: 70, backFaceCulling: false },
+  );
+  const armorMaterial = createMothershipMaterial(
+    'mothership-armor-material',
+    new Color3(0.045, 0.06, 0.085),
+    new Color3(0.01, 0.004, 0.02),
+    { specular: new Color3(0.3, 0.34, 0.4), specularPower: 72 },
+  );
+  const edgeMaterial = createMothershipMaterial('mothership-edge-material', new Color3(0.12, 0.15, 0.2), new Color3(0.02, 0.008, 0.035));
+  const violetMaterial = createMothershipMaterial('mothership-violet-material', new Color3(0.55, 0.08, 0.8), new Color3(0.9, 0.08, 1));
+  const softVioletMaterial = createMothershipMaterial('mothership-soft-violet-material', new Color3(0.2, 0.05, 0.35), new Color3(0.35, 0.025, 0.55));
+
+  const hull = MeshBuilder.CreateCylinder('mothership-hull', { diameterTop: 13.8, diameterBottom: 15.4, height: 1.15, tessellation: 64 }, scene);
+  hull.parent = root;
+  hull.material = hullMaterial;
+
+  const topPlate = createTexturedRadialPlate('mothership-top-plate', 6.95, 0.59, topMaterial, { u0: 0.02, v0: 0.01, u1: 0.98, v1: 0.58 }, 64, 1);
+  topPlate.parent = root;
+  const undersidePlate = createTexturedRadialPlate('mothership-underside-plate', 6.3, -0.59, undersideMaterial, { u0: 0.04, v0: 0.58, u1: 0.96, v1: 0.99 }, 64, -1);
+  undersidePlate.parent = root;
+
+  const upper = MeshBuilder.CreateCylinder('mothership-upper', { diameterTop: 4.8, diameterBottom: 10.8, height: 1.25, tessellation: 64 }, scene);
+  upper.parent = root;
+  upper.position.y = 0.73;
+  upper.material = armorMaterial;
+
+  const dome = MeshBuilder.CreateSphere('mothership-dome', { diameter: 5.8, segments: 32 }, scene);
+  dome.parent = root;
+  dome.position.y = 1.22;
+  dome.scaling.y = 0.32;
+  dome.material = topMaterial;
+
+  const outerTrim = MeshBuilder.CreateTorus('mothership-outer-trim', { diameter: 14.6, thickness: 0.3, tessellation: 64 }, scene);
+  outerTrim.parent = root;
+  outerTrim.position.y = 0.04;
+  outerTrim.material = edgeMaterial;
+
+  [6.35, 5.2, 3.95, 2.75].forEach((radius, index) => {
+    const ring = MeshBuilder.CreateTorus(`mothership-top-ring-${index}`, { diameter: radius * 2, thickness: index === 0 ? 0.16 : 0.11, tessellation: 64 }, scene);
+    ring.parent = root;
+    ring.position.y = 0.66 + index * 0.015;
+    ring.material = index === 1 || index === 3 ? softVioletMaterial : armorMaterial;
+  });
+
+  for (let index = 0; index < 16; index += 1) {
+    const angle = (index / 16) * Math.PI * 2;
+    const panel = MeshBuilder.CreateBox(`mothership-armor-panel-${index}`, { width: 1.65, height: 0.16, depth: 0.74 }, scene);
+    panel.parent = root;
+    panel.position = new Vector3(Math.sin(angle) * 6.1, 0.72, Math.cos(angle) * 6.1);
+    panel.rotation.y = angle;
+    panel.material = armorMaterial;
+
+    const light = MeshBuilder.CreateBox(`mothership-armor-light-${index}`, { width: 0.12, height: 0.045, depth: 0.48 }, scene);
+    light.parent = root;
+    light.position = new Vector3(Math.sin(angle) * 6.1, 0.83, Math.cos(angle) * 6.1);
+    light.rotation.y = angle;
+    light.material = violetMaterial;
+  }
+
+  const lower = MeshBuilder.CreateCylinder('mothership-lower-body', { diameterTop: 12.4, diameterBottom: 5.4, height: 0.9, tessellation: 64 }, scene);
+  lower.parent = root;
+  lower.position.y = -0.58;
+  lower.material = undersideMaterial;
+
+  const reactorHousing = MeshBuilder.CreateCylinder('mothership-reactor-housing', { diameterTop: 4.4, diameterBottom: 3.1, height: 0.5, tessellation: 48 }, scene);
+  reactorHousing.parent = root;
+  reactorHousing.position.y = -0.96;
+  reactorHousing.material = armorMaterial;
+  const reactorRing = MeshBuilder.CreateTorus('mothership-reactor-ring', { diameter: 3.9, thickness: 0.28, tessellation: 48 }, scene);
+  reactorRing.parent = root;
+  reactorRing.position.y = -1.23;
+  reactorRing.material = violetMaterial;
+  const reactorCore = MeshBuilder.CreateCylinder('mothership-reactor-core', { diameter: 2.35, height: 0.18, tessellation: 48 }, scene);
+  reactorCore.parent = root;
+  reactorCore.position.y = -1.24;
+  reactorCore.material = softVioletMaterial;
+  const reactorGlow = MeshBuilder.CreateDisc('mothership-reactor-glow', { radius: 1.1, tessellation: 48 }, scene);
+  reactorGlow.parent = root;
+  reactorGlow.rotation.x = Math.PI / 2;
+  reactorGlow.position.y = -1.35;
+  reactorGlow.material = violetMaterial;
+
+  for (let index = 0; index < 12; index += 1) {
+    const angle = (index / 12) * Math.PI * 2;
+    const emitter = MeshBuilder.CreateCylinder(`mothership-underside-emitter-${index}`, { diameter: 0.42, height: 0.12, tessellation: 12 }, scene);
+    emitter.parent = root;
+    emitter.position = new Vector3(Math.sin(angle) * 4.7, -1.05, Math.cos(angle) * 4.7);
+    emitter.material = index % 2 === 0 ? violetMaterial : softVioletMaterial;
+  }
+
+  root.getChildMeshes().forEach((mesh) => {
+    mesh.receiveShadows = true;
+  });
+}
+
+function createMothershipMaterial(name, diffuse, emissive, options = {}) {
+  const material = new StandardMaterial(name, scene);
+  material.diffuseColor = diffuse;
+  material.emissiveColor = emissive;
+  material.specularColor = options.specular ?? new Color3(0.05, 0.08, 0.1);
+  if (options.specularPower !== undefined) material.specularPower = options.specularPower;
+  if (options.backFaceCulling !== undefined) material.backFaceCulling = options.backFaceCulling;
+  if (options.textured) {
+    const textureUrl = `assets/battlescene/shared/mothership/mapping/${MOTHERSHIP_ATLAS_ASSET}`;
+    material.metadata = { textureUrl, hasAlpha: false, useAlphaFromDiffuseTexture: false };
+    textureMaterials.set(material.id, { ...material.metadata, useAsEmissiveTexture: true });
+  }
+  return material;
+}
+
+function createTexturedRadialPlate(name, radius, y, material, region, segments, normalY) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const indices = [];
+  const centerU = (region.u0 + region.u1) / 2;
+  const centerV = (region.v0 + region.v1) / 2;
+  const pushVertex = (x, z, u, v) => {
+    positions.push(x, 0, z);
+    normals.push(0, normalY, 0);
+    uvs.push(u, 1 - v);
+    return positions.length / 3 - 1;
+  };
+  const mapCoordinate = (value, min, max) => min + ((value / radius + 1) / 2) * (max - min);
+  for (let index = 0; index < segments; index += 1) {
+    const startAngle = (index / segments) * Math.PI * 2;
+    const endAngle = ((index + 1) / segments) * Math.PI * 2;
+    const startX = Math.sin(startAngle) * radius;
+    const startZ = Math.cos(startAngle) * radius;
+    const endX = Math.sin(endAngle) * radius;
+    const endZ = Math.cos(endAngle) * radius;
+    const center = pushVertex(0, 0, centerU, centerV);
+    const start = pushVertex(startX, startZ, mapCoordinate(startX, region.u0, region.u1), mapCoordinate(startZ, region.v0, region.v1));
+    const end = pushVertex(endX, endZ, mapCoordinate(endX, region.u0, region.u1), mapCoordinate(endZ, region.v0, region.v1));
+    indices.push(center, normalY === 1 ? start : end, normalY === 1 ? end : start);
+  }
+  const mesh = new Mesh(name, scene);
+  const vertexData = new VertexData();
+  vertexData.positions = positions;
+  vertexData.normals = normals;
+  vertexData.uvs = uvs;
+  vertexData.indices = indices;
+  vertexData.applyToMesh(mesh, true);
+  mesh.position.y = y;
+  mesh.material = material;
+  mesh.isPickable = false;
+  return mesh;
 }
 
 function textureRecord(url, hasAlpha, uScale = 1, vScale = 1, uOffset = 0, vOffset = 0, wrapU = 1, wrapV = 1) {
@@ -303,6 +482,90 @@ function textureRecord(url, hasAlpha, uScale = 1, vScale = 1, uOffset = 0, vOffs
   };
 }
 
+async function externalizeGeometry(mesh, geometry) {
+  const positions = geometry.positions ?? [];
+  const normals = geometry.normals ?? [];
+  const uvs = geometry.uvs ?? [];
+  const indices = geometry.indices ?? [];
+  const subMeshes = mesh.subMeshes?.length ? mesh.subMeshes : [{
+    materialIndex: 0,
+    verticesStart: 0,
+    verticesCount: positions.length / 3,
+    indexStart: 0,
+    indexCount: indices.length,
+  }];
+  const positionBuffer = float32Buffer(positions);
+  const normalBuffer = float32Buffer(normals);
+  const uvBuffer = float32Buffer(uvs);
+  const indexBuffer = int32Buffer(indices);
+  const subMeshBuffer = int32Buffer(subMeshes.flatMap((subMesh) => [
+    subMesh.materialIndex,
+    subMesh.verticesStart,
+    subMesh.verticesCount,
+    subMesh.indexStart,
+    subMesh.indexCount,
+  ]));
+  const positionOffset = 0;
+  const normalOffset = positionOffset + positionBuffer.length;
+  const uvOffset = normalOffset + normalBuffer.length;
+  const indexOffset = uvOffset + uvBuffer.length;
+  const subMeshOffset = indexOffset + indexBuffer.length;
+  const geometryId = `${mesh.id}-geometry`;
+  const fileName = `${mesh.id}.babylonbinarymeshdata`;
+  await fs.writeFile(path.join(sceneRoot, 'geometries', fileName), Buffer.concat([positionBuffer, normalBuffer, uvBuffer, indexBuffer, subMeshBuffer]));
+
+  mesh.geometryUniqueId = geometry.uniqueId ?? mesh.geometryUniqueId;
+  mesh.geometryId = geometryId;
+  mesh.delayLoadingFile = `assets/battlescene.scene/geometries/${fileName}`;
+  mesh.boundingBoxMaximum = axisBounds(positions, Math.max);
+  mesh.boundingBoxMinimum = axisBounds(positions, Math.min);
+  mesh._binaryInfo = {
+    positionsAttrDesc: { count: positions.length, stride: 3, offset: positionOffset, dataType: 1 },
+    normalsAttrDesc: { count: normals.length, stride: 3, offset: normalOffset, dataType: 1 },
+    uvsAttrDesc: { count: uvs.length, stride: 2, offset: uvOffset, dataType: 1 },
+    indicesAttrDesc: { count: indices.length, stride: 1, offset: indexOffset, dataType: 0 },
+    subMeshesAttrDesc: { count: subMeshes.length, stride: 5, offset: subMeshOffset, dataType: 0 },
+  };
+  mesh.positions = null;
+  mesh.normals = null;
+  mesh.uvs = null;
+  mesh.hasUVs = uvs.length > 0;
+  mesh.indices = null;
+  mesh.subMeshes = null;
+}
+
+function float32Buffer(values) {
+  const buffer = Buffer.allocUnsafe(values.length * 4);
+  values.forEach((value, index) => buffer.writeFloatLE(value, index * 4));
+  return buffer;
+}
+
+function int32Buffer(values) {
+  const buffer = Buffer.allocUnsafe(values.length * 4);
+  values.forEach((value, index) => buffer.writeInt32LE(value, index * 4));
+  return buffer;
+}
+
+function axisBounds(positions, aggregate) {
+  if (positions.length < 3) return [0, 0, 0];
+  const bounds = [positions[0], positions[1], positions[2]];
+  for (let index = 3; index < positions.length; index += 3) {
+    bounds[0] = aggregate(bounds[0], positions[index]);
+    bounds[1] = aggregate(bounds[1], positions[index + 1]);
+    bounds[2] = aggregate(bounds[2], positions[index + 2]);
+  }
+  return bounds;
+}
+
 async function writeJson(file, value) {
   await fs.writeFile(file, JSON.stringify(value, null, 2));
+}
+
+async function readOptionalFile(file) {
+  try {
+    return await fs.readFile(file);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
 }

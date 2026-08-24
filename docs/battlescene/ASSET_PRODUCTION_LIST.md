@@ -135,10 +135,12 @@ parallax · camera · ground lane 설정 적용
 | `2D-007` | `assets/battlescene/shared/mothership/mapping/mothership-hull-basecolor.webp` | 1024×1024 | 없음 | 121.3 KiB |
 | `2D-008` | `assets/battlescene/shared/mothership/mapping/mothership-hull-height-source.webp` | 1024×1024 | 없음 | 310.9 KiB |
 | `2D-009` | `assets/battlescene/shared/mothership/mapping/mothership-emissive-decals.webp` | 1024×1024 | 0~255 | 677.3 KiB |
+| `2D-010` | `assets/battlescene/shared/mothership/mapping/mothership-saucer-atlas.png` | 1254×1254 | 없음 | 3055.4 KiB |
 
 - 런타임 WebP 전체: 약 2.13 MiB
 - `2D-002`부터 `2D-006`, `2D-009`까지 실제 alpha channel 검사 완료
 - `2D-008`은 grayscale lossless WebP로 변환
+- `2D-010`은 원본 플레이 모선과 동일한 Editor-visible 기준 모델을 위해 기존 런타임 파일을 SHA-256 일치 상태로 가져온 호환 atlas
 - 모선 base color 가장자리 평균 색차: 좌우 3.41, 상하 4.84
 - 모선 height source 가장자리 평균 색차: 좌우 3.92, 상하 7.73
 - `toktx`/`basisu`가 현재 개발 환경에 설치되어 있지 않아 KTX2 생성은 보류 중이며, `npm run check:battle:compression`으로 상태를 재현할 수 있다.
