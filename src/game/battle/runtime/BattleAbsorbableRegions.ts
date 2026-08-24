@@ -1,30 +1,18 @@
-import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3, type Scene } from '@babylonjs/core';
-import { AdvancedDynamicTexture, TextBlock } from '@babylonjs/gui';
-import type { AbsorbableKind, AbsorbableStatus, CombatState } from '../../domain/types';
+import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, Vector3, type Scene } from '@babylonjs/core';
+import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonjs/gui';
+import type { AbsorbableKind, CombatState } from '../../domain/types';
+import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y } from './battleVisualCoordinates';
 
 interface RegionVisual {
   root: TransformNode;
   pad: Mesh;
   core: Mesh;
   beacon: Mesh;
+  sprite: Mesh;
+  spriteTexture: Texture;
+  spriteBaseScale: number;
+  labelPanel: Rectangle;
   baseScaleX: number;
-  organic?: OrganicClusterVisualAdapter;
-}
-
-export interface OrganicClusterPresentation {
-  targetId: string;
-  x: number;
-  initialPopulation: number;
-  remainingPopulation: number;
-  remainingRatio: number;
-  status: AbsorbableStatus;
-  discovered: boolean;
-  active: boolean;
-}
-
-export interface OrganicClusterVisualAdapter {
-  sync(presentation: OrganicClusterPresentation, elapsedSeconds: number): void;
-  dispose(): void;
 }
 
 const COLOR_BY_KIND: Record<AbsorbableKind, Color3> = {
@@ -36,6 +24,37 @@ const COLOR_BY_KIND: Record<AbsorbableKind, Color3> = {
   RELIC: new Color3(1, 0.46, 0.74),
 };
 
+const SPRITE_URL_BY_KIND: Record<AbsorbableKind, string> = {
+  ORGANIC: '/assets/runtime/sprites/target-organic-civilian-residential-y0-web.png',
+  VEHICLE: '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png',
+  MACHINERY: '/assets/runtime/sprites/target-machinery-fabrication-line-y0-web.png',
+  POWER: '/assets/runtime/sprites/target-power-grid-battery-cache-y0-web.png',
+  DATA: '/assets/runtime/sprites/target-data-radar-archive-core-y0-web.png',
+  RELIC: '/assets/runtime/sprites/target-relic-airbase-prototype-y0-web.png',
+};
+
+const LABEL_BY_KIND: Record<AbsorbableKind, string> = {
+  ORGANIC: '시민 주거',
+  VEHICLE: '군용 차량',
+  MACHINERY: '생산 설비',
+  POWER: '전력 저장고',
+  DATA: '레이더 데이터',
+  RELIC: '공군기지 유물',
+};
+
+// All cleaned sprites are staged with their visible bottom at y=224 in the
+// 256px canvas, so they share one world-space ground anchor.
+const SPRITE_GROUND_ANCHOR_BY_KIND: Record<AbsorbableKind, number> = {
+  ORGANIC: 0.375,
+  VEHICLE: 0.375,
+  MACHINERY: 0.375,
+  POWER: 0.375,
+  DATA: 0.375,
+  RELIC: 0.375,
+};
+
+const SPRITE_GROUND_Y = GROUND_ENTITY_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y - GROUND_SAM_BODY_HEIGHT * 0.375;
+
 export class BattleAbsorbableRegions {
   private readonly root: TransformNode;
   private readonly visuals = new Map<string, RegionVisual>();
@@ -43,16 +62,33 @@ export class BattleAbsorbableRegions {
   private readonly hiddenMaterial: StandardMaterial;
   private readonly lockedMaterial: StandardMaterial;
   private readonly depletedMaterial: StandardMaterial;
-  private readonly organicGui: AdvancedDynamicTexture;
+  private readonly spriteTextures = new Map<AbsorbableKind, Texture>();
+  private readonly spriteMaterials = new Map<AbsorbableKind, StandardMaterial>();
+  private readonly labelUi: AdvancedDynamicTexture;
 
   constructor(private readonly scene: Scene, private readonly language: 'ko' | 'en' = 'ko') {
     this.root = new TransformNode('BattleAbsorbableRegionsRoot', scene);
-    this.organicGui = AdvancedDynamicTexture.CreateFullscreenUI('BattleOrganicClusterUi', true, scene);
+    this.labelUi = AdvancedDynamicTexture.CreateFullscreenUI('BattleAbsorbableLabelsUi', true, scene);
     this.hiddenMaterial = this.material('battle-region-hidden', new Color3(0.2, 0.42, 0.45), 0.2);
     this.lockedMaterial = this.material('battle-region-locked', new Color3(1, 0.34, 0.2), 0.52);
     this.depletedMaterial = this.material('battle-region-depleted', new Color3(0.2, 0.25, 0.27), 0.16);
     for (const [kind, color] of Object.entries(COLOR_BY_KIND) as Array<[AbsorbableKind, Color3]>) {
       this.materials.set(kind, this.material(`battle-region-${kind.toLowerCase()}`, color, 0.56));
+      const texture = new Texture(SPRITE_URL_BY_KIND[kind], scene, true, true, Texture.NEAREST_SAMPLINGMODE);
+      texture.hasAlpha = true;
+      texture.wrapU = Texture.CLAMP_ADDRESSMODE;
+      texture.wrapV = Texture.CLAMP_ADDRESSMODE;
+      this.spriteTextures.set(kind, texture);
+      const spriteMaterial = new StandardMaterial(`battle-region-sprite-${kind.toLowerCase()}`, scene);
+      spriteMaterial.diffuseColor = Color3.White();
+      spriteMaterial.emissiveColor = Color3.White();
+      spriteMaterial.disableLighting = true;
+      spriteMaterial.backFaceCulling = false;
+      spriteMaterial.useAlphaFromDiffuseTexture = true;
+      spriteMaterial.transparencyMode = Engine.ALPHA_COMBINE;
+      spriteMaterial.diffuseTexture = texture;
+      spriteMaterial.emissiveTexture = texture;
+      this.spriteMaterials.set(kind, spriteMaterial);
     }
   }
 
@@ -60,17 +96,27 @@ export class BattleAbsorbableRegions {
     const activeIds = new Set<string>();
     for (const target of state.absorbableTargets) {
       activeIds.add(target.id);
-      const visual = this.visuals.get(target.id) ?? this.createVisual(target.id, target.center.x, target.radius);
+      const visual = this.visuals.get(target.id) ?? this.createVisual(target.id, target.center.x, target.radius, target.kind);
       const remainingRatio = target.remainingAmount / Math.max(1, target.initialAmount);
       const nearShip = Math.abs(target.center.x - state.mothership.position.x) <= target.radius + 3;
       const active = state.activeBeamTargetId === target.id;
       const pulse = 1 + Math.sin(elapsedSeconds * (active ? 7 : 3.2) + target.center.x * 0.03) * (active ? 0.12 : 0.04);
       visual.root.position.x = target.center.x;
+      visual.sprite.position.x = target.center.x;
       visual.pad.scaling.x = visual.baseScaleX * Math.max(0.18, remainingRatio) * pulse;
       visual.pad.scaling.y = pulse;
       visual.core.scaling.setAll((nearShip ? 1.15 : 0.88) * pulse);
       visual.beacon.scaling.y = target.discovered ? 1.5 + pulse * 0.7 : 0.62;
       visual.beacon.visibility = target.remainingAmount <= 0 ? 0 : target.discovered ? 0.62 : 0.16;
+      const spriteScale = visual.spriteBaseScale * (0.78 + Math.sqrt(Math.max(0, remainingRatio)) * 0.22) * pulse;
+      visual.sprite.scaling.setAll(spriteScale);
+      visual.sprite.position.y = SPRITE_GROUND_Y + spriteScale * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
+      visual.sprite.material = this.spriteMaterials.get(target.kind)!;
+      const spriteVisibility = target.discovered
+        ? target.remainingAmount <= 0 ? 0.18 : active ? 1 : nearShip ? 0.9 : 0.68
+        : 0.08;
+      visual.sprite.visibility = visual.spriteTexture.isReady() ? spriteVisibility : 0;
+      visual.labelPanel.isVisible = target.discovered && visual.spriteTexture.isReady();
       const material = target.remainingAmount <= 0
         ? this.depletedMaterial
         : !target.discovered
@@ -80,52 +126,42 @@ export class BattleAbsorbableRegions {
             : this.materials.get(target.kind)!;
       visual.pad.material = material;
       visual.core.material = material;
-      visual.pad.visibility = target.discovered ? active ? 0.95 : nearShip ? 0.78 : 0.52 : 0.12;
-      visual.core.visibility = target.discovered ? active ? 1 : nearShip ? 0.82 : 0.5 : 0.1;
-      if (target.kind === 'ORGANIC') {
-        const organic = visual.organic ?? this.createOrganicVisual(target.id, visual.root);
-        visual.organic = organic;
-        visual.pad.visibility *= 0.26;
-        visual.core.visibility = 0;
-        organic.sync({
-          targetId: target.id,
-          x: target.center.x,
-          initialPopulation: target.initialAmount,
-          remainingPopulation: target.remainingAmount,
-          remainingRatio,
-          status: target.status,
-          discovered: target.discovered,
-          active,
-        }, elapsedSeconds);
-      } else if (visual.organic) {
-        visual.organic.dispose();
-        visual.organic = undefined;
-      }
+      visual.pad.visibility = 0;
+      visual.core.visibility = 0;
     }
     for (const [id, visual] of this.visuals) {
       if (activeIds.has(id)) continue;
-      visual.organic?.dispose();
+      visual.labelPanel.dispose();
+      visual.sprite.dispose(false, true);
       visual.root.dispose(false, true);
       this.visuals.delete(id);
     }
   }
 
   dispose(): void {
-    this.visuals.forEach((visual) => { visual.organic?.dispose(); visual.root.dispose(false, true); });
+    this.visuals.forEach((visual) => {
+      visual.labelPanel.dispose();
+      visual.sprite.dispose(false, true);
+      visual.root.dispose(false, true);
+    });
     this.visuals.clear();
     this.materials.forEach((material) => material.dispose());
     this.materials.clear();
+    this.spriteMaterials.forEach((material) => material.dispose());
+    this.spriteMaterials.clear();
+    this.spriteTextures.forEach((texture) => texture.dispose());
+    this.spriteTextures.clear();
+    this.labelUi.dispose();
     this.hiddenMaterial.dispose();
     this.lockedMaterial.dispose();
     this.depletedMaterial.dispose();
-    this.organicGui.dispose();
     this.root.dispose();
   }
 
-  private createVisual(id: string, x: number, radius: number): RegionVisual {
+  private createVisual(id: string, x: number, radius: number, kind: AbsorbableKind): RegionVisual {
     const root = new TransformNode(`battle-region-${id}`, this.scene);
     root.parent = this.root;
-    root.position = new Vector3(x, -5.25, 1.3);
+    root.position = new Vector3(x, GROUND_ENTITY_ROOT_Y, 1.3);
     const pad = MeshBuilder.CreateDisc(`${root.name}-pad`, { radius: 1, tessellation: 48, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
     pad.parent = root;
     pad.scaling.set(radius, Math.max(1.2, radius * 0.24), 1);
@@ -143,13 +179,39 @@ export class BattleAbsorbableRegions {
     beacon.material = this.hiddenMaterial;
     beacon.renderingGroupId = 3;
     beacon.isPickable = false;
-    const visual = { root, pad, core, beacon, baseScaleX: radius };
+    const spriteTexture = this.spriteTextures.get(kind)!;
+    const sprite = MeshBuilder.CreatePlane(`${root.name}-sprite`, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+    sprite.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    sprite.position.x = x;
+    sprite.position.z = root.position.z - 0.34;
+    sprite.material = this.spriteMaterials.get(kind)!;
+    sprite.renderingGroupId = 3;
+    sprite.isPickable = false;
+    const spriteBaseScale = kind === 'ORGANIC' ? Math.max(8, radius * 1.12) : Math.max(6.4, radius * 1.42);
+    sprite.scaling.setAll(spriteBaseScale);
+    sprite.position.y = SPRITE_GROUND_Y + spriteBaseScale * SPRITE_GROUND_ANCHOR_BY_KIND[kind];
+    const labelPanel = new Rectangle(`${root.name}-label`);
+    labelPanel.width = '112px';
+    labelPanel.height = '26px';
+    labelPanel.cornerRadius = 4;
+    labelPanel.thickness = 1;
+    labelPanel.color = '#ffffff';
+    labelPanel.background = '#000000';
+    labelPanel.alpha = 0.9;
+    const label = new TextBlock(`${root.name}-label-text`, LABEL_BY_KIND[kind]);
+    label.color = '#ffffff';
+    label.fontFamily = 'Arial, sans-serif';
+    label.fontSize = 14;
+    label.fontWeight = '700';
+    label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    label.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    labelPanel.addControl(label);
+    this.labelUi.addControl(labelPanel);
+    labelPanel.linkWithMesh(sprite);
+    labelPanel.linkOffsetY = -64;
+    const visual = { root, pad, core, beacon, sprite, spriteTexture, spriteBaseScale, labelPanel, baseScaleX: radius };
     this.visuals.set(id, visual);
     return visual;
-  }
-
-  private createOrganicVisual(targetId: string, parent: TransformNode): OrganicClusterVisualAdapter {
-    return new SimpleOrganicClusterVisual(this.scene, this.organicGui, parent, targetId, this.language);
   }
 
   private material(name: string, color: Color3, alpha: number): StandardMaterial {
@@ -163,94 +225,4 @@ export class BattleAbsorbableRegions {
     material.backFaceCulling = false;
     return material;
   }
-}
-
-class SimpleOrganicClusterVisual implements OrganicClusterVisualAdapter {
-  private readonly root: TransformNode;
-  private readonly blob: Mesh;
-  private readonly ring: Mesh;
-  private readonly label: TextBlock;
-  private readonly blobMaterial: StandardMaterial;
-  private readonly ringMaterial: StandardMaterial;
-  private lastLabel = '';
-
-  constructor(scene: Scene, gui: AdvancedDynamicTexture, parent: TransformNode, targetId: string, private readonly language: 'ko' | 'en') {
-    this.root = new TransformNode(`battle-organic-cluster-${targetId}`, scene);
-    this.root.parent = parent;
-    this.root.position.set(0, 0.25, -0.16);
-    this.blobMaterial = organicMaterial(`battle-organic-cluster-${targetId}-blob`, scene, new Color3(0.12, 0.96, 0.46), 0.92);
-    this.ringMaterial = organicMaterial(`battle-organic-cluster-${targetId}-ring`, scene, new Color3(0.62, 1, 0.82), 0.92);
-    this.blob = MeshBuilder.CreateSphere(`${this.root.name}-blob`, { diameter: 1, segments: 12 }, scene);
-    this.blob.parent = this.root;
-    this.blob.position.y = 0.2;
-    this.blob.material = this.blobMaterial;
-    this.blob.renderingGroupId = 3;
-    this.blob.isPickable = false;
-    this.ring = MeshBuilder.CreateDisc(`${this.root.name}-ring`, { radius: 1, tessellation: 30, sideOrientation: Mesh.DOUBLESIDE }, scene);
-    this.ring.parent = this.root;
-    this.ring.position.z = -0.02;
-    this.ring.material = this.ringMaterial;
-    this.ring.renderingGroupId = 3;
-    this.ring.isPickable = false;
-    this.label = new TextBlock(`${this.root.name}-label`);
-    this.label.color = '#e4fff4';
-    this.label.fontFamily = 'Space Mono, monospace';
-    this.label.fontSize = 18;
-    this.label.fontWeight = '700';
-    this.label.outlineWidth = 3;
-    this.label.outlineColor = '#06231d';
-    this.label.height = '28px';
-    this.label.width = '110px';
-    this.label.paddingLeft = '6px';
-    this.label.paddingRight = '6px';
-    gui.addControl(this.label);
-    this.label.linkWithMesh(this.blob);
-    this.label.linkOffsetY = -38;
-  }
-
-  sync(presentation: OrganicClusterPresentation, elapsedSeconds: number): void {
-    const activePulse = presentation.active ? 1 + Math.sin(elapsedSeconds * 8) * 0.08 : 1;
-    const size = (0.5 + presentation.remainingRatio * 1.08) * activePulse;
-    this.blob.scaling.set(size * 2.1, size * 0.54, size * 0.55);
-    this.ring.scaling.set((0.72 + presentation.remainingRatio * 1.4) * activePulse, (0.24 + presentation.remainingRatio * 0.38) * activePulse, 1);
-    this.blob.visibility = presentation.discovered ? presentation.remainingPopulation > 0 ? 0.76 : 0.18 : 0.08;
-    this.ring.visibility = presentation.discovered ? presentation.active ? 0.96 : 0.64 : 0.1;
-    this.label.isVisible = presentation.discovered;
-    const label = presentation.remainingPopulation <= 0 ? '0' : formatPopulation(presentation.remainingPopulation, this.language);
-    if (label !== this.lastLabel) {
-      this.lastLabel = label;
-      this.label.text = label;
-    }
-    this.label.color = presentation.remainingPopulation <= 0 ? '#72918b' : '#e4fff4';
-  }
-
-  dispose(): void {
-    this.root.dispose(false, true);
-    this.label.dispose();
-    this.blobMaterial.dispose();
-    this.ringMaterial.dispose();
-  }
-}
-
-function organicMaterial(name: string, scene: Scene, color: Color3, alpha: number): StandardMaterial {
-  const material = new StandardMaterial(name, scene);
-  material.diffuseColor = color.scale(0.45);
-  material.emissiveColor = color;
-  material.alpha = alpha;
-  material.alphaMode = Engine.ALPHA_ADD;
-  material.disableLighting = true;
-  material.disableDepthWrite = true;
-  material.backFaceCulling = false;
-  return material;
-}
-
-function formatPopulation(value: number, language: 'ko' | 'en'): string {
-  const amount = Math.max(0, Math.round(value));
-  if (language === 'ko') {
-    if (amount >= 10_000) return `${(amount / 10_000).toFixed(amount >= 100_000 ? 0 : 1)}만`;
-    return amount.toLocaleString('ko-KR');
-  }
-  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `${(amount / 1_000).toFixed(1)}K`;
-  return amount.toLocaleString('en-US');
 }

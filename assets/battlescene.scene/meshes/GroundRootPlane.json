@@ -225,7 +225,7 @@
       "id": "GroundRootMaterial",
       "name": "GroundRootMaterial",
       "metadata": {
-        "textureUrl": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
+        "textureUrl": "assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp",
         "hasAlpha": true,
         "useAlphaFromDiffuseTexture": true,
         "textureUScale": 3
@@ -292,7 +292,7 @@
       },
       "diffuseTexture": {
         "tags": null,
-        "url": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
+        "url": "assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp",
         "uOffset": 0,
         "vOffset": 0,
         "uScale": 3,
@@ -305,7 +305,7 @@
         "wRotationCenter": 0.5,
         "homogeneousRotationInUVTransform": false,
         "isBlocking": true,
-        "name": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
+        "name": "assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp",
         "hasAlpha": true,
         "getAlphaFromRGB": false,
         "level": 1,

@@ -16,7 +16,7 @@
 - 한국어/영어 전환과 모바일 세로 화면 안내
 - 엔진 비의존 캠페인·전투 규칙·월드 데이터·저장소 보존
 
-배틀은 공통 Editor 씬과 맵별 2D 레이어를 사용한다. 기존 3D 도시 건물과 구형 도로 Nav는 이식하지 않으며, 시각 맵과 게임플레이 프로필을 분리한다. `?debug=battle&city=seoul`은 배틀 직접 검증 경로이고 `battle-fast=1`, `battle-fallback=1`, `battle-debug=1`을 조합해 자동화할 수 있다.
+배틀은 공통 Editor 씬과 맵별 2D 레이어를 사용한다. 기존 3D 도시 건물과 구형 도로 Nav는 이식하지 않으며, 시각 맵과 게임플레이 프로필을 분리한다. `?debug=battle&city=seoul`은 배틀 직접 검증 경로이고 `battle-fast=1`, `battle-debug=1`을 조합해 자동화할 수 있다.
 
 ## 개발 명령
 

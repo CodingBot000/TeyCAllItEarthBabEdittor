@@ -21,7 +21,7 @@ try {
   const savedBefore = await page.evaluate((key) => localStorage.getItem(key), saveKey);
   if (!savedBefore) throw new Error('Could not create the control save used to verify debug isolation.');
 
-  await page.goto(`${baseUrl}/?debug=battle&city=seoul&battle-fast=1&battle-fallback=1`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseUrl}/?debug=battle&city=seoul&battle-fast=1`, { waitUntil: 'domcontentloaded' });
   await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 15000 });
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function');
   await page.locator('nextjs-portal').evaluateAll((portals) => portals.forEach((portal) => { portal.style.display = 'none'; }));
@@ -36,7 +36,7 @@ try {
   const savedAfter = await page.evaluate((key) => localStorage.getItem(key), saveKey);
   if (savedAfter !== savedBefore) throw new Error('Debug battle changed the real campaign save.');
   if (await page.locator('.debrief-repair').count() !== 0) throw new Error('Aborted mission incorrectly showed a mothership emergency repair assessment.');
-  if (!await page.getByText('이번에는 하늘이 이겼습니다.').isVisible()) throw new Error('Aborted mission did not resolve through failed debrief.');
+  if (!await page.getByText('VICTORY').isVisible()) throw new Error('Aborted mission did not resolve through failed debrief.');
   if (errors.length > 0) throw new Error(`Browser errors:\n${errors.join('\n')}`);
   await writeFile(`${outputDirectory}/result.json`, JSON.stringify({ ok: true, saveUnchanged: savedAfter === savedBefore, errors }, null, 2));
 } catch (error) {

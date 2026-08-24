@@ -32,7 +32,7 @@
 | `2D-002` | `city-far-day` | 대기 원근이 강한 먼 도시 스카이라인 | 알파 | WebP alpha, 이후 KTX2 | 1차 완료 |
 | `2D-003` | `city-middle-day` | 중거리 고층 건물 레이어 | 알파 | WebP alpha, 이후 KTX2 | 1차 완료 |
 | `2D-004` | `city-near-day` | 가까운 저·중층 건물과 옥상 구조물 | 알파 | WebP alpha, 이후 KTX2 | 1차 완료 |
-| `2D-005` | `ground-road-day` | 화면 하단 지면, 도로, 방벽 및 지상 유닛 lane | 알파 | WebP alpha, 이후 KTX2 | 1차 완료 |
+| `2D-005` | `ground-sideview-day` | 화면 하단 side-view 지면, 차량용 평탄 lane, 방벽 | 알파 | 저화질 WebP alpha | 교체 완료 |
 | `2D-006` | `foreground-atmosphere-day` | 선택적으로 겹치는 연무, 먼지, 희미한 연기 | 알파 | WebP alpha, 이후 KTX2 | 1차 완료 |
 
 ### 모선 표면 매핑 이미지
@@ -69,7 +69,7 @@ assets/battlescene/
    │     ├─ city-far-day.webp
    │     ├─ city-middle-day.webp
    │     ├─ city-near-day.webp
-   │     ├─ ground-road-day.webp
+   │     ├─ ground-sideview-day.webp
    │     └─ foreground-atmosphere-day.webp
    ├─ city-night/                               # 후속 예시
    └─ desert-day/                               # 후속 예시
@@ -130,7 +130,7 @@ parallax · camera · ground lane 설정 적용
 | `2D-002` | `assets/battlescene/maps/city-day/backgrounds/city-far-day.webp` | 1672×941 | 0~255 | 131.8 KiB |
 | `2D-003` | `assets/battlescene/maps/city-day/backgrounds/city-middle-day.webp` | 1672×941 | 0~255 | 224.5 KiB |
 | `2D-004` | `assets/battlescene/maps/city-day/backgrounds/city-near-day.webp` | 1774×887 | 0~255 | 236.6 KiB |
-| `2D-005` | `assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp` | 2048×724 | 0~255 | 189.6 KiB |
+| `2D-005` | `assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp` | 2048×724 | 0~255 | 저화질 WebP |
 | `2D-006` | `assets/battlescene/maps/city-day/backgrounds/foreground-atmosphere-day.webp` | 1672×941 | 0~254 | 254.1 KiB |
 | `2D-007` | `assets/battlescene/shared/mothership/mapping/mothership-hull-basecolor.webp` | 1024×1024 | 없음 | 121.3 KiB |
 | `2D-008` | `assets/battlescene/shared/mothership/mapping/mothership-hull-height-source.webp` | 1024×1024 | 없음 | 310.9 KiB |
@@ -187,7 +187,7 @@ parallax · camera · ground lane 설정 적용
 - 지상 유닛과 겹칠 수 있는 큰 전경 물체는 넣지 않는다.
 - 반복 사용 시 눈에 띄는 하나의 거대한 랜드마크를 피한다.
 
-### `2D-005 ground-road-day`
+### `2D-005 ground-sideview-day`
 
 - 화면 하단만 차지하는 수평 지면 스트립으로 제작한다.
 - 도로, 콘크리트 방벽, 얕은 식재와 도시 기반 시설을 포함할 수 있다.

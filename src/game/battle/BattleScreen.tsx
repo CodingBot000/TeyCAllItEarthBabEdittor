@@ -147,7 +147,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     <main className="battle-screen" data-map-id={map.id} data-battle-phase={phase}>
       <canvas ref={canvasRef} className="battle-canvas" aria-label="Babylon battle scene" />
       <div className="battle-scene-label" aria-hidden="true">
-        <span>EDITOR GREYBOX</span>
+        <span>BATTLE SCENE</span>
         <strong>{map.displayName.toUpperCase()}</strong>
       </div>
       <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>

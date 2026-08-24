@@ -13,7 +13,7 @@ export const CITY_DAY_MAP: BattleMapDefinition = {
     far: 'backgrounds/city-far-day.webp',
     middle: 'backgrounds/city-middle-day.webp',
     near: 'backgrounds/city-near-day.webp',
-    ground: 'backgrounds/ground-road-day.webp',
+    ground: 'backgrounds/ground-sideview-day.webp',
     foregroundAtmosphere: 'backgrounds/foreground-atmosphere-day.webp',
   },
   sharedMaterials: {
@@ -48,7 +48,7 @@ export const CITY_NIGHT_MAP: BattleMapDefinition = {
     far: 'backgrounds/city-far-night.webp',
     middle: 'backgrounds/city-middle-night.webp',
     near: 'backgrounds/city-near-night.webp',
-    ground: 'backgrounds/ground-road-night.webp',
+    ground: 'backgrounds/ground-sideview-night.webp',
     foregroundAtmosphere: 'backgrounds/foreground-atmosphere-night.webp',
   },
 };

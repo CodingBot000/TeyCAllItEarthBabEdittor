@@ -1,4 +1,5 @@
 import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, type Scene } from '@babylonjs/core';
+import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonjs/gui';
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
 import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y } from './battleVisualCoordinates';
 
@@ -26,6 +27,8 @@ interface GroundVisual {
   maximumHealth: number;
   isSam: boolean;
   destroyed: boolean;
+  labelAnchor?: Mesh;
+  labelPanel?: Rectangle;
 }
 
 export interface BattleEntityVisualSnapshot {
@@ -48,6 +51,7 @@ export class BattleEntityVisuals {
   private readonly healthFillMaterial: StandardMaterial;
   private readonly samTexture: Texture;
   private readonly samMaterial: StandardMaterial;
+  private readonly groundLabelUi: AdvancedDynamicTexture;
 
   constructor(private readonly scene: Scene, fighterRoot: TransformNode, groundRoot: TransformNode) {
     this.root = new TransformNode('BattleEntityVisualsRoot', scene);
@@ -62,6 +66,7 @@ export class BattleEntityVisuals {
     this.destroyedMaterial = this.material('battle-entity-destroyed', new Color3(0.22, 0.09, 0.06));
     this.healthTrackMaterial = this.material('battle-entity-health-track', new Color3(0.14, 0.16, 0.18));
     this.healthFillMaterial = this.material('battle-entity-health-fill', new Color3(0.36, 1, 0.64));
+    this.groundLabelUi = AdvancedDynamicTexture.CreateFullscreenUI('BattleGroundLabelsUi', true, scene);
     this.samTexture = new Texture(GROUND_SAM_SPRITE_URL, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.samTexture.hasAlpha = true;
     this.samTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
@@ -106,6 +111,8 @@ export class BattleEntityVisuals {
     }
     for (const [id, visual] of this.groundVisuals) {
       if (activeGroundIds.has(id)) continue;
+      visual.labelPanel?.dispose();
+      visual.labelAnchor?.dispose(false, true);
       visual.root.dispose(false, true);
       this.groundVisuals.delete(id);
     }
@@ -128,8 +135,13 @@ export class BattleEntityVisuals {
   dispose(): void {
     this.fighterVisuals.forEach((visual) => this.disposeFighter(visual));
     this.fighterVisuals.clear();
-    this.groundVisuals.forEach((visual) => visual.root.dispose(false, true));
+    this.groundVisuals.forEach((visual) => {
+      visual.labelPanel?.dispose();
+      visual.labelAnchor?.dispose(false, true);
+      visual.root.dispose(false, true);
+    });
     this.groundVisuals.clear();
+    this.groundLabelUi.dispose();
     [this.fighterFallbackMaterial, this.defenderMaterial, this.facilityMaterial, this.disabledMaterial, this.destroyedMaterial, this.healthTrackMaterial, this.healthFillMaterial, this.samMaterial].forEach((material) => material.dispose());
     this.samTexture.dispose();
     this.fighterVisualRoot.dispose(false, true);
@@ -207,13 +219,44 @@ export class BattleEntityVisuals {
     healthFill.material = this.healthFillMaterial;
     healthFill.renderingGroupId = 3;
     healthFill.isPickable = false;
-    const visual = { id, kind, root, body, healthFill, healthTrack, maximumHealth, isSam, destroyed: false };
+    let labelAnchor: Mesh | undefined;
+    let labelPanel: Rectangle | undefined;
+    if (isSam) {
+      labelAnchor = MeshBuilder.CreatePlane(`${root.name}-label-anchor`, { size: 0.01 }, this.scene);
+      labelAnchor.position.set(0, GROUND_ENTITY_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y + 4.8, 0.6);
+      labelAnchor.isVisible = false;
+      labelAnchor.isPickable = false;
+      labelPanel = new Rectangle(`${root.name}-label`);
+      labelPanel.width = '112px';
+      labelPanel.height = '26px';
+      labelPanel.cornerRadius = 4;
+      labelPanel.thickness = 1;
+      labelPanel.color = '#ffffff';
+      labelPanel.background = '#000000';
+      labelPanel.alpha = 0.9;
+      const label = new TextBlock(`${root.name}-label-text`, '군용 차량');
+      label.color = '#ffffff';
+      label.fontFamily = 'Arial, sans-serif';
+      label.fontSize = 14;
+      label.fontWeight = '700';
+      label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+      label.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+      labelPanel.addControl(label);
+      this.groundLabelUi.addControl(labelPanel);
+      labelPanel.linkWithMesh(labelAnchor);
+      labelPanel.linkOffsetY = -48;
+    }
+    const visual = { id, kind, root, body, healthFill, healthTrack, maximumHealth, isSam, destroyed: false, labelAnchor, labelPanel };
     this.groundVisuals.set(id, visual);
     return visual;
   }
 
   private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean, facilityKind?: FacilityKind): void {
     visual.root.position.set(x, GROUND_ENTITY_ROOT_Y, 1.1);
+    if (visual.labelAnchor && visual.labelPanel) {
+      visual.labelAnchor.position.x = x;
+      visual.labelPanel.isVisible = !destroyed;
+    }
     visual.destroyed = destroyed;
     const ratio = Math.max(0, Math.min(1, health / Math.max(1, visual.maximumHealth)));
     visual.healthFill.scaling.x = ratio;

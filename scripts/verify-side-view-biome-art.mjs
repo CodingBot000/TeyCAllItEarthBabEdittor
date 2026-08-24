@@ -19,7 +19,7 @@ try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     page.on('console', (message) => { if (message.type() === 'error') errors.push(`${testCase.mapId}: ${message.text()}`); });
     page.on('pageerror', (error) => errors.push(`${testCase.mapId}: ${String(error)}`));
-    await page.goto(`${baseUrl}/?debug=battle&city=${testCase.city}&battle-fast=1&battle-fallback=1`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${baseUrl}/?debug=battle&city=${testCase.city}&battle-fast=1`, { waitUntil: 'domcontentloaded' });
     await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 30000 });
     await page.keyboard.down(testCase.key);
     await page.evaluate(() => window.advanceTime?.(2400));

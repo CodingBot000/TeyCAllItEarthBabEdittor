@@ -9,7 +9,7 @@
     "far": "backgrounds/city-far-night.webp",
     "middle": "backgrounds/city-middle-night.webp",
     "near": "backgrounds/city-near-night.webp",
-    "ground": "backgrounds/ground-road-night.webp",
+    "ground": "backgrounds/ground-sideview-night.webp",
     "foregroundAtmosphere": "backgrounds/foreground-atmosphere-night.webp"
   },
   "sharedMaterials": {

@@ -49,7 +49,7 @@ const layers = [
   ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 9, true],
   ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, -6, true],
   ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -20, true],
-  ['GroundRoot', 'backgrounds/ground-road-day.webp', 4, -12, true],
+  ['GroundRoot', 'backgrounds/ground-sideview-day.webp', 4, -12, true],
   ['ForegroundRoot', 'backgrounds/foreground-atmosphere-day.webp', -5, 1, true],
 ];
 for (let index = 0; index < layers.length; index += 1) {

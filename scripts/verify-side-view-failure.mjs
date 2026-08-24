@@ -18,7 +18,7 @@ async function activate(locator) {
 }
 
 try {
-  await page.goto(`${baseUrl}/?battle-fast=1&battle-fallback=1&battle-debug=1`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseUrl}/?battle-fast=1&battle-debug=1`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '새 캠페인' }).click();

@@ -13,7 +13,7 @@ page.on('console', (message) => { if (message.type() === 'error') errors.push(`c
 page.on('pageerror', (error) => errors.push(`pageerror: ${String(error)}`));
 
 try {
-  await page.goto(`${baseUrl}/?debug=battle&city=shanghai&battle-fast=1&battle-fallback=1`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseUrl}/?debug=battle&city=shanghai&battle-fast=1`, { waitUntil: 'domcontentloaded' });
   await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 30000 });
   await page.waitForFunction(() => typeof window.advanceTime === 'function' && typeof window.render_game_to_text === 'function');
   await page.keyboard.down('ArrowRight');

@@ -12,7 +12,7 @@ const files = [
   'city-far-day.webp',
   'city-middle-day.webp',
   'city-near-day.webp',
-  'ground-road-day.webp',
+  'ground-sideview-day.webp',
   'foreground-atmosphere-day.webp',
 ];
 
