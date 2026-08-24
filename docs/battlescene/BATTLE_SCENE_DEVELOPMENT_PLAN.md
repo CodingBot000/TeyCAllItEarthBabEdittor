@@ -45,7 +45,7 @@
 | 지상 유닛 | 2D 또는 3D, 차체 이동은 X축만 허용 |
 | 도시 | 여러 개의 투명 2D 패럴랙스 레이어 |
 | 맵 교체 | 공통 씬을 유지하고 map manifest와 이미지 경로만 교체 |
-| HUD | 배틀 렌더링 1차 범위에서 제외 |
+| HUD | Babylon scene 밖 React DOM HUD 구현 완료; 최종 HUD 아트는 별도 튜닝 범위 |
 | 물리 | 초기에는 Havok 없이 단순 판정 사용 |
 | 웹 포맷 | WebP fallback, 이후 KTX2 GPU 압축 추가 |
 | 1차 아트 | 2D 에셋만 제작 완료, 3D 최종 에셋은 후속 |
@@ -93,7 +93,7 @@
 - `BattleCombatVfx`의 제한된 effect cap을 고정 배열/재사용 풀로 확장
 - 맵 manifest를 정적 카탈로그에서 외부 manifest lazy loader로 확장
 - KTX2/Basis 압축 생성 도구 설치 후 실제 산출물·브라우저 fallback 검증
-- 모바일 입력, 실제 전투 UI, 성능 프로파일링과 최종 QA
+- 최종 3D 유닛 아트 교체, 성능 프로파일링과 최종 QA
 
 ### 현재 제약
 
@@ -545,7 +545,7 @@ npm run generate
 - [ ] 카메라가 좌우 약 ±100% 범위에서 모선을 추적한다.
 - [ ] 지상 prototype 유닛이 X축으로만 이동한다.
 - [x] 회피 원호와 추락 prototype을 실행할 수 있다.
-- [ ] HUD 없이 전투 canvas가 독립 실행된다.
+- [x] React HUD와 canvas가 독립 레이어로 실행된다.
 - [x] 같은 전투를 세 번 이상 재진입해도 리소스가 누적되지 않는다.
 - [ ] 데스크톱 60 FPS 또는 목표 기기 기준 성능 결과가 기록된다.
 - [ ] 시작화면·맵선택 파일과 회귀 동작에 영향이 없다.
@@ -557,5 +557,11 @@ npm run generate
 - [ ] 최종 신규 모선과 전투 유닛 3D 에셋이 적용된다.
 - [ ] WebP fallback과 KTX2 빌드가 검증된다.
 - [ ] 모바일과 데스크톱 성능 목표를 만족한다.
-- [ ] 전투 진입·종료·실패 복구가 모두 동작한다.
+- [x] 전투 진입·추출·포기·대파 실패·Debrief 복구가 모두 동작한다.
 - [ ] 전체 typecheck, test, production build와 Editor pack이 통과한다.
+
+## 16. 2026-08-24 2D 게임플레이 이행 상태
+
+- 시민 덩어리, 자동 SCAN, 능력 availability, 시간 기반 철수, 임무 포기, save v5 도시 자원 풀, RAID/OCCUPATION 코호트 분기와 상태 기반 적/지상 visual pool을 구현했다.
+- River/Desert는 3D Coastal clone 대신 `sideViewBiomeCatalog`과 프로필로 2D 전투 데이터를 생성한다.
+- `npm run test:e2e:side-view`는 정상 RAID·대파·모바일 900/640·포기·visual sync·production debug을 실행한다. 최종 3D 모델·KTX2·성능 예산은 아직 후속 범위다.

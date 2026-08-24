@@ -7,9 +7,12 @@
 - 시작 화면, 새 캠페인, 이어하기, 로컬 저장 초기화
 - 세계 지도, 국가·도시 선택, 미션 편성, 이동
 - 결정적 흡수 지역, 접근 자동 탐지, 흡수·EMP·Plasma·Overdrive
+- 실제 ORGANIC 시민 덩어리·잔량 표시, 화면 밖 목표 방향/거리, 능력 disabled·쿨다운 안내
 - 자동 공중 방어와 곡선 비행형 지상 자폭드론 공격
-- 생존 시간 해제형 탈출, 모선 대파 수리비
+- 생존 시간 해제형 탈출, 임무 포기 확인/35% 화물 회수, 모선 대파 수리비
 - 디브리핑, 포로 배분, 코호트, 업그레이드
+- save v5 도시 종류별 자원 풀·미션 배치 스냅샷, RAID/OCCUPATION 주둔 후보 처리
+- 실제 Enemy/ground state ID에 동기화된 전투기·지상 시각 풀
 - 한국어/영어 전환과 모바일 세로 화면 안내
 - 엔진 비의존 캠페인·전투 규칙·월드 데이터·저장소 보존
 
@@ -28,7 +31,11 @@ npm run generate  # Babylon Editor public/scene 패키징
     npm run generate:battle  # 배틀 Editor 씬과 배틀 에셋까지 패키징
     npm run generate:battle:biomes  # River/Desert 마스터에서 2D 패럴랙스 레이어 재생성
 npm run check     # typecheck + test + build
+npm run test:e2e:side-view  # dev/prod 서버를 자동 기동해 side-view browser E2E 실행
+npm run check:full # check + lint + side-view browser E2E
 ```
+
+`test:e2e:side-view`는 Playwright 기본 Chromium을 사용한다. 로컬 Chrome을 명시하려면 `SIDE_VIEW_BROWSER_EXECUTABLE` 환경 변수에 실행 경로를 지정한다.
 
 `npm run generate`는 `scripts/pack-editor.mjs`를 통해 Babylon Editor CLI의 ESM bin 문제를 우회하고, `assets/battlescene/`과 `assets/battlescene.scene/`을 임시 제외해 1차 public 산출물에 전투 그래픽이 들어가지 않도록 한다.
 

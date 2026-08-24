@@ -40,6 +40,7 @@ assets/battlescene/
 !assets/battlescene/**
 assets/_weapon-temp/
 public/assets/runtime/sprites/_weapon-temp/
+public/scene/assets/_weapon-temp/
 
 # Local environment and deployment state
 .env

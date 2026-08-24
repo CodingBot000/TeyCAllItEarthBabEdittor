@@ -1,5 +1,6 @@
 import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3, type Scene } from '@babylonjs/core';
-import type { AbsorbableKind, CombatState } from '../../domain/types';
+import { AdvancedDynamicTexture, TextBlock } from '@babylonjs/gui';
+import type { AbsorbableKind, AbsorbableStatus, CombatState } from '../../domain/types';
 
 interface RegionVisual {
   root: TransformNode;
@@ -7,6 +8,23 @@ interface RegionVisual {
   core: Mesh;
   beacon: Mesh;
   baseScaleX: number;
+  organic?: OrganicClusterVisualAdapter;
+}
+
+export interface OrganicClusterPresentation {
+  targetId: string;
+  x: number;
+  initialPopulation: number;
+  remainingPopulation: number;
+  remainingRatio: number;
+  status: AbsorbableStatus;
+  discovered: boolean;
+  active: boolean;
+}
+
+export interface OrganicClusterVisualAdapter {
+  sync(presentation: OrganicClusterPresentation, elapsedSeconds: number): void;
+  dispose(): void;
 }
 
 const COLOR_BY_KIND: Record<AbsorbableKind, Color3> = {
@@ -25,9 +43,11 @@ export class BattleAbsorbableRegions {
   private readonly hiddenMaterial: StandardMaterial;
   private readonly lockedMaterial: StandardMaterial;
   private readonly depletedMaterial: StandardMaterial;
+  private readonly organicGui: AdvancedDynamicTexture;
 
-  constructor(private readonly scene: Scene) {
+  constructor(private readonly scene: Scene, private readonly language: 'ko' | 'en' = 'ko') {
     this.root = new TransformNode('BattleAbsorbableRegionsRoot', scene);
+    this.organicGui = AdvancedDynamicTexture.CreateFullscreenUI('BattleOrganicClusterUi', true, scene);
     this.hiddenMaterial = this.material('battle-region-hidden', new Color3(0.2, 0.42, 0.45), 0.2);
     this.lockedMaterial = this.material('battle-region-locked', new Color3(1, 0.34, 0.2), 0.52);
     this.depletedMaterial = this.material('battle-region-depleted', new Color3(0.2, 0.25, 0.27), 0.16);
@@ -62,22 +82,43 @@ export class BattleAbsorbableRegions {
       visual.core.material = material;
       visual.pad.visibility = target.discovered ? active ? 0.95 : nearShip ? 0.78 : 0.52 : 0.12;
       visual.core.visibility = target.discovered ? active ? 1 : nearShip ? 0.82 : 0.5 : 0.1;
+      if (target.kind === 'ORGANIC') {
+        const organic = visual.organic ?? this.createOrganicVisual(target.id, visual.root);
+        visual.organic = organic;
+        visual.pad.visibility *= 0.26;
+        visual.core.visibility = 0;
+        organic.sync({
+          targetId: target.id,
+          x: target.center.x,
+          initialPopulation: target.initialAmount,
+          remainingPopulation: target.remainingAmount,
+          remainingRatio,
+          status: target.status,
+          discovered: target.discovered,
+          active,
+        }, elapsedSeconds);
+      } else if (visual.organic) {
+        visual.organic.dispose();
+        visual.organic = undefined;
+      }
     }
     for (const [id, visual] of this.visuals) {
       if (activeIds.has(id)) continue;
+      visual.organic?.dispose();
       visual.root.dispose(false, true);
       this.visuals.delete(id);
     }
   }
 
   dispose(): void {
-    this.visuals.forEach((visual) => visual.root.dispose(false, true));
+    this.visuals.forEach((visual) => { visual.organic?.dispose(); visual.root.dispose(false, true); });
     this.visuals.clear();
     this.materials.forEach((material) => material.dispose());
     this.materials.clear();
     this.hiddenMaterial.dispose();
     this.lockedMaterial.dispose();
     this.depletedMaterial.dispose();
+    this.organicGui.dispose();
     this.root.dispose();
   }
 
@@ -107,6 +148,10 @@ export class BattleAbsorbableRegions {
     return visual;
   }
 
+  private createOrganicVisual(targetId: string, parent: TransformNode): OrganicClusterVisualAdapter {
+    return new SimpleOrganicClusterVisual(this.scene, this.organicGui, parent, targetId, this.language);
+  }
+
   private material(name: string, color: Color3, alpha: number): StandardMaterial {
     const material = new StandardMaterial(name, this.scene);
     material.diffuseColor = color.scale(0.45);
@@ -118,4 +163,94 @@ export class BattleAbsorbableRegions {
     material.backFaceCulling = false;
     return material;
   }
+}
+
+class SimpleOrganicClusterVisual implements OrganicClusterVisualAdapter {
+  private readonly root: TransformNode;
+  private readonly blob: Mesh;
+  private readonly ring: Mesh;
+  private readonly label: TextBlock;
+  private readonly blobMaterial: StandardMaterial;
+  private readonly ringMaterial: StandardMaterial;
+  private lastLabel = '';
+
+  constructor(scene: Scene, gui: AdvancedDynamicTexture, parent: TransformNode, targetId: string, private readonly language: 'ko' | 'en') {
+    this.root = new TransformNode(`battle-organic-cluster-${targetId}`, scene);
+    this.root.parent = parent;
+    this.root.position.set(0, 0.25, -0.16);
+    this.blobMaterial = organicMaterial(`battle-organic-cluster-${targetId}-blob`, scene, new Color3(0.12, 0.96, 0.46), 0.92);
+    this.ringMaterial = organicMaterial(`battle-organic-cluster-${targetId}-ring`, scene, new Color3(0.62, 1, 0.82), 0.92);
+    this.blob = MeshBuilder.CreateSphere(`${this.root.name}-blob`, { diameter: 1, segments: 12 }, scene);
+    this.blob.parent = this.root;
+    this.blob.position.y = 0.2;
+    this.blob.material = this.blobMaterial;
+    this.blob.renderingGroupId = 3;
+    this.blob.isPickable = false;
+    this.ring = MeshBuilder.CreateDisc(`${this.root.name}-ring`, { radius: 1, tessellation: 30, sideOrientation: Mesh.DOUBLESIDE }, scene);
+    this.ring.parent = this.root;
+    this.ring.position.z = -0.02;
+    this.ring.material = this.ringMaterial;
+    this.ring.renderingGroupId = 3;
+    this.ring.isPickable = false;
+    this.label = new TextBlock(`${this.root.name}-label`);
+    this.label.color = '#e4fff4';
+    this.label.fontFamily = 'Space Mono, monospace';
+    this.label.fontSize = 18;
+    this.label.fontWeight = '700';
+    this.label.outlineWidth = 3;
+    this.label.outlineColor = '#06231d';
+    this.label.height = '28px';
+    this.label.width = '110px';
+    this.label.paddingLeft = '6px';
+    this.label.paddingRight = '6px';
+    gui.addControl(this.label);
+    this.label.linkWithMesh(this.blob);
+    this.label.linkOffsetY = -38;
+  }
+
+  sync(presentation: OrganicClusterPresentation, elapsedSeconds: number): void {
+    const activePulse = presentation.active ? 1 + Math.sin(elapsedSeconds * 8) * 0.08 : 1;
+    const size = (0.5 + presentation.remainingRatio * 1.08) * activePulse;
+    this.blob.scaling.set(size * 2.1, size * 0.54, size * 0.55);
+    this.ring.scaling.set((0.72 + presentation.remainingRatio * 1.4) * activePulse, (0.24 + presentation.remainingRatio * 0.38) * activePulse, 1);
+    this.blob.visibility = presentation.discovered ? presentation.remainingPopulation > 0 ? 0.76 : 0.18 : 0.08;
+    this.ring.visibility = presentation.discovered ? presentation.active ? 0.96 : 0.64 : 0.1;
+    this.label.isVisible = presentation.discovered;
+    const label = presentation.remainingPopulation <= 0 ? '0' : formatPopulation(presentation.remainingPopulation, this.language);
+    if (label !== this.lastLabel) {
+      this.lastLabel = label;
+      this.label.text = label;
+    }
+    this.label.color = presentation.remainingPopulation <= 0 ? '#72918b' : '#e4fff4';
+  }
+
+  dispose(): void {
+    this.root.dispose(false, true);
+    this.label.dispose();
+    this.blobMaterial.dispose();
+    this.ringMaterial.dispose();
+  }
+}
+
+function organicMaterial(name: string, scene: Scene, color: Color3, alpha: number): StandardMaterial {
+  const material = new StandardMaterial(name, scene);
+  material.diffuseColor = color.scale(0.45);
+  material.emissiveColor = color;
+  material.alpha = alpha;
+  material.alphaMode = Engine.ALPHA_ADD;
+  material.disableLighting = true;
+  material.disableDepthWrite = true;
+  material.backFaceCulling = false;
+  return material;
+}
+
+function formatPopulation(value: number, language: 'ko' | 'en'): string {
+  const amount = Math.max(0, Math.round(value));
+  if (language === 'ko') {
+    if (amount >= 10_000) return `${(amount / 10_000).toFixed(amount >= 100_000 ? 0 : 1)}만`;
+    return amount.toLocaleString('ko-KR');
+  }
+  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `${(amount / 1_000).toFixed(1)}K`;
+  return amount.toLocaleString('en-US');
 }

@@ -28,6 +28,7 @@ try {
   }
 
   await pack(projectRoot, { optimize: true });
+  await normalizeGeneratedScriptsMap();
   if (includeBattleAssets) {
     await syncBattleRuntimeAssets();
     await disablePhysicsForBattleScene();
@@ -35,6 +36,17 @@ try {
 } finally {
   for (const directory of moved.reverse()) {
     await fs.rename(directory.hold, directory.source);
+  }
+}
+
+async function normalizeGeneratedScriptsMap() {
+  const scriptsPath = path.join(projectRoot, 'src/scripts.ts');
+  try {
+    const source = await fs.readFile(scriptsPath, 'utf8');
+    const normalized = source.replace(/[ \t]+\n/g, '\n');
+    if (normalized !== source) await fs.writeFile(scriptsPath, normalized);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
   }
 }
 

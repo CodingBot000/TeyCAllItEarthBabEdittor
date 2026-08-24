@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -9,13 +10,25 @@ const biomes = [
     id: 'river-day',
     displayName: 'River Metropolis',
     source: 'art-source/battlescene/maps/river/river-metropolis-master-v1.png',
-    outputNames: { sky: 'sky-river-day-base.webp', clouds: 'clouds-river-day.webp', far: 'city-far-river-day.webp', middle: 'city-middle-river-day.webp', near: 'city-near-river-day.webp', ground: 'ground-river-day.webp', foreground: 'foreground-atmosphere-river-day.webp' },
+    curatedLayers: {
+      far: 'art-source/battlescene/maps/river/layers-v2/river-far-v2.png',
+      middle: 'art-source/battlescene/maps/river/layers-v2/river-middle-v2.png',
+      near: 'art-source/battlescene/maps/river/layers-v2/river-near-v2.png',
+      ground: 'art-source/battlescene/maps/river/layers-v2/river-ground-v2.png',
+    },
+    outputNames: { sky: 'sky-river-day-base.webp', clouds: 'clouds-river-day.webp', far: 'city-far-river-day-v2.webp', middle: 'city-middle-river-day-v2.webp', near: 'city-near-river-day-v2.webp', ground: 'ground-river-day-v2.webp', foreground: 'foreground-atmosphere-river-day.webp' },
   },
   {
     id: 'desert-day',
     displayName: 'Desert Tech Hub',
     source: 'art-source/battlescene/maps/desert/desert-tech-hub-master-v1.png',
-    outputNames: { sky: 'sky-desert-day-base.webp', clouds: 'clouds-desert-day.webp', far: 'city-far-desert-day.webp', middle: 'city-middle-desert-day.webp', near: 'city-near-desert-day.webp', ground: 'ground-desert-day.webp', foreground: 'foreground-atmosphere-desert-day.webp' },
+    curatedLayers: {
+      far: 'art-source/battlescene/maps/desert/layers-v2/desert-far-v2.png',
+      middle: 'art-source/battlescene/maps/desert/layers-v2/desert-middle-v2.png',
+      near: 'art-source/battlescene/maps/desert/layers-v2/desert-near-v2.png',
+      ground: 'art-source/battlescene/maps/desert/layers-v2/desert-ground-v2.png',
+    },
+    outputNames: { sky: 'sky-desert-day-base.webp', clouds: 'clouds-desert-day.webp', far: 'city-far-desert-day-v2.webp', middle: 'city-middle-desert-day-v2.webp', near: 'city-near-desert-day-v2.webp', ground: 'ground-desert-day-v2.webp', foreground: 'foreground-atmosphere-desert-day.webp' },
   },
 ];
 
@@ -33,16 +46,16 @@ async function buildBiome(biome) {
   const cloudsBuffer = await maskedLayer(masterBuffer, [
     { offset: 0, opacity: 0 }, { offset: 0.04, opacity: 0.18 }, { offset: 0.28, opacity: 0.14 }, { offset: 0.42, opacity: 0 }, { offset: 1, opacity: 0 },
   ], 2.8);
-  const farBuffer = await maskedLayer(masterBuffer, [
+  const farBuffer = await curatedLayerOrMask(biome.curatedLayers.far, masterBuffer, [
     { offset: 0, opacity: 0 }, { offset: 0.16, opacity: 0.05 }, { offset: 0.28, opacity: 0.9 }, { offset: 0.62, opacity: 0.82 }, { offset: 0.7, opacity: 0 }, { offset: 1, opacity: 0 },
   ], 1.4);
-  const middleBuffer = await maskedLayer(masterBuffer, [
+  const middleBuffer = await curatedLayerOrMask(biome.curatedLayers.middle, masterBuffer, [
     { offset: 0, opacity: 0 }, { offset: 0.38, opacity: 0 }, { offset: 0.48, opacity: 0.9 }, { offset: 0.77, opacity: 0.92 }, { offset: 0.83, opacity: 0 }, { offset: 1, opacity: 0 },
   ], 0.7);
-  const nearBuffer = await maskedLayer(masterBuffer, [
+  const nearBuffer = await curatedLayerOrMask(biome.curatedLayers.near, masterBuffer, [
     { offset: 0, opacity: 0 }, { offset: 0.62, opacity: 0 }, { offset: 0.71, opacity: 0.95 }, { offset: 0.9, opacity: 0.96 }, { offset: 0.94, opacity: 0 }, { offset: 1, opacity: 0 },
   ], 0.3);
-  const groundBuffer = await maskedLayer(masterBuffer, [
+  const groundBuffer = await curatedLayerOrMask(biome.curatedLayers.ground, masterBuffer, [
     { offset: 0, opacity: 0 }, { offset: 0.82, opacity: 0 }, { offset: 0.9, opacity: 1 }, { offset: 1, opacity: 1 },
   ], 0);
   const foregroundBuffer = await createForegroundAtmosphere(biome.id);
@@ -58,9 +71,14 @@ async function buildBiome(biome) {
   for (const [name, buffer] of outputs) {
     await Promise.all([writeFile(path.join(assetBackgrounds, name), buffer), writeFile(path.join(runtimeBackgrounds, name), buffer)]);
   }
+  const preview = await sharp(skyBuffer)
+    .composite([cloudsBuffer, farBuffer, middleBuffer, nearBuffer, groundBuffer, foregroundBuffer].map((input) => ({ input })))
+    .png()
+    .toBuffer();
+  await writeFile(path.join(assetRoot, 'layered-preview-v2.png'), preview);
   const manifest = {
     id: biome.id,
-    version: 1,
+    version: 2,
     displayName: biome.displayName,
     assetRoot: `battlescene/maps/${biome.id}`,
     backgrounds: {
@@ -82,6 +100,15 @@ async function buildBiome(biome) {
   };
   const manifestBuffer = `${JSON.stringify(manifest, null, 2)}\n`;
   await Promise.all([writeFile(path.join(assetRoot, 'map.manifest.json'), manifestBuffer), writeFile(path.join(runtimeRoot, 'map.manifest.json'), manifestBuffer)]);
+}
+
+async function curatedLayerOrMask(sourcePath, masterBuffer, stops, blurSigma) {
+  if (!existsSync(sourcePath)) return maskedLayer(masterBuffer, stops, blurSigma);
+  return sharp(sourcePath)
+    .resize(WIDTH, HEIGHT, { fit: 'fill' })
+    .ensureAlpha()
+    .webp({ quality: 90, alphaQuality: 100 })
+    .toBuffer();
 }
 
 async function maskedLayer(masterBuffer, stops, blurSigma) {

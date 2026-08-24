@@ -59,14 +59,6 @@ interface AbilityEffect {
   secondRingFrames: number[];
 }
 
-interface CivilianVisual {
-  mesh: Mesh;
-  home: Vector3;
-  phase: number;
-  progress: number;
-  velocity: number;
-}
-
 interface AbsorptionVisual {
   beam: Mesh;
   core: Mesh;
@@ -112,10 +104,8 @@ export class BattleCombatVfx {
   private readonly vfxTexture: Texture;
   private readonly explosionTexture: Texture;
   private readonly smokeTexture: Texture;
-  private readonly civilianTexture: Texture;
   private readonly damageEffects: DamageEffect[] = [];
   private readonly abilityEffects: AbilityEffect[] = [];
-  private readonly civilians: CivilianVisual[] = [];
   private readonly airDefenseEffects: AirDefenseVisual[] = [];
   private readonly consumedHitIds = new Set<string>();
   private consumedAirDefenseId: string | null = null;
@@ -154,8 +144,7 @@ export class BattleCombatVfx {
     this.vfxTexture = new Texture('/assets/runtime/vfx/vfx-atlas.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.explosionTexture = new Texture('/assets/runtime/vfx/mothership-explosion-5x5.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.smokeTexture = new Texture('/assets/runtime/vfx/mothership-smoke-8x8.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
-    this.civilianTexture = new Texture('/assets/runtime/sprites/civilian-4x4.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
-    [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture, this.civilianTexture].forEach((texture) => { texture.hasAlpha = true; });
+    [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture].forEach((texture) => { texture.hasAlpha = true; });
 
     this.shieldBubbleMaterial = this.material('battle-shield-impact-shell', new Color3(0.08, 0.52, 0.75), new Color3(0.08, 0.9, 1));
     this.shieldBubbleMaterial.alpha = 0.18;
@@ -189,7 +178,6 @@ export class BattleCombatVfx {
     this.groundSwarmMaterial = this.material('battle-ground-swarm', new Color3(0.92, 0.72, 0.24), new Color3(1, 0.36, 0.03));
     this.groundSwarmCoreMaterial = this.material('battle-ground-swarm-core', new Color3(1, 0.96, 0.68), new Color3(1, 0.72, 0.08));
 
-    this.createCivilians();
   }
 
   triggerMothershipHit(kind: DamageKind, normal = new Vector3(0.72, -0.18, -1)): void {
@@ -315,7 +303,7 @@ export class BattleCombatVfx {
     this.updateAbilityEffects(dt);
     this.updateAirDefenseEffects(dt);
     this.updateGroundSwarmImpacts(dt);
-    this.updateAbsorption(dt, elapsed);
+    this.updateAbsorption(elapsed);
   }
 
   dispose(): void {
@@ -323,7 +311,6 @@ export class BattleCombatVfx {
     this.disposed = true;
     this.damageEffects.splice(0).forEach((effect) => this.disposeDamageEffect(effect));
     this.abilityEffects.splice(0).forEach((effect) => effect.root.dispose());
-    this.civilians.forEach((civilian) => civilian.mesh.dispose(false, true));
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
     this.groundSwarmVisuals.forEach((visual) => {
@@ -348,18 +335,7 @@ export class BattleCombatVfx {
       this.absorption.ring.dispose();
     }
     [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
-    [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture, this.civilianTexture].forEach((texture) => texture.dispose());
-  }
-
-  private createCivilians(): void {
-    for (let index = 0; index < 18; index += 1) {
-      const home = new Vector3(-28 + (index % 9) * 7, -4.8 + (index % 3) * 0.26, 0.4 + (index % 2) * 0.2);
-      const mesh = this.flipbook(`battle-civilian-${index}`, this.civilianTexture, 4, 4, 4, new Color3(0.8, 1, 0.92), 'ALPHA');
-      mesh.position = home.clone();
-      mesh.scaling.setAll(1.35);
-      mesh.renderingGroupId = 3;
-      this.civilians.push({ mesh, home, phase: index * 0.73, progress: 0, velocity: 0 });
-    }
+    [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture].forEach((texture) => texture.dispose());
   }
 
   private createShieldEffect(normal: Vector3, localImpact: Vector3): DamageEffect {
@@ -557,18 +533,10 @@ export class BattleCombatVfx {
     }
   }
 
-  private updateAbsorption(dt: number, elapsed: number): void {
+  private updateAbsorption(elapsed: number): void {
     const absorption = this.absorption;
     const ship = this.shipPosition();
-    if (!absorption) {
-      for (const civilian of this.civilians) {
-        civilian.velocity = Math.max(0, civilian.velocity - dt * 4.5);
-        civilian.progress = Math.max(0, civilian.progress - dt * 0.65);
-        civilian.mesh.position = civilian.home.add(new Vector3(Math.sin(elapsed * 1.6 + civilian.phase) * 0.12, Math.sin(elapsed * 2.1 + civilian.phase) * 0.04, 0));
-        civilian.mesh.visibility = 0.72;
-      }
-      return;
-    }
+    if (!absorption) return;
     const target = absorption.target;
     const beamStart = ship.add(new Vector3(0, -0.5, 0));
     alignCylinder(absorption.beam, beamStart, target);
@@ -581,19 +549,6 @@ export class BattleCombatVfx {
     absorption.funnel.visibility = progress;
     absorption.ring.position = target;
     absorption.ring.scaling.setAll(0.92 + Math.sin(elapsed * 7) * 0.08);
-    const gatherPoint = target.add(Vector3.Up().scale(1.2));
-    for (const civilian of this.civilians) {
-      civilian.velocity += (1.35 + civilian.progress * 4.8) * dt;
-      civilian.progress += civilian.velocity * dt;
-      if (civilian.progress >= 1) { civilian.progress = 0; civilian.velocity = 0; }
-      const gatherT = Math.min(1, civilian.progress / 0.42);
-      const riseT = Math.max(0, (civilian.progress - 0.42) / 0.58);
-      civilian.mesh.position = civilian.progress <= 0.42
-        ? Vector3.Lerp(civilian.home, gatherPoint, gatherT * gatherT)
-        : Vector3.Lerp(gatherPoint, ship.add(new Vector3(0, -0.8, 0)), riseT * riseT);
-      civilian.mesh.scaling.setAll(1 - riseT * 0.48);
-      civilian.mesh.visibility = 0.84;
-    }
   }
 
   private syncGroundSwarm(state: Readonly<CombatState>): void {

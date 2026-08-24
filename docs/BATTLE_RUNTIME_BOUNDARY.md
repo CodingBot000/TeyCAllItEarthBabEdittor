@@ -1,10 +1,16 @@
 # 1차 전투 런타임 경계 ADR
 
-- 상태: 1차 결정 이행 완료
+- 상태: 1차 경계는 역사 기록, 실제 Babylon 2D 배틀 런타임 이행 완료
 - 후속 작업: [Battle Scene 개발계획서](./battlescene/BATTLE_SCENE_DEVELOPMENT_PLAN.md)
 - 전환 시점: 앞단 시작화면·월드맵 구현 완료 후 B0~B6 배틀 런타임 개발
 
 ## 결정
+
+### 2026-08-24 현재 상태
+
+아래 `UnavailableBattleGateway`와 placeholder 설명은 1차 앞단 완료 시점의 역사 기록이다. 현재 `BattleGateway`는 engine-neutral `BattleLaunchRequest`를 유지하면서 `mapId`와 저장된 미션 setup을 실제 `BattleScreen`에 전달한다. 전투는 Babylon canvas에서 실행되고, 종료는 Debrief로 돌아간다.
+
+새 런타임은 legacy 도로/Nav를 활성화하지 않는다. 고정 측면 X축 좌표계, 2D 바이옴 카탈로그, 도시 자원 풀, React HUD와 상태 기반 visual pool을 사용한다.
 
 1차에서는 `src/game/battle/BattleGateway.ts`의 engine-neutral 계약만 실행 경로에 둔다. `UnavailableBattleGateway`는 전투 요청을 명시적으로 거부하고 화면에는 placeholder 안내만 남긴다.
 
@@ -20,7 +26,7 @@
 
 ## 검증
 
-`src/game/battle/BattleGateway.test.ts`는 1차 gateway가 unavailable 상태이고 요청 타입에 Babylon/도로/Nav 데이터가 포함되지 않는지 보장한다. `npm run check`와 M7 무반입 검색은 전투 renderer 직접 참조가 없음을 확인한다.
+`src/game/battle/BattleGateway.test.ts`는 요청 타입이 Babylon/도로/Nav 데이터를 포함하지 않고 저장된 `mapId`를 전달하는지 보장한다. `npm run check`는 타입·도메인·production build를, `npm run test:e2e:side-view`는 실제 Babylon 전투 흐름을 검증한다.
 
 ## 후속 전환
 

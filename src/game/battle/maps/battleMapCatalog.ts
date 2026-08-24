@@ -56,15 +56,16 @@ export const CITY_NIGHT_MAP: BattleMapDefinition = {
 export const RIVER_DAY_MAP: BattleMapDefinition = {
   ...CITY_DAY_MAP,
   id: 'river-day',
+  version: 2,
   displayName: 'River Metropolis',
   assetRoot: 'battlescene/maps/river-day',
   backgrounds: {
     sky: 'backgrounds/sky-river-day-base.webp',
     clouds: 'backgrounds/clouds-river-day.webp',
-    far: 'backgrounds/city-far-river-day.webp',
-    middle: 'backgrounds/city-middle-river-day.webp',
-    near: 'backgrounds/city-near-river-day.webp',
-    ground: 'backgrounds/ground-river-day.webp',
+    far: 'backgrounds/city-far-river-day-v2.webp',
+    middle: 'backgrounds/city-middle-river-day-v2.webp',
+    near: 'backgrounds/city-near-river-day-v2.webp',
+    ground: 'backgrounds/ground-river-day-v2.webp',
     foregroundAtmosphere: 'backgrounds/foreground-atmosphere-river-day.webp',
   },
 };
@@ -72,15 +73,16 @@ export const RIVER_DAY_MAP: BattleMapDefinition = {
 export const DESERT_DAY_MAP: BattleMapDefinition = {
   ...CITY_DAY_MAP,
   id: 'desert-day',
+  version: 2,
   displayName: 'Desert Tech Hub',
   assetRoot: 'battlescene/maps/desert-day',
   backgrounds: {
     sky: 'backgrounds/sky-desert-day-base.webp',
     clouds: 'backgrounds/clouds-desert-day.webp',
-    far: 'backgrounds/city-far-desert-day.webp',
-    middle: 'backgrounds/city-middle-desert-day.webp',
-    near: 'backgrounds/city-near-desert-day.webp',
-    ground: 'backgrounds/ground-desert-day.webp',
+    far: 'backgrounds/city-far-desert-day-v2.webp',
+    middle: 'backgrounds/city-middle-desert-day-v2.webp',
+    near: 'backgrounds/city-near-desert-day-v2.webp',
+    ground: 'backgrounds/ground-desert-day-v2.webp',
     foregroundAtmosphere: 'backgrounds/foreground-atmosphere-desert-day.webp',
   },
 };

@@ -5,6 +5,7 @@ import { WORLD_DATA_VERSION } from '../data/world';
 import { resolveRecoveredCohorts } from './cohortRules';
 import { calculateBreachProgress } from './missionRules';
 import type { CampaignState, CityConquestState, CityDefinition, CityState, CombatModifiers, CombatState, LogisticsState, MissionCargo, PendingDebriefState, RepairAssessment, ResourceWallet } from './types';
+import { createCitySideViewResourceState } from '../battle/gameplay/sideViewResourcePools';
 
 export function createCityConquestState(alert = 0, visits = 0): CityConquestState {
   return {
@@ -42,6 +43,7 @@ export function createCityState(city: CityDefinition): CityState {
     visits: 0,
     facilities: {},
     absorbables: {},
+    sideViewResources: createCitySideViewResourceState(city),
     conquest: createCityConquestState(),
     lastVisitedAtMinutes: null,
   };
@@ -49,7 +51,7 @@ export function createCityState(city: CityDefinition): CityState {
 
 export function createNewCampaign(seed = 48021): CampaignState {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     worldDataVersion: WORLD_DATA_VERSION,
     campaignId: `campaign-${seed}`,
     seed,
@@ -80,7 +82,7 @@ export function createNewCampaign(seed = 48021): CampaignState {
 export function applyCombatResult(campaign: CampaignState, combat: CombatState, city: CityDefinition): CampaignState {
   const previous = campaign.cities[city.id] ?? createCityState(city);
   const earned = combat.result === 'FAILED'
-    ? scaleResources(combat.earned, 0.5)
+    ? scaleResources(combat.earned, combat.endReason === 'ABORTED' ? BALANCE.abort.cargoRecoveryRate : 0.5)
     : combat.result === 'PARTIAL'
       ? scaleResources(combat.earned, 0.8)
     : combat.earned;
@@ -101,18 +103,12 @@ export function applyCombatResult(campaign: CampaignState, combat: CombatState, 
         repairProgress: 0,
       }])),
     },
-    absorbables: {
-      ...previous.absorbables,
-      ...Object.fromEntries(combat.absorbableTargets.map((target) => [target.id, {
-        remainingAmount: Math.max(0, Math.round(target.remainingAmount)),
-        destroyedAmount: Math.max(0, Math.round(target.destroyedAmount)),
-        discovered: target.discovered,
-      }])),
-    },
+    absorbables: persistAbsorbableTargetStates(previous, combat),
+    sideViewResources: applySideViewResourceResult(previous, combat),
   };
   const globalThreatDelta = Math.min(18, 2 + combat.elapsedSeconds / 80 + combat.totalAbsorbed / 250000 + combat.destroyedInfrastructure * 1.5);
   const resourcesWithEarnings = addResources(campaign.resources, earned);
-  const repairAssessment = combat.result === 'FAILED' ? calculateRepairAssessment(resourcesWithEarnings, combat) : null;
+  const repairAssessment = combat.result === 'FAILED' && combat.endReason !== 'ABORTED' ? calculateRepairAssessment(resourcesWithEarnings, combat) : null;
   return {
     ...campaign,
     currentTimeMinutes: campaign.currentTimeMinutes + combat.elapsedSeconds / 60,
@@ -121,8 +117,8 @@ export function applyCombatResult(campaign: CampaignState, combat: CombatState, 
     resources: repairAssessment ? subtractRepairCost(resourcesWithEarnings, repairAssessment) : resourcesWithEarnings,
     mothership: {
       ...campaign.mothership,
-      hull: combat.result === 'FAILED' ? campaign.mothership.maxHull * BALANCE.repair.emergencyHullRatio : combat.mothership.hull,
-      shield: combat.result === 'FAILED' ? campaign.mothership.maxShield : combat.mothership.shield,
+      hull: combat.result === 'FAILED' && combat.endReason !== 'ABORTED' ? campaign.mothership.maxHull * BALANCE.repair.emergencyHullRatio : combat.mothership.hull,
+      shield: combat.result === 'FAILED' && combat.endReason !== 'ABORTED' ? campaign.mothership.maxShield : combat.mothership.shield,
     },
     cities: { ...campaign.cities, [city.id]: nextCity },
     completedBattles: campaign.completedBattles + 1,
@@ -132,7 +128,11 @@ export function applyCombatResult(campaign: CampaignState, combat: CombatState, 
 export function stageMissionResult(campaign: CampaignState, combat: CombatState, city: CityDefinition): CampaignState {
   const previous = campaign.cities[city.id] ?? createCityState(city);
   const outcome = combat.result === 'ACTIVE' ? 'FAILED' : combat.result;
-  const recoveryRate = outcome === 'FAILED' ? Math.min(1, 0.2 + upgradeLevel(campaign, 'recovery-protocol') * 0.1) : 1;
+  const recoveryRate = outcome === 'FAILED'
+    ? combat.endReason === 'ABORTED'
+      ? BALANCE.abort.cargoRecoveryRate
+      : Math.min(1, 0.2 + upgradeLevel(campaign, 'recovery-protocol') * 0.1)
+    : 1;
   const cargoRecovered = recoverMissionCargo(combat.cargo, recoveryRate);
   const unusedCells = Math.max(0, Math.floor(combat.overchargeCells));
   cargoRecovered.coreCharge += Math.floor(unusedCells * BALANCE.conquest.coreChargePerCell * recoveryRate);
@@ -176,14 +176,8 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
         repairProgress: 0,
       }])),
     },
-    absorbables: {
-      ...previous.absorbables,
-      ...Object.fromEntries(combat.absorbableTargets.map((target) => [target.id, {
-        remainingAmount: Math.max(0, Math.round(target.remainingAmount)),
-        destroyedAmount: Math.max(0, Math.round(target.destroyedAmount)),
-        discovered: target.discovered,
-      }])),
-    },
+    absorbables: persistAbsorbableTargetStates(previous, combat),
+    sideViewResources: applySideViewResourceResult(previous, combat),
     conquest: {
       ...previous.conquest,
       controlState,
@@ -196,7 +190,7 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     },
   };
   const globalThreatDelta = Math.min(18, 2 + combat.elapsedSeconds / 80 + combat.totalAbsorbed / 250000 + combat.destroyedInfrastructure * 1.5);
-  const repairAssessment = outcome === 'FAILED' ? calculateRepairAssessment(campaign.resources, combat) : null;
+  const repairAssessment = outcome === 'FAILED' && combat.endReason !== 'ABORTED' ? calculateRepairAssessment(campaign.resources, combat) : null;
   const pendingDebrief: PendingDebriefState = {
     id: `debrief-${campaign.campaignId}-${campaign.completedBattles + 1}`,
     cityId: city.id,
@@ -213,6 +207,7 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     globalThreatDelta,
     createdAtMinutes: campaign.currentTimeMinutes + combat.elapsedSeconds / 60,
     repairAssessment,
+    endReason: combat.endReason,
   };
   return {
     ...campaign,
@@ -221,8 +216,8 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     currentCityId: city.id,
     mothership: {
       ...campaign.mothership,
-      hull: combat.result === 'FAILED' ? campaign.mothership.maxHull * BALANCE.repair.emergencyHullRatio : combat.mothership.hull,
-      shield: combat.result === 'FAILED' ? campaign.mothership.maxShield : combat.mothership.shield,
+      hull: combat.result === 'FAILED' && combat.endReason !== 'ABORTED' ? campaign.mothership.maxHull * BALANCE.repair.emergencyHullRatio : combat.mothership.hull,
+      shield: combat.result === 'FAILED' && combat.endReason !== 'ABORTED' ? campaign.mothership.maxShield : combat.mothership.shield,
     },
     cities: { ...campaign.cities, [city.id]: nextCity },
     cohorts: nextCohorts,
@@ -232,6 +227,32 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     pendingDebrief,
     resources: repairAssessment ? subtractRepairCost(campaign.resources, repairAssessment) : campaign.resources,
   };
+}
+
+function persistAbsorbableTargetStates(previous: CityState, combat: CombatState): CityState['absorbables'] {
+  if (combat.battleMode === 'SIDE_VIEW') return { ...previous.absorbables };
+  return {
+    ...previous.absorbables,
+    ...Object.fromEntries(combat.absorbableTargets.map((target) => [target.id, {
+      remainingAmount: Math.max(0, Math.round(target.remainingAmount)),
+      destroyedAmount: Math.max(0, Math.round(target.destroyedAmount)),
+      discovered: target.discovered,
+    }])),
+  };
+}
+
+function applySideViewResourceResult(previous: CityState, combat: CombatState): CityState['sideViewResources'] {
+  if (combat.battleMode !== 'SIDE_VIEW') return previous.sideViewResources;
+  const pools = Object.fromEntries(Object.entries(previous.sideViewResources.pools).map(([kind, pool]) => [kind, { ...pool }])) as CityState['sideViewResources']['pools'];
+  for (const target of combat.absorbableTargets) {
+    const pool = pools[target.kind];
+    if (!pool) continue;
+    const depletedAmount = Math.max(0, Math.min(pool.remainingAmount, target.initialAmount - target.remainingAmount));
+    const destroyedAmount = Math.max(0, Math.min(depletedAmount, target.destroyedAmount));
+    pool.remainingAmount = Math.max(0, pool.remainingAmount - depletedAmount);
+    pool.destroyedAmount = Math.min(pool.initialAmount - pool.remainingAmount, pool.destroyedAmount + destroyedAmount);
+  }
+  return { ...previous.sideViewResources, pools };
 }
 
 export function calculateRepairAssessment(resources: ResourceWallet, combat: CombatState): RepairAssessment {

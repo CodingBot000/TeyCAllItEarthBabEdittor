@@ -46,6 +46,8 @@ export const RIVER_GAMEPLAY_PROFILE: BattleGameplayProfile = {
   ...COMMON_PROFILE,
   id: 'river-side-view-v1',
   absorbableWeights: { ORGANIC: 3, VEHICLE: 2, MACHINERY: 4, POWER: 4, DATA: 2, RELIC: 1 },
+  defenseWeights: { SAM: 2, RADAR: 4, AIRBASE: 1, POWER: 3, RESEARCH: 2 },
+  enemyPressureMultiplier: 1.05,
   groundPressureMultiplier: 1.12,
 };
 
@@ -53,9 +55,11 @@ export const DESERT_GAMEPLAY_PROFILE: BattleGameplayProfile = {
   ...COMMON_PROFILE,
   id: 'desert-side-view-v1',
   absorbableWeights: { ORGANIC: 2, VEHICLE: 2, MACHINERY: 2, POWER: 5, DATA: 4, RELIC: 3 },
+  defenseWeights: { SAM: 5, RADAR: 2, AIRBASE: 3, POWER: 4, RESEARCH: 3 },
   enemyPressureMultiplier: 1.15,
   groundPressureMultiplier: 1.2,
   rewardMultiplier: 1.12,
+  occupationNodeCount: 3,
 };
 
 const PROFILE_BY_PRESET_ID: Record<string, BattleGameplayProfile> = {
@@ -64,6 +68,14 @@ const PROFILE_BY_PRESET_ID: Record<string, BattleGameplayProfile> = {
   'desert-tech-hub': DESERT_GAMEPLAY_PROFILE,
 };
 
+const PROFILE_BY_ID: Record<string, BattleGameplayProfile> = Object.fromEntries(
+  Object.values(PROFILE_BY_PRESET_ID).map((profile) => [profile.id, profile]),
+);
+
 export function gameplayProfileForPreset(presetId: string): BattleGameplayProfile {
   return PROFILE_BY_PRESET_ID[presetId] ?? COASTAL_GAMEPLAY_PROFILE;
+}
+
+export function gameplayProfileById(profileId: string): BattleGameplayProfile | null {
+  return PROFILE_BY_ID[profileId] ?? null;
 }

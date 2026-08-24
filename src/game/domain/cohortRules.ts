@@ -162,9 +162,14 @@ export function resolveRecoveredCohorts(state: CombatState): CohortMissionResult
     if (!cohort.deployed) return [];
     const position = { ...cohort.position };
     if (state.result === 'FAILED' || cohort.strength <= 0 || !cohort.recoverable) return [{ ...cohortResult(cohort, 'LOST'), position }];
+    const holdingRequiredOccupationNode = state.missionType === 'OCCUPATION'
+      && state.result === 'SUCCESS'
+      && state.extractionStatus === 'COMPLETE'
+      && state.occupationReady
+      && state.controlNodes.some((node) => node.requiredForOccupation && node.owner === 'ALIEN' && distance(position, node.position) <= node.radius + BALANCE.cohort.assaultRange);
+    if (holdingRequiredOccupationNode) return [{ ...cohortResult(cohort, 'GARRISON_CANDIDATE'), position }];
     const inRecoveryRange = distance(position, state.mothership.position) <= BALANCE.cohort.recoveryRadius * state.modifiers.cohortRecoveryRadiusMultiplier;
     if (inRecoveryRange) return [{ ...cohortResult(cohort, 'RECOVERED'), position }];
-    if (state.missionType === 'OCCUPATION' && state.extractionStatus === 'COMPLETE' && state.occupationReady) return [{ ...cohortResult(cohort, 'GARRISON_CANDIDATE'), position }];
     return [{ ...cohortResult(cohort, 'LOST'), position }];
   });
 }

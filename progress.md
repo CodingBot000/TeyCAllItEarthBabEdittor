@@ -64,3 +64,28 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 최종 `npm run check` 통과: TypeScript, Vitest 26/26, Next.js production build 성공.
 - 최종 `npm run lint`는 오류 0건이며 위의 기존 `<img>` 성능 경고 2건만 남았다.
 - `git diff --check` 통과.
+
+## 2026-08-24 — 수정 전용 개발계획 실행
+
+- 사용자 요청: `BATTLE_2D_GAMEPLAY_CORRECTION_PLAN.md`의 C0~C8을 구현하고, 각 작업 단위마다 계획서와 이 파일을 갱신한다.
+- 현재 기준선: `d262530`의 main, 추적 파일 변경 없음. `cloud-*`, `mothership-raised.png`, `sam-road-layout*.png`, 기존/신규 `output/**`는 사용자 또는 로컬 검증 산출물로 보존하며 커밋 범위에서 제외한다.
+- C0 시작: 기존 `npm run check`와 현재 side-view 브라우저 검증을 기준선으로 사용한다.
+- C0 완료: `npm run check`는 TypeScript·Vitest 26/26·production build를 통과했고, lint 오류는 0건이다. 기존 `<img>` 최적화 경고 2건은 별도 성능 개선 범위로 남긴다.
+- C1 진행: 키보드/포인터 공통 이동 입력, 모바일 홀드 버튼, 확인형 임무 포기(`ABORTED`), 35% 포기 화물 회수율, 개발 환경 전용 debug 쿼리와 저장 격리를 구현했다. `npm run check`는 이 시점에 TypeScript·Vitest 29/29·production build를 통과했다. 다음은 모바일/포기 브라우저 검증이다.
+- C1 브라우저 반복: 900×500 포인터 검증에서 Next 개발 도구 버튼이 좌하단 이동 버튼을 가리는 현상을 확인했다. 제품 UI가 아니라 개발 오버레이 충돌이므로 검증 스크립트에서만 `nextjs-portal`을 숨겼다. 동시에 coarse pointer 900px 폭에서는 목표 HUD가 이동 버튼과 겹치던 실제 레이아웃을 수정했다. 900×500·640×360에서 양방향 hold, pointerup/pointercancel 정지, 목표까지 이동 후 흡수가 모두 통과했고 스크린샷을 확인했다.
+- C1 완료: `verify-side-view-abort.mjs`로 확인 모달→`ABORTED` 디브리핑, 수리비 미표시, debug 직접 전투 후 실제 저장 불변을 확인했다. production 서버에서도 `debug=battle`, `battle-fast`, `battle-debug` 쿼리가 전투 진입·저장 변경을 만들지 않았다. 정상 전체 흐름 및 일반 캠페인 대파 수리 흐름도 통과했다. 최종 `npm run check`는 29/29, `npm run lint`는 오류 0건(기존 `<img>` 경고 2건), `git diff --check` 통과다.
+- C2 시작: 기존 dynamic target ID(`city:visit-N:cluster-N`)가 잔량 키로 사용되어 다음 방문에서 재생성되는 문제를 CityState 종류별 풀과 미션 배치 스냅샷으로 교체한다. v4 저장의 확정 가능한 ID는 종류별 풀로 합산하고, 판별 불가 dynamic ID는 원본 백업과 도시 migration backup 모두에 보존한다.
+- C2 진행: v5 `sideViewResources`와 `MissionLoadout.battleSetup`을 구현했다. 동일 미션의 배치/수량은 단위 테스트에서 고정되고 다음 방문은 새 seed로 위치가 바뀌며, 종류별 생성 총량은 남은 풀보다 크지 않다. v4 정적 ID·동적 ID migration도 테스트했다. 실제 정상 전투에서는 ORGANIC 풀 43,764가 18,029 흡수 뒤 25,735로 저장되는 것을 확인했다.
+- C2 완료: `npm run check`는 TypeScript·Vitest 31/31·production build를 통과했고, lint 오류 0건과 `git diff --check` 통과를 확인했다. C2가 추가한 v5 미션 setup/자원 풀은 정상 전체 흐름 브라우저 테스트에서 저장·차감까지 검증됐다.
+- C3 시작: 고정 18명 civilian VFX를 제거하고, ORGANIC target 중심에만 시민 덩어리·숫자·잔량 비율을 표현한다. 함께 scanner-array의 실제 자동 탐지 거리와 화면 밖 목표 방향/거리를 HUD snapshot으로 추가한다.
+- C3 완료: 고정 18명 VFX를 삭제하고 ORGANIC target 전용 `OrganicClusterVisualAdapter`를 추가했다. River 브라우저 검증에서 `1.7만 → 1.4만` 숫자와 군집 표시가 실제 흡수량에 맞춰 감소했고, 근접 target 고갈 뒤 HUD guidance가 화면 밖 신호의 LEFT/거리 값을 반환·표시했다. scanner-array 범위 단위 테스트를 포함해 `npm run check` 32/32, lint 오류 0건, diff check 통과다.
+- C4 시작: runtime snapshot에 EMP/Plasma/Absorb/Overdrive/Extract의 가용성·실패 이유·쿨다운을 계산해 버튼에 반영하고, River/Desert profile의 defenseWeights·enemyPressureMultiplier·groundPressureMultiplier·occupationNodeCount를 실제 생성 규칙으로 연결한다.
+- C4 완료: 능력 availability snapshot/disabled reason을 구현했고, EMP 사용 후 cells 3→2·16초 cooldown·disabled 버튼을 browser에서 확인했다. 2D 바이옴 카탈로그로 side-view를 3D Coastal clone 데이터에서 분리했으며, River(시설 5/필수 노드 2)와 Desert(시설 6/필수 노드 3, 더 높은 압력)의 snapshot 차이를 검증했다. `npm run check` 35/35, lint 오류 0건, diff check 통과다.
+- C5 시작: extraction 중 모든 코호트를 RETREAT로 덮어쓰던 AI를 RAID/OCCUPATION으로 분기한다. OCCUPATION 성공 후 필수 노드에 남은 생존 코호트는 recovery radius보다 먼저 GARRISON_CANDIDATE로 판정한다.
+- C5 완료: OCCUPATION의 node hold/후보 우선 판정을 구현했다. 단위 테스트는 extraction 중 RETREAT 미전환과 recovery radius보다 GARRISON_CANDIDATE 우선 처리를, missionRules 테스트는 선택 후보만 GARRISON이고 미선택 후보는 Reserve임을 검증한다. `npm run check` 36/36, lint 오류 0건, diff check 통과다.
+- C6 시작: runtime의 독립 fighter 3대와 fixed ground prototype을 실제 EnemyState/CombatFacilityState/GroundDefenderState ID 기준 visual pool로 대체한다. snapshot과 화면 객체 수·위치·파괴 상태가 같도록 자동화용 visual summary도 추가한다.
+- C6 완료: `BattleEntityVisuals`가 actual fighter/ground IDs를 동기화하고, non-debug prototype은 숨긴다. visual-sync browser script는 fighter 4개 ID·X/Z와 ground 8개 ID를 state와 비교해 통과했으며, 텍스처 로드 후 실제 fighter sprite 화면도 확인했다. `npm run check` 36/36, lint 오류 0건, diff check 통과다.
+- C7 시작: C1~C6의 mobile/abort/failure/full-flow/visual-sync browser scripts를 하나의 재실행 가능한 검증 명령으로 묶고, 계획서 및 상위 문서의 구현 상태를 최신 코드와 맞춘다.
+- C7 완료: `test:e2e:side-view` runner와 GitHub Actions CI를 추가했다. 기본 runner는 로컬 Chrome fallback/CI Playwright Chromium을 모두 지원한다. 정상 RAID·대파·모바일 900/640·포기·visual sync·production debug 7개 결과가 전부 true/errors=[]였고, 최종 check 36/36·lint 오류 0건·diff check를 통과했다.
+- C8 시작: River/Desert 마스터 기반 레이어의 alpha/중복 실루엣/패럴랙스 이음새를 실제 맵 화면과 파일 메타데이터로 점검한다. 필요한 경우 투명 레이어 아트 산출물을 만들고, 그렇지 않으면 남은 최종 아트 요구사항을 명시적으로 기록한다.
+- C8 완료: built-in ImageGen으로 River/Desert Far/Middle/Near/Ground 독립 alpha PNG v2 원본 8개를 만들고, `generate:battle:biomes`가 2048×724 alpha WebP와 manifest v2를 만들도록 연결했다. flattened preview와 좌우 이동 battle screenshot을 검토했고 biome-art E2E가 River/Desert v2 manifest/path를 검증했다. 최종 `npm run check:full`은 36/36·lint 오류 0건(기존 경고 2건)·browser E2E 8/8·diff check를 통과했다.

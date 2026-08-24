@@ -1,10 +1,12 @@
 import { createCombatState, refreshAbsorbableTargetStatuses, stopBeam } from '../../domain/combatRules';
 import { resolveMissionOutcome } from '../../domain/missionRules';
 import type { AbilityId, AbsorbableTargetState, CampaignState, CityDefinition, CityState, CombatState, TacticalPreset, Vec2 } from '../../domain/types';
-import { gameplayProfileForPreset, type BattleGameplayProfile } from './BattleGameplayProfile';
+import { gameplayProfileById, gameplayProfileForPreset, type BattleGameplayProfile } from './BattleGameplayProfile';
+import { createPlannedBattleSetup } from './battleSetupRules';
 import { generateAbsorbableClusters } from './generateAbsorbableClusters';
 import { tickGroundSwarm } from './groundSwarmRules';
 import { tickSideViewCohortAi } from './cohortAiRules';
+import { createSideViewTacticalPreset, sideViewBiomeForProfile } from './sideViewBiomeCatalog';
 
 export interface SideViewBattleSession {
   combatState: CombatState;
@@ -18,32 +20,26 @@ export function createSideViewBattleSession(
   sourcePreset: TacticalPreset,
   missionId = campaign.plannedMission?.id ?? `${campaign.campaignId}:${city.id}:visit-${cityState.visits + 1}`,
 ): SideViewBattleSession {
-  const profile = gameplayProfileForPreset(sourcePreset.id);
+  const setup = campaign.plannedMission?.cityId === city.id
+    ? campaign.plannedMission.battleSetup
+    : createPlannedBattleSetup(campaign, city, missionId);
+  const profile = gameplayProfileById(setup.gameplayProfileId) ?? gameplayProfileForPreset(sourcePreset.id);
+  const biome = sideViewBiomeForProfile(profile.id);
   const generatedTargets = generateAbsorbableClusters({
     campaignSeed: campaign.seed,
     cityId: city.id,
     visit: cityState.visits + 1,
     missionId,
     profile,
-    sourceTargets: sourcePreset.absorbableTargets,
+    sourceTargets: biome.absorbableTargets,
+    layoutSeed: setup.layoutSeed,
+    availableAmountsByKind: Object.fromEntries(Object.entries(cityState.sideViewResources.pools).map(([kind, pool]) => [kind, pool.remainingAmount])),
   });
-  const landmarkTarget = generatedTargets.find((target) => target.optional) ?? generatedTargets[generatedTargets.length - 1];
-  const preset: TacticalPreset = {
-    ...sourcePreset,
-    landmark: {
-      ...sourcePreset.landmark,
-      objectiveTargetId: landmarkTarget?.id ?? sourcePreset.landmark.objectiveTargetId,
-      objectiveLabel: landmarkTarget ? `OPTIONAL: ABSORB ${landmarkTarget.label}` : sourcePreset.landmark.objectiveLabel,
-    },
-    sectors: [{ id: `${city.id}:side-view`, label: 'GROUND ABSORPTION CORRIDOR', center: { x: 0, z: 0 }, radius: profile.worldMaxX }],
-    absorbableTargets: generatedTargets,
-    populationZones: sourcePreset.populationZones.map((zone) => ({ ...zone, center: { x: zone.center.x, z: 0 } })),
-    facilities: sourcePreset.facilities.map((facility) => ({ ...facility, position: { x: facility.position.x, z: 0 } })),
-    controlNodes: sourcePreset.controlNodes.map((node) => ({ ...node, position: { x: node.position.x, z: 0 } })),
-    groundDefenders: sourcePreset.groundDefenders.map((defender) => ({ ...defender, position: { x: defender.position.x, z: 0 } })),
-  };
+  const facilities = profileFacilities(biome.facilities, profile);
+  const preset = createSideViewTacticalPreset(biome, profile, generatedTargets, facilities);
   const combatState = createCombatState(campaign, city, cityState, preset);
   combatState.battleMode = 'SIDE_VIEW';
+  combatState.enemyPressureMultiplier = profile.enemyPressureMultiplier;
   combatState.survivalUnlockSeconds = profile.survivalUnlockSeconds;
   combatState.mothership.position = { x: 0, z: 0 };
   combatState.mothership.velocity = { x: 0, z: 0 };
@@ -53,6 +49,15 @@ export function createSideViewBattleSession(
   combatState.extractionStatus = 'LOCKED';
   discoverNearbySideViewTargets(combatState, profile);
   return { combatState, profile };
+}
+
+function profileFacilities(sourceFacilities: TacticalPreset['facilities'], profile: BattleGameplayProfile): TacticalPreset['facilities'] {
+  const maximumWeight = Math.max(1, ...Object.values(profile.defenseWeights));
+  return sourceFacilities.filter((facility) => {
+    const ofKind = sourceFacilities.filter((candidate) => candidate.kind === facility.kind);
+    const allowedCount = Math.min(ofKind.length, Math.max(1, Math.ceil(ofKind.length * profile.defenseWeights[facility.kind] / maximumWeight)));
+    return ofKind.indexOf(facility) < allowedCount;
+  }).map((facility) => ({ ...facility, position: { x: facility.position.x, z: 0 } }));
 }
 
 export function tickSideViewBattle(state: CombatState, profile: BattleGameplayProfile, dt: number): void {
@@ -69,6 +74,7 @@ export function tickSideViewBattle(state: CombatState, profile: BattleGameplayPr
   if (state.mothership.extractionProgress < 1) return;
   state.extractionStatus = 'COMPLETE';
   state.mothership.extractionStatus = 'COMPLETE';
+  state.endReason = 'EXTRACTED';
   state.result = resolveMissionOutcome(state);
 }
 
@@ -84,11 +90,22 @@ export function beginSideViewExtraction(state: CombatState): { ok: boolean; reas
   return { ok: true };
 }
 
+export function abortSideViewBattle(state: CombatState): { ok: boolean; reason?: string } {
+  if (state.result !== 'ACTIVE') return { ok: false, reason: 'COMBAT IS OVER' };
+  if (state.activeAbility === 'beam') stopBeam(state, 'MANUAL');
+  state.result = 'FAILED';
+  state.endReason = 'ABORTED';
+  state.mothership.extractionStatus = 'AVAILABLE';
+  state.extractionStatus = 'AVAILABLE';
+  return { ok: true };
+}
+
 export function discoverNearbySideViewTargets(state: CombatState, profile: BattleGameplayProfile): number {
   let discovered = 0;
+  const effectiveAutoScanRange = profile.autoScanRange + state.modifiers.scanRangeBonus;
   for (const target of state.absorbableTargets) {
     if (target.discovered || target.remainingAmount <= 0) continue;
-    if (Math.abs(target.center.x - state.mothership.position.x) > profile.autoScanRange + target.radius) continue;
+    if (Math.abs(target.center.x - state.mothership.position.x) > effectiveAutoScanRange + target.radius) continue;
     target.discovered = true;
     discovered += 1;
   }

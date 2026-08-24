@@ -14,7 +14,9 @@
 		"lint": "eslint .",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
-		"check": "npm run typecheck && npm run test && npm run build"
+		"check": "npm run typecheck && npm run test && npm run build",
+		"test:e2e:side-view": "node scripts/run-side-view-verification.mjs",
+		"check:full": "npm run check && npm run lint && npm run test:e2e:side-view"
 	},
 	"dependencies": {
 		"@babylonjs/addons": "9.12.1",

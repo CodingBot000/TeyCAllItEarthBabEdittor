@@ -23,6 +23,7 @@ export type BeamStopReason = 'MANUAL' | 'MOVED' | 'IMPACTED' | 'ENERGY_DEPLETED'
 export type EnemyAbsorptionStatus = 'NEUTRAL' | 'FLEEING' | 'ATTACKING' | 'DISABLED' | 'DESTROYED';
 export type ExtractionStatus = 'LOCKED' | 'AVAILABLE' | 'IN_PROGRESS' | 'COMPLETE';
 export type BattleMode = 'LEGACY_TACTICAL' | 'SIDE_VIEW';
+export type CombatEndReason = 'EXTRACTED' | 'MOTHERSHIP_DISABLED' | 'ABORTED';
 
 export const ABSORBABLE_WEIGHT_BY_KIND: Record<AbsorbableKind, number> = {
   ORGANIC: 1,
@@ -98,6 +99,15 @@ export interface MissionLoadout {
   travelChargeCost: number;
   cellChargeCost: number;
   createdAtMinutes: number;
+  battleSetup: PlannedBattleSetup;
+}
+
+export interface PlannedBattleSetup {
+  missionId: string;
+  mapId: string;
+  gameplayProfileId: string;
+  gameplayProfileVersion: number;
+  layoutSeed: number;
 }
 
 export interface CampaignTransitState {
@@ -205,6 +215,7 @@ export interface PendingDebriefState {
   globalThreatDelta: number;
   createdAtMinutes: number;
   repairAssessment?: RepairAssessment | null;
+  endReason?: CombatEndReason | null;
 }
 
 export interface RepairAssessment {
@@ -296,6 +307,19 @@ export interface AbsorbablePersistentState {
   discovered: boolean;
 }
 
+export interface CityAbsorbablePoolState {
+  initialAmount: number;
+  remainingAmount: number;
+  destroyedAmount: number;
+}
+
+export interface CitySideViewResourceState {
+  profileId: string;
+  profileVersion: number;
+  pools: Record<AbsorbableKind, CityAbsorbablePoolState>;
+  migrationBackup: Record<string, AbsorbablePersistentState>;
+}
+
 export interface CityState {
   cityId: string;
   remainingPopulation: number;
@@ -305,12 +329,13 @@ export interface CityState {
   visits: number;
   facilities: Record<string, FacilityPersistentState>;
   absorbables: Record<string, AbsorbablePersistentState>;
+  sideViewResources: CitySideViewResourceState;
   conquest: CityConquestState;
   lastVisitedAtMinutes: number | null;
 }
 
 export interface CampaignState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   worldDataVersion: string;
   campaignId: string;
   seed: number;
@@ -397,6 +422,7 @@ export interface AbsorbableTargetDefinition {
   center: Vec2;
   radius: number;
   baseAmount: number;
+  initialAmountOverride?: number;
   density: number;
   yieldPerThousand: MissionYieldPerThousand;
   energyCostMultiplier: number;
@@ -638,6 +664,7 @@ export interface CombatState {
   plasmaUses: number;
   extractionStatus: ExtractionStatus;
   result: 'ACTIVE' | CombatOutcome;
+  endReason: CombatEndReason | null;
   activeAbility: AbilityId | null;
   abilityTarget: Vec2 | null;
   selectedTargetId: string | null;
@@ -647,6 +674,7 @@ export interface CombatState {
   lastScanDiscovered: number;
   defenseRating: number;
   defenseMultiplier: number;
+  enemyPressureMultiplier: number;
   modifiers: CombatModifiers;
   cooldowns: Record<AbilityId, number>;
   disabledUntil: Record<string, number>;

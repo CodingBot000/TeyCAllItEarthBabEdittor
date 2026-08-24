@@ -8,6 +8,8 @@ export interface AbsorbableClusterGenerationInput {
   missionId: string;
   profile: BattleGameplayProfile;
   sourceTargets: AbsorbableTargetDefinition[];
+  layoutSeed?: number;
+  availableAmountsByKind?: Partial<Record<AbsorbableKind, number>>;
 }
 
 interface RandomSource {
@@ -17,21 +19,32 @@ interface RandomSource {
 export function generateAbsorbableClusters(input: AbsorbableClusterGenerationInput): AbsorbableTargetDefinition[] {
   const { profile } = input;
   if (input.sourceTargets.length === 0 || profile.clusterCount <= 0) return [];
-  const random = seededRandom(`${input.campaignSeed}:${input.cityId}:${input.visit}:${input.missionId}:${profile.id}:${profile.version}`);
+  const availableTargets = input.sourceTargets.filter((target) => input.availableAmountsByKind === undefined || Math.max(0, input.availableAmountsByKind[target.kind] ?? 0) > 0);
+  if (availableTargets.length === 0) return [];
+  const random = seededRandom(input.layoutSeed === undefined
+    ? `${input.campaignSeed}:${input.cityId}:${input.visit}:${input.missionId}:${profile.id}:${profile.version}`
+    : `layout:${input.layoutSeed}`);
   const positions = generateClusterPositions(profile, random);
-  const unguarded = input.sourceTargets.filter((target) => target.requirement === 'NONE');
-  const gated = input.sourceTargets.filter((target) => target.requirement !== 'NONE');
+  const unguarded = availableTargets.filter((target) => target.requirement === 'NONE');
+  const gated = availableTargets.filter((target) => target.requirement !== 'NONE');
   const initialClusterIndex = positions.reduce((bestIndex, position, index) => Math.abs(position) < Math.abs(positions[bestIndex]) ? index : bestIndex, 0);
   const gatedClusterIndex = positions.reduce((bestIndex, position, index) => Math.abs(position) > Math.abs(positions[bestIndex]) ? index : bestIndex, 0);
 
-  return positions.map((x, index) => {
+  const drafts = positions.map((x, index) => {
     const candidates = index === initialClusterIndex && unguarded.length > 0
       ? unguarded
       : index === gatedClusterIndex && gated.length > 0
         ? gated
-        : targetsForWeightedKind(input.sourceTargets, profile, random);
-    const template = candidates[Math.floor(random.next() * candidates.length)] ?? input.sourceTargets[index % input.sourceTargets.length];
+        : targetsForWeightedKind(availableTargets, profile, random);
+    const template = candidates[Math.floor(random.next() * candidates.length)] ?? availableTargets[index % availableTargets.length];
     const amountScale = 0.82 + random.next() * 0.36;
+    return { x, index, template, amountScale, radiusScale: 0.9 + random.next() * 0.2 };
+  });
+  const allocations = allocatePoolAmounts(drafts, input.availableAmountsByKind);
+
+  return drafts.flatMap(({ x, index, template, amountScale, radiusScale }, draftIndex) => {
+    const initialAmountOverride = allocations[draftIndex];
+    if (input.availableAmountsByKind !== undefined && (!initialAmountOverride || initialAmountOverride <= 0)) return [];
     const clusterId = `${input.cityId}:visit-${input.visit}:cluster-${String(index + 1).padStart(2, '0')}`;
     return {
       ...template,
@@ -39,12 +52,39 @@ export function generateAbsorbableClusters(input: AbsorbableClusterGenerationInp
       sectorId: `${input.cityId}:side-view`,
       label: template.label,
       center: { x, z: 0 },
-      radius: Math.max(4.5, template.radius * (0.9 + random.next() * 0.2)),
+      radius: Math.max(4.5, template.radius * radiusScale),
       baseAmount: Math.max(1000, Math.round(template.baseAmount * amountScale)),
+      ...(initialAmountOverride !== undefined ? { initialAmountOverride } : {}),
       yieldPerThousand: scaleYield(template.yieldPerThousand, profile.rewardMultiplier),
       visualBudget: Math.max(6, Math.min(36, template.visualBudget)),
     };
   });
+}
+
+function allocatePoolAmounts(
+  drafts: Array<{ template: AbsorbableTargetDefinition; amountScale: number }>,
+  availableAmountsByKind: Partial<Record<AbsorbableKind, number>> | undefined,
+): Array<number | undefined> {
+  if (availableAmountsByKind === undefined) return drafts.map(() => undefined);
+  const allocations = drafts.map(() => 0);
+  const kinds = Object.keys(availableAmountsByKind) as AbsorbableKind[];
+  for (const kind of kinds) {
+    const draftIndexes = drafts.flatMap((draft, index) => draft.template.kind === kind ? [index] : []);
+    if (draftIndexes.length === 0) continue;
+    const available = Math.max(0, Math.floor(availableAmountsByKind[kind] ?? 0));
+    const desired = draftIndexes.map((index) => Math.max(1000, Math.round(drafts[index].template.baseAmount * drafts[index].amountScale)));
+    const desiredTotal = desired.reduce((sum, amount) => sum + amount, 0);
+    let allocated = 0;
+    for (let position = 0; position < draftIndexes.length; position += 1) {
+      const remaining = Math.max(0, available - allocated);
+      const amount = position === draftIndexes.length - 1
+        ? Math.min(remaining, desired[position])
+        : Math.min(remaining, Math.floor(desired[position] / Math.max(1, desiredTotal) * Math.min(available, desiredTotal)));
+      allocations[draftIndexes[position]] = amount;
+      allocated += amount;
+    }
+  }
+  return allocations;
 }
 
 function generateClusterPositions(profile: BattleGameplayProfile, random: RandomSource): number[] {
