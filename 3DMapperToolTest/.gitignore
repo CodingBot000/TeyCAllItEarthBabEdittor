@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.vite/
+
+# External GLB binaries are stored outside Git and outside the Vite public build.
+/local-assets/**/*.glb
+/local-assets/**/*.bin
+/local-assets/**/*.fbx
+/local-assets/**/*.blend
+/local-assets/**/*.json

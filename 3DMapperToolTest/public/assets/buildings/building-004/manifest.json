@@ -1,0 +1,21 @@
+{
+  "id": "building-004",
+  "displayName": "White and Brown Stepped Apartments",
+  "dimensions": {
+    "width": 8,
+    "height": 9,
+    "depth": 6
+  },
+  "atlas": "buildings/building-004/atlas.webp",
+  "faces": {
+    "front": "buildings/building-004/front.webp",
+    "right": "buildings/building-004/right.webp",
+    "back": "buildings/building-004/back.webp",
+    "left": "buildings/building-004/left.webp",
+    "roof": "buildings/building-004/roof.webp",
+    "bottom": "buildings/building-004/bottom.webp"
+  },
+  "mappingPreset": "src/domain/buildingCatalog.ts",
+  "sourceReference": "art-source/references/thetcall_inbattle_2d_day.png",
+  "sourceAtlas": "art-source/buildings/building-004/atlas.generated.png"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "building-003",
+  "displayName": "Warm Brown Balcony Mid-rise",
+  "dimensions": {
+    "width": 8,
+    "height": 8,
+    "depth": 5
+  },
+  "atlas": "buildings/building-003/atlas.webp",
+  "faces": {
+    "front": "buildings/building-003/front.webp",
+    "right": "buildings/building-003/right.webp",
+    "back": "buildings/building-003/back.webp",
+    "left": "buildings/building-003/left.webp",
+    "roof": "buildings/building-003/roof.webp",
+    "bottom": "buildings/building-003/bottom.webp"
+  },
+  "mappingPreset": "src/domain/buildingCatalog.ts",
+  "sourceReference": "art-source/references/thetcall_inbattle_2d_day.png",
+  "sourceAtlas": "art-source/buildings/building-003/atlas.generated.png"
+}
