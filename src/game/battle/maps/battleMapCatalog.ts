@@ -40,6 +40,7 @@ export const CITY_DAY_MAP: BattleMapDefinition = {
 export const CITY_NIGHT_MAP: BattleMapDefinition = {
   ...CITY_DAY_MAP,
   id: 'city-night',
+  version: 2,
   displayName: 'City Night',
   assetRoot: 'battlescene/maps/city-night',
   backgrounds: {

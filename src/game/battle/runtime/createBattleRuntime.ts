@@ -695,7 +695,6 @@ function assignBackgroundMaterial(mesh: AbstractMesh, url: string, scene: Scene,
   texture.wrapU = Texture.WRAP_ADDRESSMODE;
   texture.hasAlpha = isAtmosphere || !url.endsWith('sky-day-base.webp');
   material.diffuseTexture = texture;
-  material.emissiveTexture = texture;
   mesh.material = material;
 }
 

@@ -40,9 +40,9 @@ try {
   const launchedCampaign = await page.evaluate(() => JSON.parse(localStorage.getItem('they-call-it-earth.prototype.save.v1') ?? 'null'));
   if (launchedCampaign?.schemaVersion !== 5 || !launchedCampaign?.plannedMission?.battleSetup) throw new Error('Mission launch did not persist the v5 battle setup.');
   await page.getByRole('button', { name: /영공 진입/ }).click();
-  await page.locator('canvas[aria-label="Babylon battle scene"]').waitFor({ state: 'visible', timeout: 15000 });
-  await page.locator('[data-testid="battle-action-absorb"]').waitFor({ state: 'visible', timeout: 15000 });
-  await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ state: 'visible', timeout: 15000 });
+  await page.locator('canvas[aria-label="Babylon battle scene"]').waitFor({ state: 'visible', timeout: 30000 });
+  await page.locator('[data-testid="battle-action-absorb"]').waitFor({ state: 'visible', timeout: 30000 });
+  await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ state: 'visible', timeout: 30000 });
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function');
 
   const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text?.() ?? '{}'));

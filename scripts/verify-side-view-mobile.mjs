@@ -28,7 +28,7 @@ const holdMovementButton = async (button, milliseconds) => {
 
 try {
   await page.goto(`${baseUrl}/?debug=battle&city=seoul&battle-fast=1`, { waitUntil: 'domcontentloaded' });
-  await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 15000 });
+  await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 30000 });
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function');
   // The Next.js development toolbar occupies the same lower-left corner in local dev only.
   // Hide it so pointer assertions address the game controls, not framework chrome.

@@ -54,6 +54,8 @@ art-source/battlescene/maps/*
 !art-source/battlescene/maps/river/river-metropolis-master-v1.png
 !art-source/battlescene/maps/desert/
 !art-source/battlescene/maps/desert/desert-tech-hub-master-v1.png
+!art-source/battlescene/maps/city-night/
+!art-source/battlescene/maps/city-night/*.png
 assets/battlescene/
 !assets/battlescene/
 !assets/battlescene/**

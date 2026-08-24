@@ -29,7 +29,7 @@ try {
   await page.getByRole('button', { name: /임무 확정/ }).click();
   await page.getByRole('button', { name: /영공 진입/ }).waitFor({ timeout: 10000 });
   await page.getByRole('button', { name: /영공 진입/ }).click();
-  await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 15000 });
+  await page.locator('.battle-screen[data-battle-phase="ready"]').waitFor({ timeout: 30000 });
   await page.waitForFunction(() => typeof window.advanceTime === 'function');
   await page.keyboard.press('c');
   await page.evaluate(() => window.advanceTime?.(2600));

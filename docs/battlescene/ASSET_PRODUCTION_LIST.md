@@ -50,9 +50,9 @@
 | 맵 ID | 배경 레이어 | 런타임 상태 |
 |---|---:|---|
 | `city-day` | 6 | WebP 생성·Editor 패킹 완료 |
-| `city-night` | 6 | 낮 레이어에서 파생한 WebP 생성·카탈로그 등록 완료 |
+| `city-night` | 7 | 참고 night master 기반 독립 레이어 WebP 생성·카탈로그 등록 완료 |
 
-`city-night`은 공통 Battle Scene을 복제하지 않고 `map.manifest.json`과 6개 배경 경로만 교체하는 검증용 샘플이다. 최종 야간 아트는 별도 제작 단계에서 교체한다.
+`city-night`은 공통 Battle Scene을 복제하지 않고 `map.manifest.json`과 7개 배경 레이어 경로만 교체하는 맵이다. 참고 night master에서 도시 조명과 연무를 새로 구성했으며, `art-source/battlescene/maps/city-night/`에 비배포 원본을 보관한다.
 
 배틀 화면은 하나의 Babylon Editor 씬과 하나의 런타임 화면을 공유한다. 맵 스타일이 추가될 때 씬을 복제하지 않고 `maps/<map-id>/` 패키지만 추가한다.
 

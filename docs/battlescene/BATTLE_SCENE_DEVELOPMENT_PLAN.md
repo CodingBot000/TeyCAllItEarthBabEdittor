@@ -62,7 +62,7 @@
 - PNG 제작 원본과 WebP 런타임본 분리
 - 형제 프로젝트의 검증된 VFX WebP를 현재 런타임에 임시 참조 자산으로 복사
 - `city-day/map.manifest.json` 생성
-- `city-night` 배경 6종과 동일 manifest 계약 등록
+- `city-night` 배경 7종과 동일 manifest 계약 등록
 - 맵별 에셋과 공통 에셋 폴더 분리
 - 엔진 중립 `BattleGateway` 경계 존재
 
