@@ -53,9 +53,43 @@ export const CITY_NIGHT_MAP: BattleMapDefinition = {
   },
 };
 
+export const RIVER_DAY_MAP: BattleMapDefinition = {
+  ...CITY_DAY_MAP,
+  id: 'river-day',
+  displayName: 'River Metropolis',
+  assetRoot: 'battlescene/maps/river-day',
+  backgrounds: {
+    sky: 'backgrounds/sky-river-day-base.webp',
+    clouds: 'backgrounds/clouds-river-day.webp',
+    far: 'backgrounds/city-far-river-day.webp',
+    middle: 'backgrounds/city-middle-river-day.webp',
+    near: 'backgrounds/city-near-river-day.webp',
+    ground: 'backgrounds/ground-river-day.webp',
+    foregroundAtmosphere: 'backgrounds/foreground-atmosphere-river-day.webp',
+  },
+};
+
+export const DESERT_DAY_MAP: BattleMapDefinition = {
+  ...CITY_DAY_MAP,
+  id: 'desert-day',
+  displayName: 'Desert Tech Hub',
+  assetRoot: 'battlescene/maps/desert-day',
+  backgrounds: {
+    sky: 'backgrounds/sky-desert-day-base.webp',
+    clouds: 'backgrounds/clouds-desert-day.webp',
+    far: 'backgrounds/city-far-desert-day.webp',
+    middle: 'backgrounds/city-middle-desert-day.webp',
+    near: 'backgrounds/city-near-desert-day.webp',
+    ground: 'backgrounds/ground-desert-day.webp',
+    foregroundAtmosphere: 'backgrounds/foreground-atmosphere-desert-day.webp',
+  },
+};
+
 const MAP_CATALOG: Record<string, BattleMapDefinition> = {
   [CITY_DAY_MAP.id]: CITY_DAY_MAP,
   [CITY_NIGHT_MAP.id]: CITY_NIGHT_MAP,
+  [RIVER_DAY_MAP.id]: RIVER_DAY_MAP,
+  [DESERT_DAY_MAP.id]: DESERT_DAY_MAP,
 };
 const manifestRequests = new Map<string, Promise<BattleMapDefinition>>();
 

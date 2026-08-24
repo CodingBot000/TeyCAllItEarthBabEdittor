@@ -10,6 +10,8 @@
 관련 상세 문서:
 
 - [Battle Scene 구현안](./BATTLE_SCENE_IMPLEMENTATION_PLAN.md)
+- [2D Battle Gameplay 개발계획서](./BATTLE_2D_GAMEPLAY_DEVELOPMENT_PLAN.md)
+- [2D Battle Gameplay 수정 전용 개발계획서](./BATTLE_2D_GAMEPLAY_CORRECTION_PLAN.md)
 - [Battle Scene 신규 에셋 제작 목록](./ASSET_PRODUCTION_LIST.md)
 
 ## 1. 목표

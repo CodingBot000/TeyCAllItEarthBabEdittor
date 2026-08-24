@@ -396,7 +396,7 @@ export function WorldMapScreen({ campaign, cities, selectedCityId, travel, notic
           </button>
           <div className="city-panel-content">
             <div className="city-panel-head"><div className="panel-kicker">{t('map.strategicTheater')} / {String(cityTierLimit).padStart(2, '0')}</div><button className="city-panel-close" type="button" aria-label={t('map.closeDetails')} onClick={() => setIsPanelOpen(false)}>×</button></div>
-            {selectedCity ? <CityDetails city={selectedCity} campaign={campaign} playable={isPlayableCity(selectedCity.id)} canEngage={(campaign.currentCityId === selectedCity.id || campaign.currentCityId === null) && !travel} onMove={onMove} onEngage={onEngage} /> : selectedCountry ? <CountryDetails country={selectedCountry} playableCityCount={selectedCountryPlayableCityCount} /> : null}
+            {selectedCity ? <CityDetails city={selectedCity} campaign={campaign} playable={isPlayableCity(selectedCity.id)} canEngage={campaign.currentCityId === selectedCity.id && !travel} onMove={onMove} onEngage={onEngage} /> : selectedCountry ? <CountryDetails country={selectedCountry} playableCityCount={selectedCountryPlayableCityCount} /> : null}
           </div>
         </aside>
       </section>

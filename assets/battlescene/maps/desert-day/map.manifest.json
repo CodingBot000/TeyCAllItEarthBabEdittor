@@ -1,0 +1,34 @@
+{
+  "id": "desert-day",
+  "version": 1,
+  "displayName": "Desert Tech Hub",
+  "assetRoot": "battlescene/maps/desert-day",
+  "backgrounds": {
+    "sky": "backgrounds/sky-desert-day-base.webp",
+    "clouds": "backgrounds/clouds-desert-day.webp",
+    "far": "backgrounds/city-far-desert-day.webp",
+    "middle": "backgrounds/city-middle-desert-day.webp",
+    "near": "backgrounds/city-near-desert-day.webp",
+    "ground": "backgrounds/ground-desert-day.webp",
+    "foregroundAtmosphere": "backgrounds/foreground-atmosphere-desert-day.webp"
+  },
+  "sharedMaterials": {
+    "mothershipHullBaseColor": "battlescene/shared/mothership/mapping/mothership-hull-disc-basecolor.webp",
+    "mothershipHullHeightSource": "battlescene/shared/mothership/mapping/mothership-hull-height-source.webp",
+    "mothershipEmissiveDecals": "battlescene/shared/mothership/mapping/mothership-emissive-decals.webp"
+  },
+  "camera": {
+    "viewportSpanScreens": 3,
+    "travelScreensFromStart": 1,
+    "fovDegrees": 35
+  },
+  "parallax": {
+    "sky": 0,
+    "clouds": 0,
+    "far": 0.15,
+    "middle": 0.35,
+    "near": 0.6,
+    "ground": 1,
+    "foregroundAtmosphere": 0.8
+  }
+}

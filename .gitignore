@@ -25,11 +25,21 @@ blob-report/
 assets/.export-cache.json
 .phase-one-battlescene-assets/
 
-# Phase-one battle art is retained locally for the later battle rewrite but is not migrated or committed.
-art-source/
+# Keep unrelated local art sources ignored, but preserve the generated River/Desert masters required by the reproducible biome-layer build.
+art-source/*
+!art-source/battlescene/
+art-source/battlescene/*
+!art-source/battlescene/maps/
+art-source/battlescene/maps/*
+!art-source/battlescene/maps/river/
+!art-source/battlescene/maps/river/river-metropolis-master-v1.png
+!art-source/battlescene/maps/desert/
+!art-source/battlescene/maps/desert/desert-tech-hub-master-v1.png
 assets/battlescene/
 !assets/battlescene/
 !assets/battlescene/**
+assets/_weapon-temp/
+public/assets/runtime/sprites/_weapon-temp/
 
 # Local environment and deployment state
 .env

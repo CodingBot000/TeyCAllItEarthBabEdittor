@@ -124,6 +124,13 @@ const pendingDebriefSchema = z.object({
   destruction: boundedPercentage,
   globalThreatDelta: nonNegativeNumber,
   createdAtMinutes: nonNegativeNumber,
+  repairAssessment: z.object({
+    hullDamageRatio: boundedProgress,
+    biomassCost: nonNegativeNumber,
+    alloyCost: nonNegativeNumber,
+    unpaidBiomass: nonNegativeNumber,
+    unpaidAlloy: nonNegativeNumber,
+  }).nullable().optional(),
 });
 
 export const campaignV4Schema = z.object({

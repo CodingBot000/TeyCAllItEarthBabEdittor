@@ -97,6 +97,8 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
   const state: CombatState = {
     cityId: city.id,
     elapsedSeconds: 0,
+    battleMode: 'LEGACY_TACTICAL',
+    survivalUnlockSeconds: 0,
     missionType: campaign.plannedMission?.missionType ?? 'RAID',
     breachObjectiveIds: [...preset.breachObjectiveIds],
     overchargeCells: missionCells,
@@ -121,6 +123,8 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     occupationReady: false,
     enemies: [],
     missiles: [],
+    groundSwarmProjectiles: [],
+    groundSwarmImpacts: [],
     lastAirDefenseShot: null,
     mothershipHits: [],
     objectives: [
@@ -154,6 +158,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     nextEntityId: 1,
     lastAirDefenseAt: -Infinity,
     lastPointDefenseAt: -Infinity,
+    lastGroundSwarmAt: -Infinity,
     lastWaveAlert: -1,
   };
   refreshTargetStatuses(state);
@@ -573,9 +578,11 @@ function damageAbsorbablesInRadius(state: CombatState, center: Vec2, radius: num
   return organicCollateral;
 }
 
-function refreshTargetStatuses(state: CombatState): void {
+export function refreshAbsorbableTargetStatuses(state: CombatState): void {
   for (const target of state.absorbableTargets) refreshTargetStatus(state, target);
 }
+
+const refreshTargetStatuses = refreshAbsorbableTargetStatuses;
 
 function refreshTargetStatus(state: CombatState, target: AbsorbableTargetState): void {
   if (target.remainingAmount <= 0.001) {

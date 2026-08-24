@@ -21,6 +21,8 @@ export type AbsorbableStatus = 'HIDDEN' | 'AVAILABLE' | 'LOCKED' | 'DEPLETED' | 
 export type BeamHeatState = 'STABLE' | 'WARM' | 'CRITICAL' | 'OVERHEATED';
 export type BeamStopReason = 'MANUAL' | 'MOVED' | 'IMPACTED' | 'ENERGY_DEPLETED' | 'TARGET_DEPLETED' | 'TARGET_LOCKED' | 'TARGET_ATTACKING' | 'OUT_OF_RANGE' | 'CARGO_FULL' | 'EXTRACTION_STARTED' | 'OVERHEATED';
 export type EnemyAbsorptionStatus = 'NEUTRAL' | 'FLEEING' | 'ATTACKING' | 'DISABLED' | 'DESTROYED';
+export type ExtractionStatus = 'LOCKED' | 'AVAILABLE' | 'IN_PROGRESS' | 'COMPLETE';
+export type BattleMode = 'LEGACY_TACTICAL' | 'SIDE_VIEW';
 
 export const ABSORBABLE_WEIGHT_BY_KIND: Record<AbsorbableKind, number> = {
   ORGANIC: 1,
@@ -202,6 +204,15 @@ export interface PendingDebriefState {
   destruction: number;
   globalThreatDelta: number;
   createdAtMinutes: number;
+  repairAssessment?: RepairAssessment | null;
+}
+
+export interface RepairAssessment {
+  hullDamageRatio: number;
+  biomassCost: number;
+  alloyCost: number;
+  unpaidBiomass: number;
+  unpaidAlloy: number;
 }
 
 export interface CommandResult {
@@ -438,7 +449,7 @@ export interface CombatMothershipState {
   absorptionEnergyEarned: number;
   overdriveSeconds: number;
   extractionProgress: number;
-  extractionStatus: 'AVAILABLE' | 'IN_PROGRESS' | 'COMPLETE';
+  extractionStatus: ExtractionStatus;
   cargoUsed: number;
   maxCargo: number;
 }
@@ -571,9 +582,30 @@ export interface MothershipHitEvent {
   occurredAt: number;
 }
 
+export interface GroundSwarmProjectileState {
+  id: string;
+  targetId: string;
+  startX: number;
+  targetX: number;
+  progress: number;
+  duration: number;
+  arcHeight: number;
+  weavePhase: number;
+  damage: number;
+}
+
+export interface GroundSwarmImpactEvent {
+  id: string;
+  targetId: string;
+  x: number;
+  occurredAt: number;
+}
+
 export interface CombatState {
   cityId: string;
   elapsedSeconds: number;
+  battleMode: BattleMode;
+  survivalUnlockSeconds: number;
   missionType: MissionType;
   breachObjectiveIds: string[];
   overchargeCells: number;
@@ -591,6 +623,8 @@ export interface CombatState {
   occupationReady: boolean;
   enemies: EnemyState[];
   missiles: MissileState[];
+  groundSwarmProjectiles: GroundSwarmProjectileState[];
+  groundSwarmImpacts: GroundSwarmImpactEvent[];
   lastAirDefenseShot: AirDefenseShotEvent | null;
   mothershipHits: MothershipHitEvent[];
   objectives: { id: string; label: string; progress: number; target: number; complete: boolean; linkedTargetId?: string }[];
@@ -602,7 +636,7 @@ export interface CombatState {
   absorbedByKind: Record<AbsorbableKind, number>;
   destroyedInfrastructure: number;
   plasmaUses: number;
-  extractionStatus: 'AVAILABLE' | 'IN_PROGRESS' | 'COMPLETE';
+  extractionStatus: ExtractionStatus;
   result: 'ACTIVE' | CombatOutcome;
   activeAbility: AbilityId | null;
   abilityTarget: Vec2 | null;
@@ -620,6 +654,7 @@ export interface CombatState {
   nextEntityId: number;
   lastAirDefenseAt: number;
   lastPointDefenseAt: number;
+  lastGroundSwarmAt: number;
   lastWaveAlert: number;
 }
 
@@ -639,4 +674,5 @@ export interface DebriefSummary {
   destroyedInfrastructure: number;
   hullRatio: number;
   shieldRatio: number;
+  repairAssessment?: RepairAssessment | null;
 }

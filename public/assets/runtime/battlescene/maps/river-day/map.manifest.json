@@ -1,0 +1,34 @@
+{
+  "id": "river-day",
+  "version": 1,
+  "displayName": "River Metropolis",
+  "assetRoot": "battlescene/maps/river-day",
+  "backgrounds": {
+    "sky": "backgrounds/sky-river-day-base.webp",
+    "clouds": "backgrounds/clouds-river-day.webp",
+    "far": "backgrounds/city-far-river-day.webp",
+    "middle": "backgrounds/city-middle-river-day.webp",
+    "near": "backgrounds/city-near-river-day.webp",
+    "ground": "backgrounds/ground-river-day.webp",
+    "foregroundAtmosphere": "backgrounds/foreground-atmosphere-river-day.webp"
+  },
+  "sharedMaterials": {
+    "mothershipHullBaseColor": "battlescene/shared/mothership/mapping/mothership-hull-disc-basecolor.webp",
+    "mothershipHullHeightSource": "battlescene/shared/mothership/mapping/mothership-hull-height-source.webp",
+    "mothershipEmissiveDecals": "battlescene/shared/mothership/mapping/mothership-emissive-decals.webp"
+  },
+  "camera": {
+    "viewportSpanScreens": 3,
+    "travelScreensFromStart": 1,
+    "fovDegrees": 35
+  },
+  "parallax": {
+    "sky": 0,
+    "clouds": 0,
+    "far": 0.15,
+    "middle": 0.35,
+    "near": 0.6,
+    "ground": 1,
+    "foregroundAtmosphere": 0.8
+  }
+}

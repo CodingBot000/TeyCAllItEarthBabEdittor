@@ -6,6 +6,7 @@ import {
   Quaternion,
   StandardMaterial,
   Texture,
+  TrailMesh,
   TransformNode,
   Vector3,
 } from '@babylonjs/core';
@@ -84,11 +85,24 @@ interface AirDefenseVisual {
   target: Vector3;
 }
 
+interface GroundSwarmVisual {
+  mesh: Mesh;
+  trail: TrailMesh;
+}
+
+interface GroundSwarmImpactVisual {
+  flash: Mesh;
+  ring: Mesh;
+  elapsed: number;
+  duration: number;
+}
+
 const SHIELD_DURATION = 1.05;
 const HULL_DURATION = 1.8;
 const MAX_DAMAGE_EFFECTS = 6;
 const MAX_ABILITY_EFFECTS = 8;
 const MAX_AIR_DEFENSE_EFFECTS = 3;
+const MAX_GROUND_SWARM_IMPACTS = 12;
 const ABILITY_DURATION = 1.8;
 const BEAM_RADIUS = 6.5;
 const BEAM_RANGE = 22;
@@ -123,7 +137,12 @@ export class BattleCombatVfx {
   private readonly fighterProjectileMaterial: StandardMaterial;
   private readonly airDefenseMaterial: StandardMaterial;
   private readonly airDefenseCoreMaterial: StandardMaterial;
+  private readonly groundSwarmMaterial: StandardMaterial;
+  private readonly groundSwarmCoreMaterial: StandardMaterial;
   private readonly projectileMeshes = new Map<string, Mesh>();
+  private readonly groundSwarmVisuals = new Map<string, GroundSwarmVisual>();
+  private readonly consumedGroundSwarmImpactIds = new Set<string>();
+  private readonly groundSwarmImpactEffects: GroundSwarmImpactVisual[] = [];
   private absorption: AbsorptionVisual | null = null;
   private disposed = false;
 
@@ -167,6 +186,8 @@ export class BattleCombatVfx {
     this.airDefenseMaterial.alpha = 0.42;
     this.airDefenseMaterial.alphaMode = Engine.ALPHA_ADD;
     this.airDefenseCoreMaterial = this.material('battle-air-defense-laser-core', new Color3(1, 0.92, 0.64), new Color3(1, 0.4, 0.04));
+    this.groundSwarmMaterial = this.material('battle-ground-swarm', new Color3(0.92, 0.72, 0.24), new Color3(1, 0.36, 0.03));
+    this.groundSwarmCoreMaterial = this.material('battle-ground-swarm-core', new Color3(1, 0.96, 0.68), new Color3(1, 0.72, 0.08));
 
     this.createCivilians();
   }
@@ -247,6 +268,7 @@ export class BattleCombatVfx {
     const retainedHits = new Set(state.mothershipHits.map((hit) => hit.id));
     for (const id of this.consumedHitIds) if (!retainedHits.has(id)) this.consumedHitIds.delete(id);
     this.syncProjectiles(state);
+    this.syncGroundSwarm(state);
     if (state.lastAirDefenseShot && state.lastAirDefenseShot.id !== this.consumedAirDefenseId) {
       this.consumedAirDefenseId = state.lastAirDefenseShot.id;
       this.triggerAirDefenseShot(state.lastAirDefenseShot.origin, state.lastAirDefenseShot.target, state.lastAirDefenseShot.targetAltitude);
@@ -292,6 +314,7 @@ export class BattleCombatVfx {
     this.updateDamageEffects(dt);
     this.updateAbilityEffects(dt);
     this.updateAirDefenseEffects(dt);
+    this.updateGroundSwarmImpacts(dt);
     this.updateAbsorption(dt, elapsed);
   }
 
@@ -303,6 +326,14 @@ export class BattleCombatVfx {
     this.civilians.forEach((civilian) => civilian.mesh.dispose(false, true));
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
+    this.groundSwarmVisuals.forEach((visual) => {
+      visual.trail.stop();
+      visual.trail.dispose();
+      visual.mesh.dispose();
+    });
+    this.groundSwarmVisuals.clear();
+    this.groundSwarmImpactEffects.splice(0).forEach((effect) => { effect.flash.dispose(); effect.ring.dispose(); });
+    this.consumedGroundSwarmImpactIds.clear();
     this.consumedHitIds.clear();
     this.consumedAirDefenseId = null;
     this.airDefenseEffects.splice(0).forEach((effect) => {
@@ -316,7 +347,7 @@ export class BattleCombatVfx {
       this.absorption.funnel.dispose();
       this.absorption.ring.dispose();
     }
-    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial].forEach((material) => material.dispose());
+    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
     [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture, this.civilianTexture].forEach((texture) => texture.dispose());
   }
 
@@ -562,6 +593,90 @@ export class BattleCombatVfx {
         : Vector3.Lerp(gatherPoint, ship.add(new Vector3(0, -0.8, 0)), riseT * riseT);
       civilian.mesh.scaling.setAll(1 - riseT * 0.48);
       civilian.mesh.visibility = 0.84;
+    }
+  }
+
+  private syncGroundSwarm(state: Readonly<CombatState>): void {
+    const activeIds = new Set<string>();
+    for (const projectile of state.groundSwarmProjectiles) {
+      activeIds.add(projectile.id);
+      let visual = this.groundSwarmVisuals.get(projectile.id);
+      if (!visual) {
+        const mesh = MeshBuilder.CreateSphere(`battle-${projectile.id}`, { diameter: 0.58, segments: 10 }, this.scene);
+        mesh.material = this.groundSwarmCoreMaterial;
+        mesh.renderingGroupId = 3;
+        mesh.isPickable = false;
+        const trail = new TrailMesh(`battle-${projectile.id}-trail`, mesh, this.scene, 0.12, 22, true);
+        trail.material = this.groundSwarmMaterial;
+        trail.renderingGroupId = 3;
+        trail.isPickable = false;
+        trail.start();
+        visual = { mesh, trail };
+        this.groundSwarmVisuals.set(projectile.id, visual);
+      }
+      const progress = Math.max(0, Math.min(1, projectile.progress));
+      const eased = progress * progress * (3 - 2 * progress);
+      const direction = projectile.targetX >= projectile.startX ? 1 : -1;
+      const weave = Math.sin(progress * Math.PI * 4 + projectile.weavePhase) * (1 - progress) * 1.1;
+      visual.mesh.position.set(
+        projectile.startX + (projectile.targetX - projectile.startX) * eased + weave * direction,
+        12.8 + (-4.25 - 12.8) * progress + Math.sin(progress * Math.PI) * projectile.arcHeight,
+        1.2 + Math.sin(progress * Math.PI * 3 + projectile.weavePhase) * (1 - progress) * 1.35,
+      );
+      visual.mesh.scaling.setAll(0.72 + Math.sin(progress * Math.PI) * 0.36);
+      visual.mesh.visibility = projectile.progress >= 0 ? 1 : 0;
+      visual.trail.visibility = visual.mesh.visibility * 0.7;
+    }
+    for (const [id, visual] of this.groundSwarmVisuals) {
+      if (activeIds.has(id)) continue;
+      visual.trail.stop();
+      visual.trail.dispose();
+      visual.mesh.dispose();
+      this.groundSwarmVisuals.delete(id);
+    }
+
+    for (const impact of state.groundSwarmImpacts) {
+      if (this.consumedGroundSwarmImpactIds.has(impact.id)) continue;
+      this.consumedGroundSwarmImpactIds.add(impact.id);
+      this.triggerGroundSwarmImpact(impact.x);
+    }
+    const retainedImpactIds = new Set(state.groundSwarmImpacts.map((impact) => impact.id));
+    for (const id of this.consumedGroundSwarmImpactIds) if (!retainedImpactIds.has(id)) this.consumedGroundSwarmImpactIds.delete(id);
+  }
+
+  private triggerGroundSwarmImpact(x: number): void {
+    while (this.groundSwarmImpactEffects.length >= MAX_GROUND_SWARM_IMPACTS) {
+      const expired = this.groundSwarmImpactEffects.shift()!;
+      expired.flash.dispose();
+      expired.ring.dispose();
+    }
+    const position = new Vector3(x, -4.2, 1.1);
+    const flash = MeshBuilder.CreateSphere('battle-ground-swarm-impact', { diameter: 1.5, segments: 12 }, this.scene);
+    flash.position = position;
+    flash.material = this.groundSwarmCoreMaterial;
+    const ring = MeshBuilder.CreateDisc('battle-ground-swarm-impact-ring', { radius: 1.3, tessellation: 28, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+    ring.position = position.add(new Vector3(0, 0, 0.03));
+    ring.material = this.groundSwarmMaterial;
+    [flash, ring].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
+    this.groundSwarmImpactEffects.push({ flash, ring, elapsed: 0, duration: 0.58 });
+  }
+
+  private updateGroundSwarmImpacts(dt: number): void {
+    for (const effect of this.groundSwarmImpactEffects) {
+      effect.elapsed += dt;
+      const progress = Math.min(1, effect.elapsed / effect.duration);
+      const fade = Math.max(0, 1 - progress);
+      effect.flash.scaling.setAll(0.5 + progress * 2.1);
+      effect.flash.visibility = fade;
+      effect.ring.scaling.setAll(0.55 + progress * 2.8);
+      effect.ring.visibility = fade * 0.82;
+    }
+    for (let index = this.groundSwarmImpactEffects.length - 1; index >= 0; index -= 1) {
+      const effect = this.groundSwarmImpactEffects[index];
+      if (effect.elapsed < effect.duration) continue;
+      effect.flash.dispose();
+      effect.ring.dispose();
+      this.groundSwarmImpactEffects.splice(index, 1);
     }
   }
 

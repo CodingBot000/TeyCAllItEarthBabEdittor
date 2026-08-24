@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CITY_DAY_MAP, CITY_NIGHT_MAP, getBattleMapDefinition, loadBattleMapDefinition, mapBackgroundUrl, sharedMaterialUrl } from './battleMapCatalog';
+import { CITY_DAY_MAP, CITY_NIGHT_MAP, DESERT_DAY_MAP, getBattleMapDefinition, loadBattleMapDefinition, mapBackgroundUrl, RIVER_DAY_MAP, sharedMaterialUrl } from './battleMapCatalog';
 import { parseBattleMapDefinition } from '../contracts/BattleMapDefinition';
 
 describe('battle map catalog', () => {
@@ -17,6 +17,13 @@ describe('battle map catalog', () => {
 
   it('falls back to the day map for an unknown map', () => {
     expect(getBattleMapDefinition('unknown-map')).toBe(CITY_DAY_MAP);
+  });
+
+  it('registers independent River and Desert parallax packages', () => {
+    expect(getBattleMapDefinition('river-day')).toBe(RIVER_DAY_MAP);
+    expect(getBattleMapDefinition('desert-day')).toBe(DESERT_DAY_MAP);
+    expect(mapBackgroundUrl(RIVER_DAY_MAP, 'ground')).toContain('/river-day/backgrounds/ground-river-day.webp');
+    expect(mapBackgroundUrl(DESERT_DAY_MAP, 'far')).toContain('/desert-day/backgrounds/city-far-desert-day.webp');
   });
 
   it('returns the catalog fallback for an unknown manifest request', async () => {

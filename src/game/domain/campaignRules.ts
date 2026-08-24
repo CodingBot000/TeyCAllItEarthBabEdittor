@@ -4,7 +4,7 @@ import { isPlayableCity } from '../data/playableCities';
 import { WORLD_DATA_VERSION } from '../data/world';
 import { resolveRecoveredCohorts } from './cohortRules';
 import { calculateBreachProgress } from './missionRules';
-import type { CampaignState, CityConquestState, CityDefinition, CityState, CombatModifiers, CombatState, LogisticsState, MissionCargo, PendingDebriefState, ResourceWallet } from './types';
+import type { CampaignState, CityConquestState, CityDefinition, CityState, CombatModifiers, CombatState, LogisticsState, MissionCargo, PendingDebriefState, RepairAssessment, ResourceWallet } from './types';
 
 export function createCityConquestState(alert = 0, visits = 0): CityConquestState {
   return {
@@ -111,15 +111,17 @@ export function applyCombatResult(campaign: CampaignState, combat: CombatState, 
     },
   };
   const globalThreatDelta = Math.min(18, 2 + combat.elapsedSeconds / 80 + combat.totalAbsorbed / 250000 + combat.destroyedInfrastructure * 1.5);
+  const resourcesWithEarnings = addResources(campaign.resources, earned);
+  const repairAssessment = combat.result === 'FAILED' ? calculateRepairAssessment(resourcesWithEarnings, combat) : null;
   return {
     ...campaign,
     currentTimeMinutes: campaign.currentTimeMinutes + combat.elapsedSeconds / 60,
     globalThreat: Math.min(100, campaign.globalThreat + globalThreatDelta),
     currentCityId: city.id,
-    resources: addResources(campaign.resources, earned),
+    resources: repairAssessment ? subtractRepairCost(resourcesWithEarnings, repairAssessment) : resourcesWithEarnings,
     mothership: {
       ...campaign.mothership,
-      hull: combat.result === 'FAILED' ? campaign.mothership.maxHull * 0.5 : combat.mothership.hull,
+      hull: combat.result === 'FAILED' ? campaign.mothership.maxHull * BALANCE.repair.emergencyHullRatio : combat.mothership.hull,
       shield: combat.result === 'FAILED' ? campaign.mothership.maxShield : combat.mothership.shield,
     },
     cities: { ...campaign.cities, [city.id]: nextCity },
@@ -194,6 +196,7 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     },
   };
   const globalThreatDelta = Math.min(18, 2 + combat.elapsedSeconds / 80 + combat.totalAbsorbed / 250000 + combat.destroyedInfrastructure * 1.5);
+  const repairAssessment = outcome === 'FAILED' ? calculateRepairAssessment(campaign.resources, combat) : null;
   const pendingDebrief: PendingDebriefState = {
     id: `debrief-${campaign.campaignId}-${campaign.completedBattles + 1}`,
     cityId: city.id,
@@ -209,6 +212,7 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     destruction: nextCity.destruction,
     globalThreatDelta,
     createdAtMinutes: campaign.currentTimeMinutes + combat.elapsedSeconds / 60,
+    repairAssessment,
   };
   return {
     ...campaign,
@@ -217,7 +221,7 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     currentCityId: city.id,
     mothership: {
       ...campaign.mothership,
-      hull: combat.result === 'FAILED' ? campaign.mothership.maxHull * 0.5 : combat.mothership.hull,
+      hull: combat.result === 'FAILED' ? campaign.mothership.maxHull * BALANCE.repair.emergencyHullRatio : combat.mothership.hull,
       shield: combat.result === 'FAILED' ? campaign.mothership.maxShield : combat.mothership.shield,
     },
     cities: { ...campaign.cities, [city.id]: nextCity },
@@ -226,6 +230,30 @@ export function stageMissionResult(campaign: CampaignState, combat: CombatState,
     plannedMission: null,
     activeTransit: null,
     pendingDebrief,
+    resources: repairAssessment ? subtractRepairCost(campaign.resources, repairAssessment) : campaign.resources,
+  };
+}
+
+export function calculateRepairAssessment(resources: ResourceWallet, combat: CombatState): RepairAssessment {
+  const hullDamageRatio = Math.min(1, Math.max(0, 1 - combat.mothership.hull / Math.max(1, combat.mothership.maxHull)));
+  const requestedBiomass = Math.ceil(BALANCE.repair.biomassAtTotalLoss * hullDamageRatio);
+  const requestedAlloy = Math.ceil(BALANCE.repair.alloyAtTotalLoss * hullDamageRatio);
+  const biomassCost = Math.min(requestedBiomass, Math.floor(resources.biomass * BALANCE.repair.maximumWalletRatio));
+  const alloyCost = Math.min(requestedAlloy, Math.floor(resources.alloy * BALANCE.repair.maximumWalletRatio));
+  return {
+    hullDamageRatio,
+    biomassCost,
+    alloyCost,
+    unpaidBiomass: Math.max(0, requestedBiomass - biomassCost),
+    unpaidAlloy: Math.max(0, requestedAlloy - alloyCost),
+  };
+}
+
+function subtractRepairCost(resources: ResourceWallet, repair: RepairAssessment): ResourceWallet {
+  return {
+    biomass: Math.max(0, resources.biomass - repair.biomassCost),
+    alloy: Math.max(0, resources.alloy - repair.alloyCost),
+    intel: resources.intel,
   };
 }
 
