@@ -477,7 +477,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       if (gameplayProfile) tickSideViewBattle(combatState, gameplayProfile, deltaSeconds);
       mothershipGameplayRoot.position.x = combatState.mothership.position.x;
       combatVfx.syncCombatState(combatState);
-      absorbableRegions.sync(combatState, elapsed);
+      absorbableRegions.sync(combatState);
       cohortVisuals.sync(combatState, elapsed);
       entityVisuals.sync(combatState);
       if (combatState.result !== 'ACTIVE' && !completedCombat) {
@@ -513,7 +513,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     emitSnapshot(true);
   };
   if (combatState) {
-    absorbableRegions.sync(combatState, elapsed);
+    absorbableRegions.sync(combatState);
     cohortVisuals.sync(combatState, elapsed);
     combatVfx.syncCombatState(combatState);
     entityVisuals.sync(combatState);

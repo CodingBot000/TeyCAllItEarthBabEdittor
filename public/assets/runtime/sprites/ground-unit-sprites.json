@@ -1,0 +1,29 @@
+{
+  "source": "art-source/battlescene/maps/city-night/ground-units-bundle-raw.png",
+  "outputs": [
+    {
+      "file": "ground-defender-mobile-side.png",
+      "width": 481,
+      "height": 519,
+      "bottomTrimmed": true
+    },
+    {
+      "file": "ground-radar-facility-side.png",
+      "width": 521,
+      "height": 519,
+      "bottomTrimmed": true
+    },
+    {
+      "file": "ground-airbase-facility-side.png",
+      "width": 560,
+      "height": 444,
+      "bottomTrimmed": true
+    },
+    {
+      "file": "ground-power-facility-side.png",
+      "width": 523,
+      "height": 347,
+      "bottomTrimmed": true
+    }
+  ]
+}

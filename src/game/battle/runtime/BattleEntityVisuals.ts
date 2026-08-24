@@ -8,6 +8,24 @@ const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-el
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 2;
 
+type GroundSpriteKey = 'DEFENDER' | 'RADAR' | 'AIRBASE' | 'POWER';
+
+const GROUND_SPRITE_URLS: Record<GroundSpriteKey, string> = {
+  DEFENDER: '/assets/runtime/sprites/ground-defender-mobile-side.png',
+  RADAR: '/assets/runtime/sprites/ground-radar-facility-side.png',
+  AIRBASE: '/assets/runtime/sprites/ground-airbase-facility-side.png',
+  POWER: '/assets/runtime/sprites/ground-power-facility-side.png',
+};
+
+// Width/height are derived from the trimmed source PNGs. Every sprite's bottom
+// pixel is its gameplay footline, so the body sits directly on the ground lane.
+const GROUND_SPRITE_DIMENSIONS: Record<GroundSpriteKey, { width: number; height: number }> = {
+  DEFENDER: { width: 7.2, height: 7.77 },
+  RADAR: { width: 7.2, height: 7.17 },
+  AIRBASE: { width: 7.2, height: 5.71 },
+  POWER: { width: 7.2, height: 4.78 },
+};
+
 interface FighterVisual {
   id: string;
   root: TransformNode;
@@ -26,6 +44,7 @@ interface GroundVisual {
   healthTrack: Mesh;
   maximumHealth: number;
   isSam: boolean;
+  spriteKey: GroundSpriteKey | null;
   destroyed: boolean;
   labelAnchor?: Mesh;
   labelPanel?: Rectangle;
@@ -43,14 +62,12 @@ export class BattleEntityVisuals {
   private readonly fighterVisualRoot: TransformNode;
   private readonly groundVisualRoot: TransformNode;
   private readonly fighterFallbackMaterial: StandardMaterial;
-  private readonly defenderMaterial: StandardMaterial;
-  private readonly facilityMaterial: StandardMaterial;
-  private readonly disabledMaterial: StandardMaterial;
-  private readonly destroyedMaterial: StandardMaterial;
   private readonly healthTrackMaterial: StandardMaterial;
   private readonly healthFillMaterial: StandardMaterial;
   private readonly samTexture: Texture;
   private readonly samMaterial: StandardMaterial;
+  private readonly groundSpriteTextures = new Map<GroundSpriteKey, Texture>();
+  private readonly groundSpriteMaterials = new Map<GroundSpriteKey, StandardMaterial>();
   private readonly groundLabelUi: AdvancedDynamicTexture;
 
   constructor(private readonly scene: Scene, fighterRoot: TransformNode, groundRoot: TransformNode) {
@@ -60,10 +77,6 @@ export class BattleEntityVisuals {
     this.groundVisualRoot = new TransformNode('BattleGroundEntityVisualsRoot', scene);
     this.groundVisualRoot.parent = groundRoot;
     this.fighterFallbackMaterial = this.material('battle-entity-fighter-fallback', new Color3(0.98, 0.34, 0.16));
-    this.defenderMaterial = this.material('battle-entity-defender', new Color3(0.98, 0.58, 0.18));
-    this.facilityMaterial = this.material('battle-entity-facility', new Color3(0.42, 0.72, 0.92));
-    this.disabledMaterial = this.material('battle-entity-disabled', new Color3(0.45, 0.47, 0.5));
-    this.destroyedMaterial = this.material('battle-entity-destroyed', new Color3(0.22, 0.09, 0.06));
     this.healthTrackMaterial = this.material('battle-entity-health-track', new Color3(0.14, 0.16, 0.18));
     this.healthFillMaterial = this.material('battle-entity-health-fill', new Color3(0.36, 1, 0.64));
     this.groundLabelUi = AdvancedDynamicTexture.CreateFullscreenUI('BattleGroundLabelsUi', true, scene);
@@ -107,7 +120,7 @@ export class BattleEntityVisuals {
       const id = `facility:${facility.id}`;
       activeGroundIds.add(id);
       const visual = this.groundVisuals.get(id) ?? this.createGround(id, 'FACILITY', this.groundVisualRoot, facility.maxHealth, facility.kind);
-      this.syncGround(visual, facility.position.x, facility.health, facility.destroyed, facility.disabledUntil > state.elapsedSeconds, facility.kind);
+      this.syncGround(visual, facility.position.x, facility.health, facility.destroyed, facility.disabledUntil > state.elapsedSeconds);
     }
     for (const [id, visual] of this.groundVisuals) {
       if (activeGroundIds.has(id)) continue;
@@ -142,7 +155,11 @@ export class BattleEntityVisuals {
     });
     this.groundVisuals.clear();
     this.groundLabelUi.dispose();
-    [this.fighterFallbackMaterial, this.defenderMaterial, this.facilityMaterial, this.disabledMaterial, this.destroyedMaterial, this.healthTrackMaterial, this.healthFillMaterial, this.samMaterial].forEach((material) => material.dispose());
+    this.groundSpriteMaterials.forEach((material) => material.dispose());
+    this.groundSpriteTextures.forEach((texture) => texture.dispose());
+    this.groundSpriteMaterials.clear();
+    this.groundSpriteTextures.clear();
+    [this.fighterFallbackMaterial, this.healthTrackMaterial, this.healthFillMaterial, this.samMaterial].forEach((material) => material.dispose());
     this.samTexture.dispose();
     this.fighterVisualRoot.dispose(false, true);
     this.groundVisualRoot.dispose(false, true);
@@ -199,14 +216,18 @@ export class BattleEntityVisuals {
     const root = new TransformNode(`battle-ground-${id}`, this.scene);
     root.parent = parent;
     const isSam = kind === 'FACILITY' && facilityKind === 'SAM';
+    const spriteKey = isSam ? null : kind === 'DEFENDER' ? 'DEFENDER' : facilitySpriteKey(facilityKind);
+    const spriteDimensions = spriteKey ? GROUND_SPRITE_DIMENSIONS[spriteKey] : null;
     const body = isSam
       ? MeshBuilder.CreatePlane(`${root.name}-sprite`, { width: 8, height: 8 }, this.scene)
-      : MeshBuilder.CreateBox(`${root.name}-body`, { width: kind === 'FACILITY' ? 6.8 : 4.8, height: kind === 'FACILITY' ? 2.8 : 1.8, depth: 1.4 }, this.scene);
+      : MeshBuilder.CreatePlane(`${root.name}-sprite`, { size: 1 }, this.scene);
     body.parent = root;
-    body.position.set(0, isSam ? GROUND_SAM_BODY_LOCAL_Y : kind === 'FACILITY' ? 1.4 : 0.9, isSam ? -1 : 0);
+    if (spriteDimensions) body.scaling.set(spriteDimensions.width, spriteDimensions.height, 1);
+    body.position.set(0, isSam ? GROUND_SAM_BODY_LOCAL_Y : spriteDimensions ? spriteDimensions.height / 2 : kind === 'FACILITY' ? 1.4 : 0.9, isSam ? -1 : 0);
     body.renderingGroupId = 3;
     body.isPickable = false;
     if (isSam) body.material = this.samMaterial;
+    else if (spriteKey) body.material = this.groundSpriteMaterial(spriteKey);
     const healthTrack = MeshBuilder.CreateBox(`${root.name}-health-track`, { width: 4.4, height: 0.22, depth: 0.08 }, this.scene);
     healthTrack.parent = root;
     healthTrack.position.set(0, isSam ? GROUND_SAM_HEALTH_BAR_LOCAL_Y : kind === 'FACILITY' ? 3.35 : 2.45, -0.2);
@@ -246,12 +267,12 @@ export class BattleEntityVisuals {
       labelPanel.linkWithMesh(labelAnchor);
       labelPanel.linkOffsetY = -48;
     }
-    const visual = { id, kind, root, body, healthFill, healthTrack, maximumHealth, isSam, destroyed: false, labelAnchor, labelPanel };
+    const visual = { id, kind, root, body, healthFill, healthTrack, maximumHealth, isSam, spriteKey, destroyed: false, labelAnchor, labelPanel };
     this.groundVisuals.set(id, visual);
     return visual;
   }
 
-  private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean, facilityKind?: FacilityKind): void {
+  private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean): void {
     visual.root.position.set(x, GROUND_ENTITY_ROOT_Y, 1.1);
     if (visual.labelAnchor && visual.labelPanel) {
       visual.labelAnchor.position.x = x;
@@ -269,15 +290,11 @@ export class BattleEntityVisuals {
       visual.body.visibility = destroyed ? 0.18 : disabled ? 0.5 : 0.92;
       return;
     }
-    visual.body.material = destroyed
-      ? this.destroyedMaterial
-      : disabled
-        ? this.disabledMaterial
-        : visual.kind === 'FACILITY' && facilityKind === 'SAM'
-          ? this.defenderMaterial
-          : visual.kind === 'FACILITY'
-            ? this.facilityMaterial
-            : this.defenderMaterial;
+    if (visual.spriteKey) {
+      visual.body.material = this.groundSpriteMaterial(visual.spriteKey);
+      visual.body.visibility = destroyed ? 0.18 : disabled ? 0.5 : 0.92;
+      return;
+    }
   }
 
   private material(name: string, color: Color3): StandardMaterial {
@@ -286,6 +303,26 @@ export class BattleEntityVisuals {
     material.emissiveColor = color;
     material.disableLighting = true;
     material.backFaceCulling = false;
+    return material;
+  }
+
+  private groundSpriteMaterial(key: GroundSpriteKey): StandardMaterial {
+    const existing = this.groundSpriteMaterials.get(key);
+    if (existing) return existing;
+    const texture = new Texture(GROUND_SPRITE_URLS[key], this.scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
+    texture.hasAlpha = true;
+    texture.wrapU = Texture.CLAMP_ADDRESSMODE;
+    texture.wrapV = Texture.CLAMP_ADDRESSMODE;
+    const material = new StandardMaterial(`battle-ground-sprite-${key.toLowerCase()}`, this.scene);
+    material.diffuseColor = Color3.White();
+    material.emissiveColor = Color3.White();
+    material.disableLighting = true;
+    material.backFaceCulling = false;
+    material.useAlphaFromDiffuseTexture = true;
+    material.transparencyMode = Engine.ALPHA_COMBINE;
+    material.diffuseTexture = texture;
+    this.groundSpriteTextures.set(key, texture);
+    this.groundSpriteMaterials.set(key, material);
     return material;
   }
 }
@@ -297,6 +334,12 @@ function enemyAltitudeToY(altitude: number): number {
 function headingFrame(heading: number): number {
   const turns = ((heading / (Math.PI * 2)) % 1 + 1) % 1;
   return Math.round(turns * 8) % 8;
+}
+
+function facilitySpriteKey(kind: FacilityKind | undefined): GroundSpriteKey {
+  if (kind === 'RADAR' || kind === 'RESEARCH') return 'RADAR';
+  if (kind === 'AIRBASE') return 'AIRBASE';
+  return 'POWER';
 }
 
 function setAtlasFrame(texture: Texture, columns: number, rows: number, frame: number): void {

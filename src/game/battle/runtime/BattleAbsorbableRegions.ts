@@ -92,7 +92,7 @@ export class BattleAbsorbableRegions {
     }
   }
 
-  sync(state: Readonly<CombatState>, elapsedSeconds: number): void {
+  sync(state: Readonly<CombatState>): void {
     const activeIds = new Set<string>();
     for (const target of state.absorbableTargets) {
       activeIds.add(target.id);
@@ -100,15 +100,14 @@ export class BattleAbsorbableRegions {
       const remainingRatio = target.remainingAmount / Math.max(1, target.initialAmount);
       const nearShip = Math.abs(target.center.x - state.mothership.position.x) <= target.radius + 3;
       const active = state.activeBeamTargetId === target.id;
-      const pulse = 1 + Math.sin(elapsedSeconds * (active ? 7 : 3.2) + target.center.x * 0.03) * (active ? 0.12 : 0.04);
       visual.root.position.x = target.center.x;
       visual.sprite.position.x = target.center.x;
-      visual.pad.scaling.x = visual.baseScaleX * Math.max(0.18, remainingRatio) * pulse;
-      visual.pad.scaling.y = pulse;
-      visual.core.scaling.setAll((nearShip ? 1.15 : 0.88) * pulse);
-      visual.beacon.scaling.y = target.discovered ? 1.5 + pulse * 0.7 : 0.62;
+      visual.pad.scaling.x = visual.baseScaleX * Math.max(0.18, remainingRatio);
+      visual.pad.scaling.y = 1;
+      visual.core.scaling.setAll(nearShip ? 1.15 : 0.88);
+      visual.beacon.scaling.y = target.discovered ? 1.5 : 0.62;
       visual.beacon.visibility = target.remainingAmount <= 0 ? 0 : target.discovered ? 0.62 : 0.16;
-      const spriteScale = visual.spriteBaseScale * (0.78 + Math.sqrt(Math.max(0, remainingRatio)) * 0.22) * pulse;
+      const spriteScale = visual.spriteBaseScale;
       visual.sprite.scaling.setAll(spriteScale);
       visual.sprite.position.y = SPRITE_GROUND_Y + spriteScale * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
       visual.sprite.material = this.spriteMaterials.get(target.kind)!;
