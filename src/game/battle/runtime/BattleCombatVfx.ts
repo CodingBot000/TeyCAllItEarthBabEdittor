@@ -1173,11 +1173,14 @@ export class BattleCombatVfx {
         this.projectileMeshes.set(missile.id, mesh);
         if (isSam) this.createMissileJetVisual(missile.id);
       }
+      // The root is only the visual path endpoint. Gameplay collision removes
+      // the projectile at the shield or hull surface before it reaches here.
+      const targetPosition = this.shipPosition();
       if (!this.projectileLaunchPositions.has(missile.id)) {
         this.projectileLaunchPositions.set(missile.id, this.projectileVisualOriginResolver?.(missile.source, missile.sourceId) ?? new Vector3(
-          missile.launchPosition.x,
-          8 + (missile.launchY - 33) * 0.22,
-          missile.launchPosition.z * 0.12,
+          targetPosition.x + missile.launchPosition.x - missile.target.x,
+          targetPosition.y + (missile.launchY - missile.targetY) * 0.22,
+          targetPosition.z + (missile.launchPosition.z - missile.target.z) * 0.12,
         ));
       }
       const launchPosition = this.projectileLaunchPositions.get(missile.id);
@@ -1193,7 +1196,6 @@ export class BattleCombatVfx {
           missile.position.z - missile.target.z,
         );
         const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
-        const targetPosition = new Vector3(missile.target.x, 8 + (missile.targetY - 33) * 0.22, missile.target.z * 0.12);
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
         // The sprite travels on the launch-socket-to-target visual path above,
         // which can differ from the gameplay Y mapping. Use that same visible
@@ -1233,10 +1235,13 @@ export class BattleCombatVfx {
           missile.position.z - missile.target.z,
         );
         const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
-        const targetPosition = new Vector3(missile.target.x, 16.5 + (missile.targetY - 33) * 0.22, missile.target.z * 0.12);
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
       } else {
-        mesh.position.set(missile.position.x, 16.5 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
+        mesh.position.set(
+          targetPosition.x + missile.position.x - missile.target.x,
+          targetPosition.y + (missile.y - missile.targetY) * 0.22,
+          targetPosition.z + (missile.position.z - missile.target.z) * 0.12,
+        );
       }
       this.projectileVisualPositions.set(missile.id, mesh.position.clone());
       mesh.visibility = Math.max(0, 1 - Math.max(0, missile.age - 6) / 2);
