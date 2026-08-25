@@ -1195,14 +1195,18 @@ export class BattleCombatVfx {
         const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
         const targetPosition = new Vector3(missile.target.x, 8 + (missile.targetY - 33) * 0.22, missile.target.z * 0.12);
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
-        const currentPosition = new Vector3(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
-        const homingDirection = targetPosition.subtract(currentPosition);
-        if (homingDirection.lengthSquared() > 0.0001) {
-          mesh.rotation.z = Math.atan2(homingDirection.y, homingDirection.x);
-          this.spawnMissileTrail(missile.id, mesh.position, homingDirection);
+        // The sprite travels on the launch-socket-to-target visual path above,
+        // which can differ from the gameplay Y mapping. Use that same visible
+        // path for the nose direction so the horizontal sprite follows its
+        // actual on-screen trajectory.
+        const visualDirection = targetPosition.subtract(mesh.position);
+        if (visualDirection.lengthSquared() > 0.0001) {
+          const visualAngle = Math.atan2(visualDirection.y, visualDirection.x);
+          mesh.rotation.set(0, 0, visualAngle);
+          this.spawnMissileTrail(missile.id, mesh.position, visualDirection);
           const jet = this.missileJetVisuals.get(missile.id);
           if (jet) {
-            const direction = homingDirection.normalize();
+            const direction = visualDirection.normalize();
             const jetPosition = mesh.position.subtract(direction.scale(0.78));
             jetPosition.z -= 0.06;
             const jetAngle = Math.atan2(direction.y, direction.x) - Math.PI / 2;
