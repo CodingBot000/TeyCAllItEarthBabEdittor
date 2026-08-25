@@ -58,6 +58,13 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 
 ## 다음 튜닝 후보
 
+## 2026-08-25 — Cairo/Dubai/Paris 배경 임시 통일
+
+- Cairo, Dubai, Paris의 기존 River/Desert 배경 에셋은 삭제하지 않고 보존했다.
+- `battleMapIdForCity`에서 세 도시의 배경 맵만 London과 같은 `city-day`로 연결했다.
+- 도시별 전술 프로필과 게임플레이 규칙은 그대로 유지한다.
+- 전용 테스트 2개를 추가했고 전체 Vitest 41/41, TypeScript, Next production build가 통과했다.
+
 ## 2026-08-25 — 지상공격 충돌 위치 및 무기 체력바 조정
 
 - 지상 투사체/충돌 이펙트의 고정 도착점이 실제 SAM 이미지보다 약 8.3 위(`Y=-4.2`)에 있던 문제를 확인했다.

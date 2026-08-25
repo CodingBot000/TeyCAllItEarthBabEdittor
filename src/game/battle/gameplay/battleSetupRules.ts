@@ -2,6 +2,9 @@ import type { CampaignState, CityDefinition, PlannedBattleSetup } from '../../do
 import { gameplayProfileForPreset } from './BattleGameplayProfile';
 
 export function battleMapIdForCity(city: CityDefinition): string {
+  // Keep Cairo, Dubai and Paris gameplay profiles intact, but temporarily use
+  // the London-compatible City Day background until their replacement art is ready.
+  if (city.id === 'cairo' || city.id === 'dubai' || city.id === 'paris') return 'city-day';
   if (city.tacticalPresetId === 'river-metropolis') return 'river-day';
   if (city.tacticalPresetId === 'desert-tech-hub') return 'desert-day';
   return 'city-day';
