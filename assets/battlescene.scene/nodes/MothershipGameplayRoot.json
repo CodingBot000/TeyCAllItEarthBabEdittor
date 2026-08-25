@@ -23,7 +23,9 @@
     "name": "MothershipGameplayRoot",
     "id": "MothershipGameplayRoot",
     "state": "",
-    "metadata": {},
+    "metadata": {
+        "parentId": 32
+    },
     "type": "TransformNode",
     "uniqueId": 33,
     "localMatrix": [

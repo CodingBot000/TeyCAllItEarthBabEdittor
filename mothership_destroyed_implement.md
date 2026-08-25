@@ -103,7 +103,7 @@ MothershipDestructionVisual 생성 시 다음을 주입한다.
 - 원본 구현에서 필요한 `MothershipDestructionVisual` 소스를 현재 프로젝트 내부로 복사·이식하고, 현재 프로젝트의 TacticalScene 또는 대응 런타임 생성자에서 해당 인스턴스를 만든다.
 - 매 프레임 updateVisuals(dt)에서 destructionVisual.sync(dt)를 호출한다.
 - sync가 반환한 destructionPose를 실제 모선 Mesh의 position/rotation에 적용한다.
-- 파괴 시퀀스 동안 카메라 target도 destructionPose.position을 따라가게 한다.
+- 파괴 시퀀스 동안 카메라는 추락하는 모선을 따라가지 않는다. CRASH 시작 시점의 전투 카메라 position과 target을 고정해 지면 아래 빈 공간이 노출되지 않게 한다.
 - dispose 시 destructionVisual.dispose()를 호출한다.
 - LOW/BALANCED/HIGH 품질 설정에 따라 연기 퍼프 개수를 제한한다.
   - LOW: 16개
@@ -146,3 +146,4 @@ MothershipDestructionVisual 생성 시 다음을 주입한다.
 - `isComplete()`가 참이 되는 5.8초 이후에만 FAILED Debrief로 전환하며 기존 수리비 정산을 유지한다.
 - 현재 프로젝트의 typecheck, Vitest 48/48, production build, ESLint, 브라우저 전투 검증 및 `git diff --check`를 통과했다.
 - `src/`, `scripts/`, 설정 및 런타임 에셋에는 복사 원본 프로젝트의 절대경로 참조가 없다.
+- 후속 카메라 수정: 추락 전·FALLING·IMPACT에서 camera position `(0, 5, -92)`와 target `(0, 5, 0)`이 동일하게 유지되는 것을 자연 대파 production E2E로 확인했다.

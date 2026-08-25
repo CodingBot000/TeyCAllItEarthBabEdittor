@@ -187,6 +187,7 @@ childNode('WorldVfxRoot', sceneRootNode);
 childNode('BattleDebugRoot', sceneRootNode);
 
 const serialized = SceneSerializer.Serialize(scene);
+preserveEditorParentMetadata(serialized);
 const geometryById = new Map((serialized.geometries?.vertexData ?? []).map((geometry) => [geometry.id, geometry]));
 const materialById = new Map((serialized.materials ?? []).map((material) => [material.id, material]));
 for (const material of materialById.values()) {
@@ -577,6 +578,27 @@ function axisBounds(positions, aggregate) {
     bounds[2] = aggregate(bounds[2], positions[index + 2]);
   }
   return bounds;
+}
+
+function preserveEditorParentMetadata(serializedScene) {
+  const nodes = [
+    ...(serializedScene.transformNodes ?? []),
+    ...(serializedScene.meshes ?? []),
+    ...(serializedScene.lights ?? []),
+    ...(serializedScene.cameras ?? []),
+  ];
+  for (const node of nodes) {
+    if (node.parentId === undefined) continue;
+    node.metadata = { ...(node.metadata ?? {}), parentId: node.parentId };
+    delete node.parentId;
+  }
+  for (const mesh of serializedScene.meshes ?? []) {
+    for (const instance of mesh.instances ?? []) {
+      if (instance.parentId === undefined) continue;
+      instance.metadata = { ...(instance.metadata ?? {}), parentId: instance.parentId };
+      delete instance.parentId;
+    }
+  }
 }
 
 async function writeJson(file, value) {

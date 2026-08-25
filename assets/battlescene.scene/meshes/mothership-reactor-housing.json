@@ -66,7 +66,9 @@
             "subMeshes": null,
             "materialUniqueId": 38,
             "materialId": "mothership-armor-material",
-            "metadata": {},
+            "metadata": {
+                "parentId": 1787679962712
+            },
             "instances": [],
             "animations": [],
             "ranges": [],
@@ -298,7 +300,9 @@
         "torusKnots": [],
         "vertexData": []
     },
-    "metadata": {},
+    "metadata": {
+        "parentId": 1787679962712
+    },
     "basePoseMatrix": [
         1,
         0,

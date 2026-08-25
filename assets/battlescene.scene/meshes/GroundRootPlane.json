@@ -138,7 +138,7 @@
             "tags": null,
             "diffuseTexture": {
                 "tags": null,
-                "url": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
+                "url": "assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp",
                 "uOffset": 0,
                 "vOffset": 0,
                 "uScale": 3,
@@ -151,11 +151,11 @@
                 "wRotationCenter": 0.5,
                 "homogeneousRotationInUVTransform": false,
                 "isBlocking": true,
-                "name": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
+                "name": "assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp",
                 "metadata": {
                     "baseSize": {
-                        "width": 2048,
-                        "height": 724
+                        "width": 256,
+                        "height": 256
                     }
                 },
                 "hasAlpha": true,
@@ -183,6 +183,7 @@
                 "samplingMode": 3,
                 "_creationFlags": 0,
                 "_useSRGBBuffer": false,
+                "internalTextureLabel": "/Users/switch/Development/game/webgame/TheyCallItEarthBabEdi",
                 "noMipmap": true
             },
             "ambient": [
@@ -277,7 +278,7 @@
             "id": "GroundRootMaterial",
             "name": "GroundRootMaterial",
             "metadata": {
-                "textureUrl": "assets/battlescene/maps/city-day/backgrounds/ground-road-day.webp",
+                "textureUrl": "assets/battlescene/maps/city-day/backgrounds/ground-sideview-day.webp",
                 "hasAlpha": true,
                 "useAlphaFromDiffuseTexture": true,
                 "textureUScale": 3

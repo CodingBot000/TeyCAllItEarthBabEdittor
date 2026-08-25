@@ -41,6 +41,8 @@ blob-report/
 # Babylon.js Editor local/generated caches
 .bjseditor/*-cache.json
 .bjseditor/textures/
+.bjseditor/agent-scripts/
+/agentdata/
 assets/.export-cache.json
 .phase-one-battlescene-assets/
 

@@ -137,6 +137,7 @@ export interface BattleRuntimeSnapshot {
   unitInvincibilityEnabled: boolean;
   effectiveAutoScanRange: number;
   profile: BattleRuntimeProfileSnapshot;
+  camera: { x: number; y: number; z: number; targetX: number; targetY: number; targetZ: number };
   ship: { x: number; z: number; worldX: number; worldY: number; worldZ: number; combatAltitude: number; hull: number; maxHull: number; shield: number; maxShield: number; energy: number; maxEnergy: number };
   cargo: { used: number; capacity: number; captives: number; biomass: number; alloy: number; intel: number; coreCharge: number };
   alert: number;
@@ -416,6 +417,14 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         groundDefenderCount: combatState.groundDefenders.length,
         requiredOccupationNodeCount: combatState.controlNodes.filter((node) => node.requiredForOccupation).length,
       },
+      camera: {
+        x: round(camera.position.x, 3),
+        y: round(camera.position.y, 3),
+        z: round(camera.position.z, 3),
+        targetX: round(camera.getTarget().x, 3),
+        targetY: round(camera.getTarget().y, 3),
+        targetZ: round(camera.getTarget().z, 3),
+      },
       ship: {
         x: round(combatState.mothership.position.x, 3),
         z: round(combatState.mothership.position.z, 3),
@@ -675,10 +684,12 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         }
       }
     }
-    const desiredCameraX = Scalar.Clamp(mothershipGameplayRoot.position.x, -cameraTravel, cameraTravel);
-    cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
+    if (cinematic?.kind !== 'CRASH') {
+      const desiredCameraX = Scalar.Clamp(mothershipGameplayRoot.position.x, -cameraTravel, cameraTravel);
+      cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
+    }
     camera.position.x = cameraX;
-    camera.setTarget(cinematic?.kind === 'CRASH' ? mothershipGameplayRoot.position.clone() : new Vector3(cameraX, CAMERA_Y, 0));
+    camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
     applyBackgroundLayerPositions();
     cloudTextureOffset = (cloudTextureOffset + deltaSeconds * CLOUD_DRIFT_SPEED) % 1;
     for (const { layer, plane } of backgroundPlanes) {
@@ -844,6 +855,7 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     unitInvincibilityEnabled: true,
     effectiveAutoScanRange: 0,
     profile: { id: null, version: null, enemyPressureMultiplier: 1, groundPressureMultiplier: 1, facilityCount: 0, groundDefenderCount: 0, requiredOccupationNodeCount: 0 },
+    camera: { x: round(shipX, 3), y: CAMERA_Y, z: CAMERA_Z, targetX: round(shipX, 3), targetY: CAMERA_Y, targetZ: 0 },
     ship: { x: round(shipX, 3), z: 0, worldX: round(shipX, 3), worldY: 0, worldZ: 0, combatAltitude: BALANCE.mothership.baseAltitude, hull: 0, maxHull: 0, shield: 0, maxShield: 0, energy: 0, maxEnergy: 0 },
     cargo: { used: 0, capacity: 0, captives: 0, biomass: 0, alloy: 0, intel: 0, coreCharge: 0 },
     alert: 0,

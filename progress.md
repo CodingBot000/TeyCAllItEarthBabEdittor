@@ -498,3 +498,22 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 10분 결정적 soak에서 최대 20대와 최소 안전거리, 세 비행 상태를 검증했다.
 - 78초 visual-sync는 전투기 5대 ID/3D 좌표 일치, 최저 중심 거리 `30.205`, 최저 keep-out metric `1.363`, 브라우저 오류 0건으로 통과했다.
 - TypeScript, Vitest 48/48, 대상 ESLint, `git diff --check`가 통과했다.
+
+## 2026-08-26 — 모선 추락 카메라 고정
+
+- 모선 파괴 중 카메라 target이 하강 pose를 따라가면서 지면 아래 빈 공간이 노출되는 문제를 수정했다.
+- CRASH 시작 후에는 카메라 X 이동 추적을 중단하고 position Y/Z 및 target을 기존 전투 구도에 고정한다. 모선과 파괴 VFX만 화면 아래로 추락한다.
+- `render_game_to_text`에 camera position/target을 추가하고, 실패 E2E가 추락 전·FALLING·IMPACT 세 시점의 카메라 6개 좌표가 모두 동일한지 검증하도록 확장했다.
+- production 자연 대파 검증에서 추락 전·FALLING·IMPACT 모두 camera position `(0, 5, -92)`, target `(0, 5, 0)`으로 동일했다. 충돌 장면에서도 기존 도시·지면 구도가 유지되고 화면 아래 빈 공간이 노출되지 않았으며 브라우저 오류는 0건이었다.
+
+## 2026-08-26 — Babylon Editor 모선 계층 재시작 보존 수정
+
+- 기존 계층 생성은 런타임 `parentId`만 기록해 Babylon Editor가 프로젝트를 다시 열 때 부모를 복원하지 못하고 모든 모선 파츠를 루트에 평면 배치했다.
+- Editor 5.4.2의 실제 저장·로드 코드를 확인해 소스 씬은 `metadata.parentId = parent.uniqueId`를 사용한다는 것을 확인했다.
+- 실행 중인 Babylon Editor에서 agent automation으로 실제 `TransformNode` 6개를 만들고, 59개 모선 메시를 Hull 7 / Ring 4 / Armor 32 / Reactor 4 / Emitter 12 그룹으로 정리했다.
+- `BattleSceneRoot/AirBattleRoot/MothershipGameplayRoot/MothershipVisualRoot` 체인과 Weapon/Drone/VFX 소켓 부모 관계도 Editor API로 복원했다.
+- 씬 생성기가 향후 재실행돼도 Editor 전용 부모 메타데이터를 남기도록 `preserveEditorParentMetadata` 단계를 추가했다.
+- Editor 창을 실제로 닫고 Dashboard의 프로젝트 메뉴에서 다시 연 뒤 `BattleSceneRoot/AirBattleRoot/MothershipGameplayRoot/MothershipVisualRoot/MothershipModelRoot`와 다섯 하위 그룹이 그대로 복원되는 것을 Graph에서 확인했다.
+- `npm run generate:battle` 패키지의 public scene에서도 59개 메시가 동일 그룹에 속하며 `MothershipModelRoot`가 실제 `TransformNode`임을 확인했다.
+- 기존 GroundRootPlane이 삭제된 `ground-road-day.webp`를 참조하던 404를 현행 `ground-sideview-day.webp`로 정리했다.
+- 최종 `npm run check` 통과: TypeScript, Vitest 48/48, production build 성공. 표준 web-game 클라이언트 빠른 전투 2회 캡처에서 우측 이동과 `render_game_to_text` 동기화, 콘솔 오류 0건을 확인했다.

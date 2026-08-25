@@ -23,7 +23,9 @@
     "name": "WeaponSockets",
     "id": "WeaponSockets",
     "state": "",
-    "metadata": {},
+    "metadata": {
+        "parentId": 34
+    },
     "type": "TransformNode",
     "uniqueId": 160,
     "localMatrix": [

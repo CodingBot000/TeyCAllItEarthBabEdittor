@@ -23,7 +23,9 @@
     "name": "AirBattleRoot",
     "id": "AirBattleRoot",
     "state": "",
-    "metadata": {},
+    "metadata": {
+        "parentId": 2
+    },
     "type": "TransformNode",
     "uniqueId": 32,
     "localMatrix": [
