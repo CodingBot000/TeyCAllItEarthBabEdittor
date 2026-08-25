@@ -66,9 +66,7 @@
             "subMeshes": null,
             "materialUniqueId": 40,
             "materialId": "mothership-violet-material",
-            "metadata": {
-                "parentId": 1787679962711
-            },
+            "metadata": {},
             "instances": [],
             "animations": [],
             "ranges": [],
@@ -300,9 +298,7 @@
         "torusKnots": [],
         "vertexData": []
     },
-    "metadata": {
-        "parentId": 1787679962711
-    },
+    "metadata": {},
     "basePoseMatrix": [
         2.220446049250313e-16,
         0,

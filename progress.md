@@ -517,3 +517,37 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - `npm run generate:battle` 패키지의 public scene에서도 59개 메시가 동일 그룹에 속하며 `MothershipModelRoot`가 실제 `TransformNode`임을 확인했다.
 - 기존 GroundRootPlane이 삭제된 `ground-road-day.webp`를 참조하던 404를 현행 `ground-sideview-day.webp`로 정리했다.
 - 최종 `npm run check` 통과: TypeScript, Vitest 48/48, production build 성공. 표준 web-game 클라이언트 빠른 전투 2회 캡처에서 우측 이동과 `render_game_to_text` 동기화, 콘솔 오류 0건을 확인했다.
+
+## 2026-08-26 — Babylon Editor 모선 계층 적용 롤백
+
+- 사용자 요청에 따라 실제 Editor 계층 적용만 역순으로 되돌렸다.
+- 모선 59개 메시와 Weapon/Drone/VFX 소켓, Air/Gameplay/Visual 루트를 다시 씬 루트로 이동했다.
+- `MothershipModelRoot`와 Hull/Ring/Armor/Reactor/Emitter 그룹 TransformNode 6개를 삭제했다.
+- 씬 생성기의 Editor 전용 `metadata.parentId` 보존 단계를 제거해, 향후 재생성 후 Editor를 열어도 그룹 계층이 강제로 유지되지 않게 했다.
+- 다른 전투/VFX/전투기/SAM 변경은 유지했다.
+- Editor 창을 실제로 닫고 Dashboard에서 다시 연 뒤 모선 59개 파츠와 소켓/루트가 모두 씬 루트의 평면 목록으로 유지되는 것을 확인했다.
+- 빠른 전투 브라우저 검증에서 모선 렌더링·우측 이동·카메라 추적이 정상이며 콘솔 오류는 0건이었다.
+- 평탄화된 Editor 소스를 `npm run generate:battle`로 다시 패키징해 로컬호스트가 읽는 `public/scene/battlescene.babylon`에도 롤백을 반영했다. public scene 기준 그룹 TransformNode 0개, 부모가 지정된 모선 메시 0개이며, 재패키징 후 빠른 전투에서 모선 렌더링·우측 이동·상태 동기화와 콘솔 오류 0건을 다시 확인했다.
+
+## 2026-08-26 — 장면 계층 손상 복원
+
+- 폴더 작업 직전 정상 기준을 `b5de3e6`으로 고정해 문제 커밋 `c6b80b8`과 장면 데이터를 비교했다.
+- `c6b80b8`의 Editor 저장에서 7개 배경 Plane의 기존 `parentId`가 모두 사라져, 배경 디버그 패널은 숫자만 바꾸고 실제 Plane은 움직이지 않는 상태였음을 확인했다.
+- 런타임 로드 시 배경 Plane을 `SkyRoot/CloudRoot/City*Root/GroundRoot/ForegroundRoot`에 다시 연결하도록 복원했다. 브라우저에서 `NEAR -5.00 → -3.00` 이동 시 실제 가까운 건물 레이어가 함께 이동하는 것을 확인했다.
+- 충돌 디버그 Sphere는 패널이 닫혀 있어도 매 프레임 표시되던 문제를 수정했다. 이제 `COLLISION DEBUG`를 열 때만 표시되고 닫으면 비활성화된다.
+- 부모를 잃어 루트에 노출되던 Fighter/Drone/Ground 프로토타입은 장면 전체 이름 기준으로 숨겨 회색·보라 placeholder가 전투 화면에 나오지 않게 했다.
+- 정상본의 `MothershipGameplayRoot.y = 16.5`를 Editor 소스와 런타임 계약에 복원했다. 문제 저장본의 `y = 8` 때문에 카메라 높이에 가까워져 납작한 수평 원반처럼 보이던 것이 원인이었다.
+- Editor 소스는 요청대로 모선 그룹 없이 평탄하게 유지하되, 런타임에서 59개 모선 파츠와 Weapon/Drone/VFX 소켓을 원래 Gameplay/Visual Root에 연결해 이동·스케일·VFX 기준을 복원했다.
+- 최종 public scene은 그룹 TransformNode 0개, 루트 모선 메시 59개이며 런타임 재구성 후 `worldY=16.5`로 렌더링된다.
+- 최종 검증: TypeScript, Vitest 48/48, production build, `git diff --check`, 표준 web-game 클라이언트 우측 이동, 브라우저 배경 패널·충돌 패널, 콘솔 오류 0건 통과.
+- 후속 확인에서 Editor 소스와 재패키징된 public scene에 `CloudRoot`/`CloudRootPlane`이 누락돼 구름 텍스처가 있어도 표시할 메시가 없음을 확인했다.
+- 런타임 로더가 정상본과 동일한 `360 × 202.5` 크기의 `CloudRootPlane`을 복구해 `CloudRoot`에 연결하도록 수정했고, 장면 생성기의 `BACKGROUND_PLANE_HEIGHTS`에도 `CloudRoot: 202.5`를 추가했다.
+- 구름 복원 후 브라우저와 표준 web-game 클라이언트에서 낮 구름 레이어, 모선 `worldY=16.5`, 우측 이동, 콘솔 오류 0건을 확인했다. 전체 TypeScript/Vitest 48/48/production build와 `git diff --check`도 다시 통과했다.
+- 런타임 보정에만 의존하지 않도록 Editor 소스에 `CloudRoot.json`과 `CloudRootPlane.json`도 복원했다. 구름 Plane은 정상본의 `360 × 202.5` geometry를 재사용하고 `CloudRoot`의 자식으로 저장했으며, 재패키징된 public scene에서도 `CloudRootPlane → CloudRoot` 부모 관계와 `CloudRootMaterial`을 확인했다.
+- 구름이 화면 위로 치우쳐 일부가 잘리는지 재점검한 결과, 크기(`360 × 202.5`)는 정상본과 동일했고 위치만 정상본 `CloudRoot.y=4` 대비 `13.25`로 올라가 있었다. CloudRoot와 런타임 기본값을 `y=4`로 복원하고 public scene을 재패키징했다. 표준 web-game 캡처에서 구름이 건물 위쪽에 자연스럽게 걸쳐 보이며 콘솔 오류 0건을 확인했다.
+
+## 2026-08-26 — SAM 지상 Y 복원값 조정
+
+- 공통 지상 기준 `-18.50`은 유지하고 SAM 전용 루트 기준만 `GROUND_SAM_ROOT_Y=-16.50`으로 분리했다.
+- SAM 본체·체력바·라벨·발사 소켓과 SAM 공격 목표 Y가 함께 새 기준을 사용하도록 연결했다. 다른 지상 유닛과 흡수 대상 위치는 변경하지 않았다.
+- 표준 web-game 검증에서 세 SAM의 `visuals.ground[].y=-16.5`, 모선 `worldY=16.5`, 우측 이동, 콘솔 오류 0건을 확인했고 TypeScript와 `git diff --check`를 통과했다.

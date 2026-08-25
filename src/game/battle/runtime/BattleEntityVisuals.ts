@@ -3,7 +3,7 @@ import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonj
 import { BALANCE } from '../../domain/balance';
 import { fighterCombatCenter, fighterKeepOutMetric } from '../../domain/combatRules';
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
-import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y } from './battleVisualCoordinates';
+import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y, GROUND_SAM_ROOT_Y } from './battleVisualCoordinates';
 
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-side-4way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
@@ -650,7 +650,7 @@ export class BattleEntityVisuals {
     let labelPanel: Rectangle | undefined;
     if (isSam) {
       labelAnchor = MeshBuilder.CreatePlane(`${root.name}-label-anchor`, { size: 0.01 }, this.scene);
-      labelAnchor.position.set(0, GROUND_ENTITY_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y + 4.8, 0.6);
+      labelAnchor.position.set(0, GROUND_SAM_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y + 4.8, 0.6);
       labelAnchor.isVisible = false;
       labelAnchor.isPickable = false;
       labelPanel = new Rectangle(`${root.name}-label`);
@@ -680,7 +680,7 @@ export class BattleEntityVisuals {
 
   private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean): void {
     const override = this.groundPositionOverrides.get(visual.group);
-    this.applyGroundPosition(visual, x, override ?? GROUND_ENTITY_ROOT_Y);
+    this.applyGroundPosition(visual, x, override ?? (visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y));
     visual.root.setEnabled(!destroyed);
     if (visual.labelAnchor && visual.labelPanel) {
       visual.labelAnchor.position.x = x;

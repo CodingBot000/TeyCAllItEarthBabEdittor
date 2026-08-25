@@ -2,8 +2,8 @@
     "tags": null,
     "position": [
         0,
-        0,
-        0
+        4,
+        27
     ],
     "rotation": [
         0,
@@ -20,14 +20,14 @@
     "infiniteDistance": false,
     "ignoreNonUniformScaling": false,
     "reIntegrateRotationIntoRotationQuaternion": false,
-    "name": "MothershipEmitterGroup",
-    "id": "6f26b57d-eb92-4721-92e6-0ec7506cfd49",
+    "name": "CloudRoot",
+    "id": "CloudRoot",
     "state": "",
     "metadata": {
-        "parentId": 1787679962708
+        "parentId": 3
     },
     "type": "TransformNode",
-    "uniqueId": 1787679962713,
+    "uniqueId": 1001,
     "localMatrix": [
         1,
         0,

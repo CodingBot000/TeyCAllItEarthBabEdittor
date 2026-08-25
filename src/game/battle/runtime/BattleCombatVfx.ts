@@ -729,6 +729,7 @@ export class BattleCombatVfx {
     overlay.material = material;
     overlay.renderingGroupId = 3;
     overlay.isPickable = false;
+    overlay.setEnabled(false);
     return overlay;
   }
 
@@ -757,6 +758,11 @@ export class BattleCombatVfx {
     const value = Math.max(0.25, Math.min(3, scale));
     if (kind === 'hull') this.collisionHullOverlayScale = value;
     else this.collisionShieldOverlayScale = value;
+  }
+
+  setCollisionOverlayVisible(visible: boolean): void {
+    this.collisionHullOverlay.setEnabled(visible);
+    this.collisionShieldOverlay.setEnabled(visible);
   }
 
   resetCollisionOverlayScale(): void {

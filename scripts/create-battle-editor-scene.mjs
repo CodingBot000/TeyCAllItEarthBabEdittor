@@ -38,6 +38,7 @@ const FIGHTER_SPRITE_SIZE = 5.4;
 const MOTHERSHIP_ATLAS_ASSET = 'mothership-saucer-atlas.png';
 const BACKGROUND_PLANE_HEIGHTS = {
   SkyRoot: 202.5,
+  CloudRoot: 202.5,
   CityFarRoot: 67.5,
   CityMiddleRoot: 67.5,
   CityNearRoot: 60,
@@ -50,7 +51,7 @@ const BACKGROUND_PLANE_WIDTHS = {
 
 const layers = [
   ['SkyRoot', 'backgrounds/sky-day-base.webp', 30, 6.5, false],
-  ['CloudRoot', 'backgrounds/clouds-day.webp', 27, 13.25, true],
+  ['CloudRoot', 'backgrounds/clouds-day.webp', 27, 4, true],
   ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 7, true],
   ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, 11.75, true],
   ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -5, true],
@@ -187,7 +188,6 @@ childNode('WorldVfxRoot', sceneRootNode);
 childNode('BattleDebugRoot', sceneRootNode);
 
 const serialized = SceneSerializer.Serialize(scene);
-preserveEditorParentMetadata(serialized);
 const geometryById = new Map((serialized.geometries?.vertexData ?? []).map((geometry) => [geometry.id, geometry]));
 const materialById = new Map((serialized.materials ?? []).map((material) => [material.id, material]));
 for (const material of materialById.values()) {
@@ -578,27 +578,6 @@ function axisBounds(positions, aggregate) {
     bounds[2] = aggregate(bounds[2], positions[index + 2]);
   }
   return bounds;
-}
-
-function preserveEditorParentMetadata(serializedScene) {
-  const nodes = [
-    ...(serializedScene.transformNodes ?? []),
-    ...(serializedScene.meshes ?? []),
-    ...(serializedScene.lights ?? []),
-    ...(serializedScene.cameras ?? []),
-  ];
-  for (const node of nodes) {
-    if (node.parentId === undefined) continue;
-    node.metadata = { ...(node.metadata ?? {}), parentId: node.parentId };
-    delete node.parentId;
-  }
-  for (const mesh of serializedScene.meshes ?? []) {
-    for (const instance of mesh.instances ?? []) {
-      if (instance.parentId === undefined) continue;
-      instance.metadata = { ...(instance.metadata ?? {}), parentId: instance.parentId };
-      delete instance.parentId;
-    }
-  }
 }
 
 async function writeJson(file, value) {

@@ -4,6 +4,7 @@ import {
   GlowLayer,
   HemisphericLight,
   Mesh,
+  MeshBuilder,
   Scalar,
   Scene,
   StandardMaterial,
@@ -41,6 +42,7 @@ const CLOUD_DRIFT_SPEED = 0.0015;
 const GROUND_LAYER_UI_LIFT_PIXELS = 72;
 const CAMERA_Y = 5;
 const CAMERA_Z = -92;
+const MOTHERSHIP_Y = 16.5;
 const CINEMATIC_EVASION_DURATION = 1.25;
 const CINEMATIC_CRASH_DURATION = MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds;
 const MOTHERSHIP_SIDE_VIEW_MAX_SPEED = 34;
@@ -65,6 +67,7 @@ export interface BattleRuntime {
   setBackgroundLayerY(key: BattleBackgroundLayerKey, y: number): void;
   setGroundUnitGroupPosition(group: GroundUnitGroup, y: number): void;
   resetGroundUnitPositions(): void;
+  setCollisionOverlayVisible(visible: boolean): void;
   setCollisionOverlayScale(kind: 'hull' | 'shield', scale: number): void;
   resetCollisionOverlayScale(): void;
   triggerAbility(ability: Extract<AbilityId, 'emp' | 'plasma' | 'overdrive'>): CommandResult;
@@ -181,7 +184,7 @@ interface MothershipCinematic {
 
 export const BATTLE_BACKGROUND_LAYERS: BattleBackgroundLayer[] = [
   { name: 'SkyRoot', key: 'sky', z: 30, y: 6.5, parallax: 0, renderingGroupId: 0 },
-  { name: 'CloudRoot', key: 'clouds', z: 27, y: 13.25, parallax: 0, renderingGroupId: 0 },
+  { name: 'CloudRoot', key: 'clouds', z: 27, y: 4, parallax: 0, renderingGroupId: 0 },
   { name: 'CityFarRoot', key: 'far', z: 22, y: 7, parallax: 0.15, renderingGroupId: 0 },
   { name: 'CityMiddleRoot', key: 'middle', z: 16, y: 11.75, parallax: 0.35, renderingGroupId: 1 },
   { name: 'CityNearRoot', key: 'near', z: 10, y: -5, parallax: 0.6, renderingGroupId: 2 },
@@ -229,17 +232,24 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     fallbackLight.groundColor = new Color3(0.1, 0.16, 0.19);
   }
 
-  const backgroundPlanes = BATTLE_BACKGROUND_LAYERS.map((layer) => ({ layer, root: getOrCreateNode(scene, layer.name), plane: scene.getMeshByName(`${layer.name}Plane`) }));
+  const backgroundPlanes = BATTLE_BACKGROUND_LAYERS.map((layer) => {
+    const root = getOrCreateNode(scene, layer.name);
+    const plane = scene.getMeshByName(`${layer.name}Plane`)
+      ?? (layer.key === 'clouds'
+        ? MeshBuilder.CreatePlane('CloudRootPlane', { width: WORLD_WIDTH, height: 202.5, sideOrientation: Mesh.DOUBLESIDE }, scene)
+        : null);
+    if (plane && plane.parent !== root) plane.parent = root;
+    return { layer, root, plane };
+  });
   const backgroundLayerY = new Map<BattleBackgroundLayerKey, number>(BATTLE_BACKGROUND_LAYERS.map((layer) => [layer.key, layer.y]));
   applyEditorBackgroundMaterials(backgroundPlanes, map, scene);
-  const mothershipGameplayRoot = getOrCreateNode(scene, 'MothershipGameplayRoot');
-  const mothershipVisualRoot = scene.getTransformNodeByName('MothershipVisualRoot');
+  const { gameplayRoot: mothershipGameplayRoot, visualRoot: mothershipVisualRoot } = restoreMothershipRuntimeHierarchy(scene);
   mothershipVisualRoot?.scaling.scaleInPlace(BALANCE.mothership.visualScale);
   const mothershipPurpleGlow = mothershipVisualRoot ? createMothershipPurpleGlow(scene, mothershipVisualRoot) : null;
   const fighterPoolRoot = getOrCreateNode(scene, 'FighterPoolRoot');
   const dronePoolRoot = getOrCreateNode(scene, 'DronePoolRoot');
   const groundBattleRoot = getOrCreateNode(scene, 'GroundBattleRoot');
-  if (options.debugControls !== true) hideDebugPrototypes(fighterPoolRoot, dronePoolRoot, groundBattleRoot);
+  if (options.debugControls !== true) hideDebugPrototypes(scene);
   const absorbableRegions = new BattleAbsorbableRegions(scene, options.language);
   const cohortVisuals = new BattleCohortVisuals(scene);
   const infectedAssaultVfx = new BattleInfectedAssaultVfx(scene);
@@ -285,6 +295,9 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   };
   const resetGroundUnitPositions = (): void => {
     entityVisuals.resetGroundUnitPositions();
+  };
+  const setCollisionOverlayVisible = (visible: boolean): void => {
+    combatVfx.setCollisionOverlayVisible(visible);
   };
   const setCollisionOverlayScale = (kind: 'hull' | 'shield', scale: number): void => {
     combatVfx.setCollisionOverlayScale(kind, scale);
@@ -734,6 +747,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     setBackgroundLayerY,
     setGroundUnitGroupPosition,
     resetGroundUnitPositions,
+    setCollisionOverlayVisible,
     setCollisionOverlayScale,
     resetCollisionOverlayScale,
     triggerAbility: triggerCombatAbility,
@@ -962,12 +976,36 @@ function setGameplayRenderingGroup(...roots: TransformNode[]): void {
   }
 }
 
-function hideDebugPrototypes(...roots: TransformNode[]): void {
-  for (const root of roots) {
-    for (const mesh of root.getChildMeshes()) {
-      if (/^(FighterPrototype|DronePrototype|GroundTurretPrototype|GroundBarrelPrototype|GroundSamPrototype)/.test(mesh.name)) mesh.setEnabled(false);
-    }
+function hideDebugPrototypes(scene: Scene): void {
+  for (const mesh of scene.meshes) {
+    if (/^(FighterPrototype|DronePrototype|GroundTurretPrototype|GroundBarrelPrototype|GroundSamPrototype)/.test(mesh.name)) mesh.setEnabled(false);
   }
+}
+
+function restoreMothershipRuntimeHierarchy(scene: Scene): { gameplayRoot: TransformNode; visualRoot: TransformNode } {
+  const airRoot = getOrCreateNode(scene, 'AirBattleRoot');
+  const gameplayRoot = getOrCreateNode(scene, 'MothershipGameplayRoot');
+  const visualRoot = getOrCreateNode(scene, 'MothershipVisualRoot');
+  gameplayRoot.parent = airRoot;
+  gameplayRoot.position.y = MOTHERSHIP_Y;
+  visualRoot.parent = gameplayRoot;
+
+  const modelRoot = scene.getTransformNodeByName('MothershipModelRoot');
+  if (modelRoot) modelRoot.parent = visualRoot;
+  for (const mesh of scene.meshes) {
+    if (mesh.name.startsWith('mothership-') && !mesh.parent) mesh.parent = visualRoot;
+  }
+
+  const weaponSockets = getOrCreateNode(scene, 'WeaponSockets');
+  weaponSockets.parent = visualRoot;
+  for (const name of ['WeaponSocketLeft', 'WeaponSocketRight']) getOrCreateNode(scene, name).parent = weaponSockets;
+
+  const droneSockets = getOrCreateNode(scene, 'DroneSpawnSockets');
+  droneSockets.parent = visualRoot;
+  for (const name of ['DroneSpawnSocketLeft', 'DroneSpawnSocketCenter', 'DroneSpawnSocketRight']) getOrCreateNode(scene, name).parent = droneSockets;
+  getOrCreateNode(scene, 'MothershipVfxSockets').parent = visualRoot;
+
+  return { gameplayRoot, visualRoot };
 }
 
 function assignBackgroundMaterial(mesh: AbstractMesh, url: string, scene: Scene, isAtmosphere: boolean, repeatX = 1): void {

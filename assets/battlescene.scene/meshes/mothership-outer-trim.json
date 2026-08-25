@@ -66,9 +66,7 @@
             "subMeshes": null,
             "materialUniqueId": 39,
             "materialId": "mothership-edge-material",
-            "metadata": {
-                "parentId": 1787679962709
-            },
+            "metadata": {},
             "instances": [],
             "animations": [],
             "ranges": [],
@@ -300,9 +298,7 @@
         "torusKnots": [],
         "vertexData": []
     },
-    "metadata": {
-        "parentId": 1787679962709
-    },
+    "metadata": {},
     "basePoseMatrix": [
         1,
         0,

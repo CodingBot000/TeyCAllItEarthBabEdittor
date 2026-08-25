@@ -2,7 +2,7 @@
     "tags": null,
     "position": [
         0,
-        8,
+        16.5,
         0
     ],
     "rotation": [
@@ -23,9 +23,7 @@
     "name": "MothershipGameplayRoot",
     "id": "MothershipGameplayRoot",
     "state": "",
-    "metadata": {
-        "parentId": 32
-    },
+    "metadata": {},
     "type": "TransformNode",
     "uniqueId": 33,
     "localMatrix": [

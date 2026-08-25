@@ -282,6 +282,10 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     setCollisionOverlayScales({ shield: 1, hull: 1 });
     setCollisionCopyStatus('idle');
   };
+  const setCollisionDebugVisible = (visible: boolean) => {
+    setCollisionDebugOpen(visible);
+    runtimeRef.current?.setCollisionOverlayVisible(visible);
+  };
   const collisionOverlayOutput = `shieldScale=${collisionOverlayScales.shield.toFixed(2)}\nhullScale=${collisionOverlayScales.hull.toFixed(2)}`;
   const copyCollisionOverlayOutput = async () => {
     try {
@@ -361,7 +365,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
       {backgroundDebugEnabled ? collisionDebugOpen ? <aside className="battle-background-debug battle-collision-debug" data-testid="battle-collision-debug">
         <div className="battle-background-debug-header">
           <div><span>DEBUG TOOL</span><strong>COLLISION OVERLAY</strong></div>
-          <div className="battle-background-debug-header-actions"><button type="button" onClick={() => setCollisionDebugOpen(false)} aria-label="Close collision overlay debug panel">CLOSE</button><button type="button" disabled={phase !== 'ready'} onClick={resetCollisionOverlayScales} aria-label="Reset collision overlay scales">RESET</button></div>
+          <div className="battle-background-debug-header-actions"><button type="button" onClick={() => setCollisionDebugVisible(false)} aria-label="Close collision overlay debug panel">CLOSE</button><button type="button" disabled={phase !== 'ready'} onClick={resetCollisionOverlayScales} aria-label="Reset collision overlay scales">RESET</button></div>
         </div>
         <p className="battle-background-debug-hint">SHIELD / HULL SCALE · 1.00 IS THE CURRENT COLLISION AREA</p>
         <div className="battle-background-debug-list">
@@ -379,7 +383,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           <textarea readOnly value={collisionOverlayOutput} rows={2} aria-label="Final collision overlay scales" />
           {collisionCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Copy these scale values after matching the visible mothership.</small>}
         </div>
-      </aside> : <button className="battle-background-debug-toggle battle-collision-debug-toggle" data-testid="battle-collision-debug-toggle" type="button" onClick={() => { setBackgroundDebugOpen(false); setCollisionDebugOpen(true); }} aria-label="Open collision overlay debug panel">COLLISION DEBUG</button> : null}
+      </aside> : <button className="battle-background-debug-toggle battle-collision-debug-toggle" data-testid="battle-collision-debug-toggle" type="button" onClick={() => { setBackgroundDebugOpen(false); setCollisionDebugVisible(true); }} aria-label="Open collision overlay debug panel">COLLISION DEBUG</button> : null}
       <div className="battle-top-right-actions">
         <button className={`battle-point-defense-button ${pointDefenseDisabled ? 'is-on' : ''}`} data-testid="battle-point-defense-toggle" type="button" aria-pressed={pointDefenseDisabled} disabled={phase !== 'ready'} onClick={togglePointDefense}>
           {pointDefenseDisabled ? '요격빔 차단 ON' : '요격빔 차단 OFF'}

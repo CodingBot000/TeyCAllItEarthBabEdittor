@@ -23,9 +23,7 @@
     "name": "MothershipVfxSockets",
     "id": "MothershipVfxSockets",
     "state": "",
-    "metadata": {
-        "parentId": 34
-    },
+    "metadata": {},
     "type": "TransformNode",
     "uniqueId": 167,
     "localMatrix": [
