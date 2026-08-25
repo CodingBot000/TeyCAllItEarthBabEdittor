@@ -6,6 +6,16 @@ const projectRoot = path.resolve(new URL('..', import.meta.url).pathname);
 const sourceRoot = path.join(projectRoot, 'art-source/battlescene/maps/city-night');
 const masterSource = path.join(sourceRoot, 'night-master-v2.png');
 const groundSource = path.join(sourceRoot, 'night-ground-sideview-v2.png');
+const cityLayerSources = {
+  far: path.join(sourceRoot, 'city-far-night-v3-raw.png'),
+  middle: path.join(sourceRoot, 'city-middle-night-v3-raw.png'),
+  near: path.join(sourceRoot, 'city-near-night-v4-raw.png'),
+};
+const cityLayerCleanSources = {
+  far: path.join(sourceRoot, 'city-far-night-v3.png'),
+  middle: path.join(sourceRoot, 'city-middle-night-v3.png'),
+  near: path.join(sourceRoot, 'city-near-night-v4.png'),
+};
 const targetRoots = [
   path.join(projectRoot, 'assets/battlescene/maps/city-night/backgrounds'),
   path.join(projectRoot, 'public/assets/runtime/battlescene/maps/city-night/backgrounds'),
@@ -34,28 +44,9 @@ const layers = [
     { offset: 0.5, opacity: 0 },
     { offset: 1, opacity: 0 },
   ], WIDTH, HEIGHT, 2.8)],
-  ['city-far-night.webp', await createMaskedLayer(masterBuffer, [
-    { offset: 0, opacity: 0 },
-    { offset: 0.26, opacity: 0 },
-    { offset: 0.32, opacity: 0.94 },
-    { offset: 0.52, opacity: 0.94 },
-    { offset: 0.58, opacity: 0 },
-    { offset: 1, opacity: 0 },
-  ], WIDTH, HEIGHT, 0.4)],
-  ['city-middle-night.webp', await createMaskedLayer(masterBuffer, [
-    { offset: 0, opacity: 0 },
-    { offset: 0.49, opacity: 0 },
-    { offset: 0.55, opacity: 0.96 },
-    { offset: 0.7, opacity: 0.96 },
-    { offset: 0.76, opacity: 0 },
-    { offset: 1, opacity: 0 },
-  ], WIDTH, HEIGHT, 0.3, true)],
-  ['city-near-night.webp', await createMaskedLayer(masterBuffer, [
-    { offset: 0, opacity: 0 },
-    { offset: 0.68, opacity: 0 },
-    { offset: 0.74, opacity: 0.98 },
-    { offset: 1, opacity: 0.98 },
-  ], 1774, 887, 0.3)],
+  ['city-far-night.webp', await createCityLayer(cityLayerSources.far, cityLayerCleanSources.far, 200)],
+  ['city-middle-night.webp', await createCityLayer(cityLayerSources.middle, cityLayerCleanSources.middle)],
+  ['city-near-night.webp', await createCityLayer(cityLayerSources.near, cityLayerCleanSources.near, -140)],
   ['ground-sideview-night.webp', await createGroundLayer(groundSource)],
   ['foreground-atmosphere-night.webp', await createMaskedLayer(masterBuffer, [
     { offset: 0, opacity: 0 },
@@ -69,7 +60,7 @@ for (const [name, buffer] of layers) {
   await Promise.all(targetRoots.map((root) => fs.writeFile(path.join(root, name), buffer)));
 }
 
-console.log(`Generated ${layers.length} independent city-night layers from ${path.relative(projectRoot, masterSource)}.`);
+console.log(`Generated ${layers.length} independent city-night layers from ${path.relative(projectRoot, masterSource)} and explicit city layer sources.`);
 
 async function createSkyLayer(masterBuffer) {
   return sharp(masterBuffer)
@@ -79,6 +70,94 @@ async function createSkyLayer(masterBuffer) {
     .modulate({ brightness: 0.78, saturation: 0.86 })
     .webp({ quality: 82, effort: 6 })
     .toBuffer();
+}
+
+async function createCityLayer(sourcePath, cleanSourcePath, verticalOffset = 0) {
+  const { data, info } = await sharp(sourcePath)
+    .resize(WIDTH, HEIGHT, { fit: 'fill' })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const alpha = removeGeneratedCheckerboard(data, info.width, info.height);
+  const shifted = shiftRgbaLayer(data, alpha, info.width, info.height, verticalOffset);
+  const rgba = sharp(shifted.rgb, { raw: { width: info.width, height: info.height, channels: 3 } })
+    .joinChannel(shifted.alpha, { raw: { width: info.width, height: info.height, channels: 1 } });
+  const [webpBuffer] = await Promise.all([
+    rgba.clone().webp({ quality: 80, alphaQuality: 92, effort: 6 }).toBuffer(),
+    rgba.clone().png({ compressionLevel: 9, adaptiveFiltering: true }).toFile(cleanSourcePath),
+  ]);
+  return webpBuffer;
+}
+
+function removeGeneratedCheckerboard(rgb, width, height) {
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+
+  const isCheckerLike = (pixelIndex) => {
+    const offset = pixelIndex * 3;
+    const red = rgb[offset];
+    const green = rgb[offset + 1];
+    const blue = rgb[offset + 2];
+    const minimum = Math.min(red, green, blue);
+    const maximum = Math.max(red, green, blue);
+    return minimum >= 125 && maximum - minimum <= 42;
+  };
+
+  const enqueue = (pixelIndex) => {
+    if (visited[pixelIndex] || !isCheckerLike(pixelIndex)) return;
+    visited[pixelIndex] = 1;
+    queue[tail] = pixelIndex;
+    tail += 1;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y += 1) {
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+
+  while (head < tail) {
+    const pixelIndex = queue[head];
+    head += 1;
+    const x = pixelIndex % width;
+    const y = Math.floor(pixelIndex / width);
+    if (x > 0) enqueue(pixelIndex - 1);
+    if (x + 1 < width) enqueue(pixelIndex + 1);
+    if (y > 0) enqueue(pixelIndex - width);
+    if (y + 1 < height) enqueue(pixelIndex + width);
+  }
+
+  const alpha = Buffer.alloc(width * height, 255);
+  for (let pixelIndex = 0; pixelIndex < visited.length; pixelIndex += 1) {
+    if (!visited[pixelIndex]) continue;
+    alpha[pixelIndex] = 0;
+    const offset = pixelIndex * 3;
+    rgb[offset] = 2;
+    rgb[offset + 1] = 10;
+    rgb[offset + 2] = 18;
+  }
+  return alpha;
+}
+
+function shiftRgbaLayer(rgb, alpha, width, height, verticalOffset) {
+  const offset = Math.max(-height + 1, Math.min(height - 1, verticalOffset));
+  if (offset === 0) return { rgb, alpha };
+  const shiftedRgb = Buffer.alloc(rgb.length, 2);
+  const shiftedAlpha = Buffer.alloc(alpha.length, 0);
+  for (let y = 0; y < height; y += 1) {
+    const targetY = y + offset;
+    if (targetY < 0 || targetY >= height) continue;
+    const sourceRgbOffset = y * width * 3;
+    const targetRgbOffset = targetY * width * 3;
+    rgb.copy(shiftedRgb, targetRgbOffset, sourceRgbOffset, sourceRgbOffset + width * 3);
+    alpha.copy(shiftedAlpha, targetY * width, y * width, (y + 1) * width);
+  }
+  return { rgb: shiftedRgb, alpha: shiftedAlpha };
 }
 
 async function createMaskedLayer(masterBuffer, stops, width, height, blurSigma, opaque = false) {
