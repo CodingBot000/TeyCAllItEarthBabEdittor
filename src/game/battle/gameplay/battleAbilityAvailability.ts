@@ -3,7 +3,7 @@ import { abilityCheck, heavyAbilityCellCost } from '../../domain/combatRules';
 import type { CombatState } from '../../domain/types';
 import { nearestUsableSideViewTarget, selectAutomaticSideViewAbilityTarget } from './sideViewBattleRules';
 
-export type BattleActionId = 'emp' | 'plasma' | 'beam' | 'overdrive' | 'extract';
+export type BattleActionId = 'emp' | 'plasma' | 'beam' | 'overdrive' | 'assault' | 'extract';
 export type AbilityAvailabilityReason = 'NO_CELLS' | 'LOW_ENERGY' | 'COOLDOWN' | 'NO_TARGET' | 'COMBAT_OVER' | 'OUT_OF_RANGE' | 'CARGO_FULL' | 'OVERHEATED' | 'EXTRACT_LOCKED' | 'EXTRACTING';
 
 export interface AbilityAvailability {
@@ -20,6 +20,7 @@ export function battleAbilityAvailability(state: CombatState): Record<BattleActi
     plasma: heavyAbilityAvailability(state, 'plasma'),
     beam: beamAvailability(state),
     overdrive: overdriveAvailability(state),
+    assault: assaultAvailability(state),
     extract: extractionAvailability(state),
   };
 }
@@ -44,6 +45,11 @@ function beamAvailability(state: CombatState): AbilityAvailability {
   return baseline;
 }
 
+function assaultAvailability(state: CombatState): AbilityAvailability {
+  if (state.result !== 'ACTIVE') return unavailable(state, 'assault', 0, 'COMBAT_OVER');
+  return available(state, 'assault', 0);
+}
+
 function extractionAvailability(state: CombatState): AbilityAvailability {
   if (state.result !== 'ACTIVE') return unavailable(state, 'extract', 0, 'COMBAT_OVER');
   if (state.extractionStatus === 'AVAILABLE') return available(state, 'extract', 0);
@@ -66,11 +72,11 @@ function unavailable(state: CombatState, ability: BattleActionId, energyCost: nu
 }
 
 function cooldownFor(state: CombatState, ability: BattleActionId): number {
-  return ability === 'extract' ? 0 : Math.max(0, state.cooldowns[ability]);
+  return ability === 'extract' || ability === 'assault' ? 0 : Math.max(0, state.cooldowns[ability]);
 }
 
 function cellCostFor(ability: BattleActionId): number {
-  return ability === 'extract' ? 0 : heavyAbilityCellCost(ability);
+  return ability === 'extract' || ability === 'assault' ? 0 : heavyAbilityCellCost(ability);
 }
 
 function availabilityReason(reason: string | undefined): AbilityAvailabilityReason {

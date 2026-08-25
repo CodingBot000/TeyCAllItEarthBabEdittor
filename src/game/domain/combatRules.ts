@@ -4,7 +4,7 @@ import { createControlNodes, createDeployedCohorts, createGroundDefenders, tickC
 import { occupationRequirements, resolveMissionOutcome } from './missionRules';
 import { ABSORBABLE_WEIGHT_BY_KIND } from './types';
 import { clampTacticalPosition, TACTICAL_MAP_BOUNDS } from './tacticalBounds';
-import type { AbsorbableKind, AbsorbableTargetState, AbsorptionPreview, AbilityId, BeamHeatState, BeamStopReason, CampaignState, CityDefinition, CityState, CombatFacilityState, CombatState, EnemyAbsorptionStatus, EnemyState, MissionCargo, MissionYieldPerThousand, MothershipHitEvent, PopulationZoneState, TacticalPreset, TacticalRiskForecast, TargetRecommendation, Vec2 } from './types';
+import type { AbsorbableKind, AbsorbableTargetState, AbsorptionPreview, AbilityId, BeamHeatState, BeamStopReason, CampaignState, CityDefinition, CityState, CombatFacilityState, CombatState, EnemyAbsorptionStatus, EnemyState, MissionCargo, MissionYieldPerThousand, MothershipHitEvent, PopulationZoneState, TacticalPreset, TacticalRiskForecast, TargetRecommendation, Vec2, Vec3 } from './types';
 
 export const EXIT_ZONES: Vec2[] = [
   { x: TACTICAL_MAP_BOUNDS.minX, z: TACTICAL_MAP_BOUNDS.minZ },
@@ -21,7 +21,82 @@ export function getBeamHeatState(heat: number): BeamHeatState {
 }
 
 const distance = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
+const distance3D = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+export function fighterCombatCenter(state: Pick<CombatState, 'mothership'>): Vec3 {
+  return {
+    x: state.mothership.position.x,
+    y: BALANCE.mothership.baseAltitude,
+    z: state.mothership.position.z,
+  };
+}
+
+export function fighterKeepOutMetric(position: Vec3, center: Vec3): number {
+  const dx = (position.x - center.x) / BALANCE.defense.fighterKeepOutRadiusX;
+  const dy = (position.y - center.y) / BALANCE.defense.fighterKeepOutRadiusY;
+  const dz = (position.z - center.z) / BALANCE.defense.fighterKeepOutRadiusZ;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+export function projectFighterOutsideKeepOut(position: Vec3, center: Vec3): Vec3 {
+  const metric = fighterKeepOutMetric(position, center);
+  let projected = { ...position };
+  if (metric <= 0.000001) {
+    projected = { x: center.x + BALANCE.defense.fighterKeepOutRadiusX + 0.01, y: center.y, z: center.z };
+  } else if (metric < 1) {
+    const scale = 1.001 / Math.sqrt(metric);
+    projected = {
+      x: center.x + (position.x - center.x) * scale,
+      y: center.y + (position.y - center.y) * scale,
+      z: center.z + (position.z - center.z) * scale,
+    };
+  }
+  const dx = projected.x - center.x;
+  const dy = projected.y - center.y;
+  const dz = projected.z - center.z;
+  const centerDistance = Math.hypot(dx, dy, dz);
+  const minimumDistance = BALANCE.defense.fighterAttackPassRadiusMin + 0.01;
+  if (centerDistance >= minimumDistance) return projected;
+  if (centerDistance <= 0.000001) return { x: center.x + minimumDistance, y: center.y, z: center.z };
+  const distanceScale = minimumDistance / centerDistance;
+  return {
+    x: center.x + dx * distanceScale,
+    y: center.y + dy * distanceScale,
+    z: center.z + dz * distanceScale,
+  };
+}
+
+export function fighterSegmentKeepOutIntersection(previous: Vec3, next: Vec3, center: Vec3): number | null {
+  const radii = {
+    x: BALANCE.defense.fighterKeepOutRadiusX,
+    y: BALANCE.defense.fighterKeepOutRadiusY,
+    z: BALANCE.defense.fighterKeepOutRadiusZ,
+  };
+  const start = {
+    x: (previous.x - center.x) / radii.x,
+    y: (previous.y - center.y) / radii.y,
+    z: (previous.z - center.z) / radii.z,
+  };
+  const delta = {
+    x: (next.x - previous.x) / radii.x,
+    y: (next.y - previous.y) / radii.y,
+    z: (next.z - previous.z) / radii.z,
+  };
+  const c = start.x * start.x + start.y * start.y + start.z * start.z - 1;
+  if (c < 0) return 0;
+  const a = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+  if (a <= 0.0000001) return null;
+  const b = 2 * (start.x * delta.x + start.y * delta.y + start.z * delta.z);
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const first = (-b - root) / (2 * a);
+  const second = (-b + root) / (2 * a);
+  if (first >= 0 && first <= 1) return first;
+  if (second >= 0 && second <= 1) return second;
+  return null;
+}
 
 export interface CombatTickOptions {
   unitInvincibilityEnabled?: boolean;
@@ -278,7 +353,7 @@ export function startBeamOnTarget(state: CombatState, targetId: string): { ok: b
 export function getEnemyAbsorptionStatus(state: CombatState, enemy: EnemyState): EnemyAbsorptionStatus {
   if (enemy.health <= 0) return 'DESTROYED';
   if (enemy.disabledUntil > state.elapsedSeconds) return 'DISABLED';
-  const distanceToShip = distance(enemy.position, state.mothership.position);
+  const distanceToShip = distance3D(enemy.position, fighterCombatCenter(state));
   if (distanceToShip >= BALANCE.defense.fighterMinAttackRange && distanceToShip <= BALANCE.defense.fighterAttackRange) return 'ATTACKING';
   return 'NEUTRAL';
 }
@@ -828,51 +903,61 @@ function tickSamSites(state: CombatState, dt: number): void {
 
 function spawnFighter(state: CombatState, index: number, squadId: number): void {
   const orbitDirection: -1 | 1 = (squadId / 20) % 2 === 0 ? -1 : 1;
-  const squadRadius = BALANCE.defense.fighterOrbitRadius + randomRange(state.seed, squadId, -2.4, 2.4, 0);
+  const squadRadius = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitRadiusMin, BALANCE.defense.fighterOrbitRadiusMax, 0);
   const squadAngularSpeed = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitAngularSpeedMin, BALANCE.defense.fighterOrbitAngularSpeedMax, 1);
-  const angularSpeed = clamp(squadAngularSpeed + randomRange(state.seed, squadId, -0.045, 0.045, index + 2), BALANCE.defense.fighterOrbitAngularSpeedMin, BALANCE.defense.fighterOrbitAngularSpeedMax);
-  const phaseOffset = index * 0.45 + randomRange(state.seed, squadId, -0.12, 0.12, index + 4);
+  const angularSpeed = clamp(squadAngularSpeed + randomRange(state.seed, squadId, -0.025, 0.025, index + 2), BALANCE.defense.fighterOrbitAngularSpeedMin, BALANCE.defense.fighterOrbitAngularSpeedMax);
+  const phaseOffset = index * 0.5 + randomRange(state.seed, squadId, -0.08, 0.08, index + 4);
   const orbitPhase = squadId * 0.071 + phaseOffset - state.elapsedSeconds * angularSpeed * orbitDirection;
   const spawnAngle = orbitPhase + state.elapsedSeconds * angularSpeed * orbitDirection;
-  const orbitRadius = squadRadius + randomRange(state.seed, squadId, -1.4, 1.4, index + 6);
-  const orbitEccentricity = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitEccentricityMin, BALANCE.defense.fighterOrbitEccentricityMax, index + 8);
-  const orbitVerticalAmplitude = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitVerticalAmplitudeMin, BALANCE.defense.fighterOrbitVerticalAmplitudeMax, index + 10);
-  const orbitDepthAmplitude = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitDepthAmplitudeMin, BALANCE.defense.fighterOrbitDepthAmplitudeMax, index + 12);
+  const orbitRadius = clamp(squadRadius + randomRange(state.seed, squadId, -3, 3, index + 6), BALANCE.defense.fighterOrbitRadiusMin, BALANCE.defense.fighterOrbitRadiusMax);
+  const orbitDepthRadius = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitDepthRadiusMin, BALANCE.defense.fighterOrbitDepthRadiusMax, index + 8);
+  const orbitVerticalRadius = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitVerticalRadiusMin, BALANCE.defense.fighterOrbitVerticalRadiusMax, index + 10);
+  const tiltMagnitude = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitPlaneTiltMin, BALANCE.defense.fighterOrbitPlaneTiltMax, index + 12);
+  const orbitPlaneTilt = fighterRandom(state.seed, squadId, index + 13) < 0.5 ? -tiltMagnitude : tiltMagnitude;
+  const orbitEccentricity = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitEccentricityMin, BALANCE.defense.fighterOrbitEccentricityMax, index + 22);
   const orbitWobblePhase = randomRange(state.seed, squadId, 0, Math.PI * 2, index + 14);
-  const attackRunPhase = randomRange(state.seed, squadId, 0, Math.PI * 2, index + 16);
+  const attackRunPhase = randomRange(state.seed, squadId, 0, BALANCE.defense.fighterAttackCycleSeconds, index + 16);
   const attackRunStrength = randomRange(state.seed, squadId, 0.82, 1.12, index + 18);
+  const recoverDuration = randomRange(state.seed, squadId, BALANCE.defense.fighterRecoverDurationMin, BALANCE.defense.fighterRecoverDurationMax, index + 20);
   const formation = fighterFormationOffset(index);
   const radial = { x: Math.cos(spawnAngle), z: Math.sin(spawnAngle) };
   const tangent = { x: -Math.sin(spawnAngle) * orbitDirection, z: Math.cos(spawnAngle) * orbitDirection };
-  const spawnRadius = orbitRadius + 10 + formation.radial;
-  const cruiseSpeed = fighterCruiseSpeed(state);
-  const velocity = {
-    x: state.mothership.velocity.x + tangent.x * cruiseSpeed,
-    z: state.mothership.velocity.z + tangent.z * cruiseSpeed,
+  const center = fighterCombatCenter(state);
+  const initialPosition = projectFighterOutsideKeepOut({
+    x: center.x + radial.x * (orbitRadius + formation.radial) + tangent.x * formation.trailing,
+    y: center.y + Math.sin(spawnAngle + orbitPlaneTilt) * orbitVerticalRadius + formation.altitude,
+    z: center.z + radial.z * orbitDepthRadius + tangent.z * formation.trailing,
+  }, center);
+  const velocity: Vec3 = {
+    x: state.mothership.velocity.x - Math.sin(spawnAngle) * orbitDirection * orbitRadius * angularSpeed,
+    y: Math.cos(spawnAngle + orbitPlaneTilt) * orbitDirection * orbitVerticalRadius * angularSpeed,
+    z: state.mothership.velocity.z + Math.cos(spawnAngle) * orbitDirection * orbitDepthRadius * angularSpeed,
   };
   const enemy: EnemyState = {
     id: `fighter-${state.nextEntityId++}`,
     kind: 'fighter',
-    position: {
-      x: state.mothership.position.x + radial.x * spawnRadius + tangent.x * formation.trailing,
-      z: state.mothership.position.z + radial.z * spawnRadius + tangent.z * formation.trailing + Math.sin(spawnAngle + orbitWobblePhase) * orbitDepthAmplitude,
-    },
+    position: initialPosition,
     velocity,
-    altitude: BALANCE.mothership.baseAltitude + formation.altitude + Math.sin(spawnAngle + orbitWobblePhase) * orbitVerticalAmplitude,
     heading: Math.atan2(velocity.x, velocity.z),
+    pitch: Math.atan2(velocity.y, Math.hypot(velocity.x, velocity.z)),
     bank: 0,
     squadId,
     formationSlot: index,
     orbitDirection,
     orbitRadius,
+    orbitVerticalRadius,
+    orbitDepthRadius,
+    orbitPlaneTilt,
     orbitPhase,
     orbitAngularSpeed: angularSpeed,
     orbitEccentricity,
-    orbitVerticalAmplitude,
-    orbitDepthAmplitude,
     orbitWobblePhase,
     attackRunPhase,
     attackRunStrength,
+    attackRunElapsed: 0,
+    recoverDuration,
+    flightMode: 'ORBIT',
+    keepOutCorrected: false,
     health: BALANCE.defense.fighterHealth * state.defenseMultiplier,
     attackCooldown: 1.8 + index * 0.32,
     disabledUntil: 0,
@@ -891,10 +976,10 @@ function tickEnemies(state: CombatState, dt: number): void {
     }
     flyFighterFormation(state, enemy, dt);
     enemy.absorptionStatus = getEnemyAbsorptionStatus(state, enemy);
-    const distanceToShip = distance(enemy.position, state.mothership.position);
+    const distanceToShip = distance3D(enemy.position, fighterCombatCenter(state));
     const inAttackEnvelope = distanceToShip >= BALANCE.defense.fighterMinAttackRange && distanceToShip <= BALANCE.defense.fighterAttackRange;
     if (enemy.attackCooldown <= 0 && inAttackEnvelope) {
-      if (state.missiles.length < 16) spawnHostileProjectile(state, 'fighter', enemy.id, enemy.position, enemy.altitude, BALANCE.defense.fighterProjectileSpeed * state.defenseMultiplier, BALANCE.defense.fighterDamage * state.defenseMultiplier);
+      if (state.missiles.length < 16) spawnHostileProjectile(state, 'fighter', enemy.id, enemy.position, enemy.position.y, BALANCE.defense.fighterProjectileSpeed * state.defenseMultiplier, BALANCE.defense.fighterDamage * state.defenseMultiplier);
       enemy.attackCooldown = (BALANCE.defense.fighterInterval + enemy.formationSlot * 0.12) / (state.defenseMultiplier * state.enemyPressureMultiplier);
     }
   }
@@ -909,7 +994,7 @@ function tickAirDefenseLaser(state: CombatState, unitInvincibilityEnabled = fals
   let nearestDistance = Number.POSITIVE_INFINITY;
   for (const enemy of state.enemies) {
     if (enemy.health <= 0) continue;
-    const distanceToShip = distance(enemy.position, state.mothership.position);
+    const distanceToShip = distance3D(enemy.position, fighterCombatCenter(state));
     if (distanceToShip >= nearestDistance) continue;
     nearest = enemy;
     nearestDistance = distanceToShip;
@@ -925,7 +1010,7 @@ function tickAirDefenseLaser(state: CombatState, unitInvincibilityEnabled = fals
     targetId: nearest.id,
     origin,
     target,
-    targetAltitude: nearest.altitude,
+    targetAltitude: nearest.position.y,
     damage: BALANCE.defense.airDefenseLaser.damage,
     occurredAt: state.elapsedSeconds,
   };
@@ -935,58 +1020,140 @@ function tickAirDefenseLaser(state: CombatState, unitInvincibilityEnabled = fals
 function flyFighterFormation(state: CombatState, enemy: EnemyState, dt: number): void {
   const angularSpeed = enemy.orbitAngularSpeed || fighterOrbitAngularSpeed(state);
   const angle = enemy.orbitPhase + state.elapsedSeconds * angularSpeed * enemy.orbitDirection;
-  const attackCycle = enemy.attackRunPhase + state.elapsedSeconds * angularSpeed * 0.72;
-  const attackRun = clamp((1 - Math.cos(attackCycle)) * 0.5 * enemy.attackRunStrength, 0, 1.15);
+  const cycle = positiveModulo(state.elapsedSeconds + enemy.attackRunPhase, BALANCE.defense.fighterAttackCycleSeconds);
+  const attackDuration = BALANCE.defense.fighterAttackPassDuration;
+  const previousMode = enemy.flightMode;
+  if (cycle < attackDuration) {
+    enemy.flightMode = 'ATTACK_PASS';
+    enemy.attackRunElapsed = cycle;
+  } else if (cycle < attackDuration + enemy.recoverDuration) {
+    enemy.flightMode = 'RECOVER';
+    enemy.attackRunElapsed = cycle - attackDuration;
+  } else {
+    enemy.flightMode = 'ORBIT';
+    enemy.attackRunElapsed = cycle - attackDuration - enemy.recoverDuration;
+  }
+  if (previousMode !== enemy.flightMode && enemy.flightMode === 'RECOVER') enemy.attackRunElapsed = 0;
   const formation = fighterFormationOffset(enemy.formationSlot);
-  const eccentricRadius = enemy.orbitRadius * (1 + enemy.orbitEccentricity * Math.cos(angle + enemy.orbitWobblePhase));
-  const desiredRadius = eccentricRadius - attackRun * BALANCE.defense.fighterAttackRunDepth * enemy.attackRunStrength + formation.radial;
+  const baseRadius = clamp(
+    enemy.orbitRadius * (1 + enemy.orbitEccentricity * Math.cos(angle + enemy.orbitWobblePhase)) + formation.radial,
+    BALANCE.defense.fighterOrbitRadiusMin,
+    BALANCE.defense.fighterOrbitRadiusMax,
+  );
+  const attackRadius = Math.max(BALANCE.defense.fighterAttackPassRadiusMin, baseRadius - BALANCE.defense.fighterAttackPassDepth * enemy.attackRunStrength);
+  const recoverProgress = enemy.flightMode === 'RECOVER' ? smoothstep(enemy.attackRunElapsed / Math.max(0.001, enemy.recoverDuration)) : 0;
+  const desiredRadius = enemy.flightMode === 'ATTACK_PASS'
+    ? attackRadius
+    : enemy.flightMode === 'RECOVER'
+      ? attackRadius + (baseRadius - attackRadius) * recoverProgress
+      : baseRadius;
+  const radiusRatio = desiredRadius / Math.max(0.001, baseRadius);
+  const desiredDepthRadius = Math.max(BALANCE.defense.fighterAttackPassRadiusMin, enemy.orbitDepthRadius * radiusRatio);
   const radial = { x: Math.cos(angle), z: Math.sin(angle) };
   const tangent = { x: -Math.sin(angle) * enemy.orbitDirection, z: Math.cos(angle) * enemy.orbitDirection };
-  const desiredPosition = {
-    x: state.mothership.position.x + radial.x * desiredRadius + tangent.x * formation.trailing,
-    z: state.mothership.position.z + radial.z * desiredRadius + tangent.z * formation.trailing + Math.sin(angle + enemy.orbitWobblePhase) * enemy.orbitDepthAmplitude,
+  const center = fighterCombatCenter(state);
+  const attackLaneY = enemy.flightMode === 'ATTACK_PASS' ? (enemy.formationSlot % 2 === 0 ? 2.2 : -2.2) : 0;
+  const desiredPosition = projectFighterOutsideKeepOut({
+    x: center.x + radial.x * desiredRadius + tangent.x * formation.trailing,
+    y: center.y + Math.sin(angle + enemy.orbitPlaneTilt) * enemy.orbitVerticalRadius + formation.altitude + attackLaneY,
+    z: center.z + radial.z * desiredDepthRadius + tangent.z * formation.trailing,
+  }, center);
+  const speedMultiplier = enemy.flightMode === 'ATTACK_PASS' ? BALANCE.defense.fighterAttackPassSpeedMultiplier : 1;
+  const tangentVelocity: Vec3 = {
+    x: -Math.sin(angle) * enemy.orbitDirection * desiredRadius * angularSpeed * speedMultiplier,
+    y: Math.cos(angle + enemy.orbitPlaneTilt) * enemy.orbitDirection * enemy.orbitVerticalRadius * angularSpeed * speedMultiplier,
+    z: Math.cos(angle) * enemy.orbitDirection * desiredDepthRadius * angularSpeed * speedMultiplier,
   };
-  const orbitVelocity = angularSpeed * Math.max(10, desiredRadius);
-  let desiredVelocity = {
-    x: state.mothership.velocity.x + tangent.x * orbitVelocity + (desiredPosition.x - enemy.position.x) * 1.45,
-    z: state.mothership.velocity.z + tangent.z * orbitVelocity + (desiredPosition.z - enemy.position.z) * 1.45,
+  let desiredVelocity: Vec3 = {
+    x: state.mothership.velocity.x + tangentVelocity.x + (desiredPosition.x - enemy.position.x) * 1.25,
+    y: tangentVelocity.y + (desiredPosition.y - enemy.position.y) * 1.25,
+    z: state.mothership.velocity.z + tangentVelocity.z + (desiredPosition.z - enemy.position.z) * 1.25,
   };
   const maxSpeed = BALANCE.defense.fighterMaxSpeed * (1 + (state.defenseMultiplier - 1) * 0.5);
-  const desiredSpeed = Math.hypot(desiredVelocity.x, desiredVelocity.z);
+  const desiredSpeed = Math.hypot(desiredVelocity.x, desiredVelocity.y, desiredVelocity.z);
   if (desiredSpeed > maxSpeed) {
-    desiredVelocity = { x: desiredVelocity.x / desiredSpeed * maxSpeed, z: desiredVelocity.z / desiredSpeed * maxSpeed };
+    desiredVelocity = {
+      x: desiredVelocity.x / desiredSpeed * maxSpeed,
+      y: desiredVelocity.y / desiredSpeed * maxSpeed,
+      z: desiredVelocity.z / desiredSpeed * maxSpeed,
+    };
   }
-  const steer = { x: desiredVelocity.x - enemy.velocity.x, z: desiredVelocity.z - enemy.velocity.z };
-  const steerLength = Math.hypot(steer.x, steer.z);
+  const steer = {
+    x: desiredVelocity.x - enemy.velocity.x,
+    y: desiredVelocity.y - enemy.velocity.y,
+    z: desiredVelocity.z - enemy.velocity.z,
+  };
+  const steerLength = Math.hypot(steer.x, steer.y, steer.z);
   const maxSteer = BALANCE.defense.fighterAcceleration * dt;
   if (steerLength > maxSteer) {
     steer.x = steer.x / steerLength * maxSteer;
+    steer.y = steer.y / steerLength * maxSteer;
     steer.z = steer.z / steerLength * maxSteer;
   }
   enemy.velocity.x += steer.x;
+  enemy.velocity.y += steer.y;
   enemy.velocity.z += steer.z;
-  enemy.position.x += enemy.velocity.x * dt;
-  enemy.position.z += enemy.velocity.z * dt;
+  const previousPosition = { ...enemy.position };
+  const proposedPosition = {
+    x: enemy.position.x + enemy.velocity.x * dt,
+    y: enemy.position.y + enemy.velocity.y * dt,
+    z: enemy.position.z + enemy.velocity.z * dt,
+  };
+  const intersection = fighterSegmentKeepOutIntersection(previousPosition, proposedPosition, center);
+  const proposedDistance = distance3D(proposedPosition, center);
+  enemy.keepOutCorrected = intersection !== null
+    || fighterKeepOutMetric(proposedPosition, center) < 1
+    || proposedDistance < BALANCE.defense.fighterAttackPassRadiusMin;
+  if (enemy.keepOutCorrected) {
+    const contactT = intersection === null ? 1 : Math.max(0, intersection - 0.001);
+    const contact = {
+      x: previousPosition.x + (proposedPosition.x - previousPosition.x) * contactT,
+      y: previousPosition.y + (proposedPosition.y - previousPosition.y) * contactT,
+      z: previousPosition.z + (proposedPosition.z - previousPosition.z) * contactT,
+    };
+    enemy.position = projectFighterOutsideKeepOut(contact, center);
+    removeFighterInwardVelocity(enemy, center);
+  } else {
+    enemy.position = projectFighterOutsideKeepOut(proposedPosition, center);
+  }
 
   const previousHeading = enemy.heading;
   enemy.heading = Math.atan2(enemy.velocity.x, enemy.velocity.z);
+  enemy.pitch = Math.atan2(enemy.velocity.y, Math.hypot(enemy.velocity.x, enemy.velocity.z));
   const turnRate = wrapAngle(enemy.heading - previousHeading) / Math.max(0.001, dt);
   const targetBank = clamp(turnRate / 1.8, -1, 1);
   enemy.bank += (targetBank - enemy.bank) * Math.min(1, dt * 5);
+}
 
-  const targetAltitude = BALANCE.mothership.baseAltitude
-    + formation.altitude
-    + Math.sin(angle + enemy.orbitWobblePhase) * enemy.orbitVerticalAmplitude
-    + attackRun * BALANCE.defense.fighterAttackRunAltitudeLift;
-  enemy.altitude += clamp(targetAltitude - enemy.altitude, -7 * dt, 7 * dt);
+function removeFighterInwardVelocity(enemy: EnemyState, center: Vec3): void {
+  const normal = {
+    x: (enemy.position.x - center.x) / (BALANCE.defense.fighterKeepOutRadiusX ** 2),
+    y: (enemy.position.y - center.y) / (BALANCE.defense.fighterKeepOutRadiusY ** 2),
+    z: (enemy.position.z - center.z) / (BALANCE.defense.fighterKeepOutRadiusZ ** 2),
+  };
+  const length = Math.hypot(normal.x, normal.y, normal.z);
+  if (length <= 0.000001) return;
+  normal.x /= length;
+  normal.y /= length;
+  normal.z /= length;
+  const inwardSpeed = enemy.velocity.x * normal.x + enemy.velocity.y * normal.y + enemy.velocity.z * normal.z;
+  if (inwardSpeed >= 0) return;
+  enemy.velocity.x -= normal.x * inwardSpeed;
+  enemy.velocity.y -= normal.y * inwardSpeed;
+  enemy.velocity.z -= normal.z * inwardSpeed;
+}
+
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function smoothstep(value: number): number {
+  const progress = clamp(value, 0, 1);
+  return progress * progress * (3 - 2 * progress);
 }
 
 function fighterOrbitAngularSpeed(state: CombatState): number {
   return BALANCE.defense.fighterOrbitAngularSpeed * (1 + (state.defenseMultiplier - 1) * 0.35);
-}
-
-function fighterCruiseSpeed(state: CombatState): number {
-  return BALANCE.defense.fighterCruiseSpeed * (1 + (state.defenseMultiplier - 1) * 0.4);
 }
 
 function fighterFormationOffset(slot: number): { trailing: number; radial: number; altitude: number } {

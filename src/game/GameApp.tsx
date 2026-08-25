@@ -89,20 +89,23 @@ export function GameApp() {
     setScreen('WORLD_MAP');
   };
 
-  const startQuickBattle = () => {
+  const startQuickBattle = (mapId = 'city-day') => {
     const cityId = 'seoul';
     const debugCampaign = createNewCampaign(90210);
     debugCampaign.currentCityId = cityId;
-    window.history.replaceState(null, '', `${window.location.pathname}?battle-fast=1`);
+    const query = mapId === 'city-night' ? '?battle-fast=1&map=city-night' : '?battle-fast=1';
+    window.history.replaceState(null, '', `${window.location.pathname}${query}`);
     setIsDebugSession(true);
     setCampaign(debugCampaign);
     setSelectedCityId(cityId);
     setTravel(null);
-    setBattleRequest(battleRequestFor(debugCampaign, cityId, battleMapIdForCity(CITY_BY_ID[cityId])));
+    setBattleRequest(battleRequestFor(debugCampaign, cityId, mapId));
     setDebrief(null);
     setNotice(null);
     setScreen('BATTLE');
   };
+
+  const startQuickNightBattle = () => startQuickBattle('city-night');
 
   const continueGame = () => {
     if (!campaign) {
@@ -201,7 +204,7 @@ export function GameApp() {
   }, [campaign, isDebugSession]);
 
   if (!storageReady || !campaign || screen === 'MAIN_MENU') {
-    return <MainMenuScreen hasSave={Boolean(campaign)} onNewGame={startNewGame} onContinue={continueGame} onQuickBattle={process.env.NODE_ENV !== 'production' ? startQuickBattle : undefined} onReset={resetGame} />;
+    return <MainMenuScreen hasSave={Boolean(campaign)} onNewGame={startNewGame} onContinue={continueGame} onQuickBattle={process.env.NODE_ENV !== 'production' ? () => startQuickBattle() : undefined} onQuickNightBattle={process.env.NODE_ENV !== 'production' ? startQuickNightBattle : undefined} onReset={resetGame} />;
   }
 
   const selectedCity = selectedCityId ? CITY_BY_ID[selectedCityId] : null;

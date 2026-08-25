@@ -28,9 +28,15 @@ try {
   if (enemyIds.length === 0 || JSON.stringify(enemyIds) !== JSON.stringify(visualFighterIds)) throw new Error(`Enemy/fighter visual IDs diverged: ${JSON.stringify({ enemyIds, visualFighterIds })}`);
   for (const enemy of state.enemies) {
     const fighter = state.visuals.fighters.find((candidate) => candidate.id === enemy.id);
-    const expectedVisualZ = fighter?.depthClamped ? 0.78 : enemy.z * 0.12;
-    if (!fighter || Math.abs(fighter.x - enemy.x) > 0.01 || Math.abs(fighter.z - expectedVisualZ) > 0.01) throw new Error(`Fighter ${enemy.id} position diverged.`);
-    if (fighter.depthClamped && fighter.z > 0.79) throw new Error(`Fighter ${enemy.id} exceeded the side-view hidden depth budget.`);
+    const expectedVisualX = state.ship.worldX + enemy.x - state.ship.x;
+    const expectedVisualY = state.ship.worldY + enemy.y - state.ship.combatAltitude;
+    const expectedVisualZ = state.ship.worldZ + enemy.z - state.ship.z;
+    if (!fighter
+      || Math.abs(fighter.x - expectedVisualX) > 0.02
+      || Math.abs(fighter.y - expectedVisualY) > 0.02
+      || Math.abs(fighter.z - expectedVisualZ) > 0.02) throw new Error(`Fighter ${enemy.id} true-3D position diverged.`);
+    if (enemy.keepOutMetric < 0.999 || fighter.keepOutMetric < 0.999) throw new Error(`Fighter ${enemy.id} entered the mothership keep-out envelope.`);
+    if (enemy.relativeDistance3D < 29.9 || fighter.relativeDistance3D < 29.9) throw new Error(`Fighter ${enemy.id} moved inside the minimum attack-pass radius.`);
   }
   if (!state.visuals.fighters.some((fighter) => fighter.trailVisible)) throw new Error('No fighter jet trail is visible after the formation wave spawned.');
   if (!state.visuals.fighters.some((fighter) => Math.abs(fighter.bank) > 0.01)) throw new Error('Formation fighters never produced a visible bank value.');
@@ -40,7 +46,13 @@ try {
   if (JSON.stringify(groundEntityIds) !== JSON.stringify(groundVisualIds)) throw new Error(`Ground visual IDs diverged: ${JSON.stringify({ groundEntityIds, groundVisualIds })}`);
   await page.screenshot({ path: `${outputDirectory}/visual-sync.png`, fullPage: true });
   if (errors.length > 0) throw new Error(`Browser errors:\n${errors.join('\n')}`);
-  await writeFile(`${outputDirectory}/result.json`, JSON.stringify({ ok: true, enemyIds, groundEntityIds, errors }, null, 2));
+  await writeFile(`${outputDirectory}/result.json`, JSON.stringify({
+    ok: true,
+    enemyIds,
+    groundEntityIds,
+    fighterDistances: state.enemies.map((enemy) => ({ id: enemy.id, distance: enemy.relativeDistance3D, keepOutMetric: enemy.keepOutMetric, flightMode: enemy.flightMode })),
+    errors,
+  }, null, 2));
 } catch (error) {
   await page.screenshot({ path: `${outputDirectory}/failure.png`, fullPage: true }).catch(() => {});
   await writeFile(`${outputDirectory}/result.json`, JSON.stringify({ ok: false, error: String(error), errors }, null, 2));

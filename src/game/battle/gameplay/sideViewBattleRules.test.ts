@@ -3,7 +3,7 @@ import { CITIES } from '../../data/cities';
 import { TACTICAL_PRESETS } from '../../data/tacticalPresets';
 import { createNewCampaign, stageMissionResult } from '../../domain/campaignRules';
 import { BALANCE } from '../../domain/balance';
-import { tickCombat } from '../../domain/combatRules';
+import { fighterCombatCenter, fighterKeepOutMetric, fighterSegmentKeepOutIntersection, projectFighterOutsideKeepOut, tickCombat } from '../../domain/combatRules';
 import { resolveRecoveredCohorts } from '../../domain/cohortRules';
 import { COASTAL_GAMEPLAY_PROFILE } from './BattleGameplayProfile';
 import { createPlannedBattleSetup } from './battleSetupRules';
@@ -154,19 +154,21 @@ describe('side-view battle gameplay', () => {
       radius: enemy.orbitRadius,
       speed: enemy.orbitAngularSpeed,
       eccentricity: enemy.orbitEccentricity,
-      verticalAmplitude: enemy.orbitVerticalAmplitude,
-      depthAmplitude: enemy.orbitDepthAmplitude,
+      verticalRadius: enemy.orbitVerticalRadius,
+      depthRadius: enemy.orbitDepthRadius,
+      planeTilt: enemy.orbitPlaneTilt,
       phase: enemy.orbitPhase,
-      altitude: enemy.altitude,
+      altitude: enemy.position.y,
     }));
     const secondOrbit = second.combatState.enemies.map((enemy) => ({
       radius: enemy.orbitRadius,
       speed: enemy.orbitAngularSpeed,
       eccentricity: enemy.orbitEccentricity,
-      verticalAmplitude: enemy.orbitVerticalAmplitude,
-      depthAmplitude: enemy.orbitDepthAmplitude,
+      verticalRadius: enemy.orbitVerticalRadius,
+      depthRadius: enemy.orbitDepthRadius,
+      planeTilt: enemy.orbitPlaneTilt,
       phase: enemy.orbitPhase,
-      altitude: enemy.altitude,
+      altitude: enemy.position.y,
     }));
 
     expect(firstOrbit).toEqual(secondOrbit);
@@ -174,6 +176,51 @@ describe('side-view battle gameplay', () => {
     expect(new Set(firstOrbit.map((enemy) => enemy.phase)).size).toBeGreaterThan(1);
     expect(Math.max(...firstOrbit.map((enemy) => enemy.altitude)) - Math.min(...firstOrbit.map((enemy) => enemy.altitude))).toBeGreaterThan(0.5);
   });
+
+  it('keeps fighter paths outside the mothership 3D keep-out envelope', () => {
+    const campaign = createNewCampaign(7421);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const center = fighterCombatCenter(combatState);
+    const projected = projectFighterOutsideKeepOut(center, center);
+    expect(fighterKeepOutMetric(projected, center)).toBeGreaterThanOrEqual(1);
+    expect(fighterSegmentKeepOutIntersection(
+      { x: center.x - 40, y: center.y, z: center.z },
+      { x: center.x + 40, y: center.y, z: center.z },
+      center,
+    )).not.toBeNull();
+
+    combatState.localAlert = 20;
+    combatState.mothership.hull = 1_000_000_000;
+    combatState.mothership.maxHull = 1_000_000_000;
+    combatState.mothership.shield = 1_000_000_000;
+    combatState.mothership.maxShield = 1_000_000_000;
+    tickCombat(combatState, 1 / 60, { unitInvincibilityEnabled: true, disablePointDefense: true });
+    let minimumDistance = Number.POSITIVE_INFINITY;
+    let minimumMetric = Number.POSITIVE_INFINITY;
+    let maximumFighterCount = 0;
+    const seenModes = new Set<string>();
+    for (let frame = 0; frame < 60 * 600; frame += 1) {
+      tickCombat(combatState, 1 / 60, { unitInvincibilityEnabled: true, disablePointDefense: true });
+      const currentCenter = fighterCombatCenter(combatState);
+      maximumFighterCount = Math.max(maximumFighterCount, combatState.enemies.length);
+      for (const enemy of combatState.enemies) {
+        minimumMetric = Math.min(minimumMetric, fighterKeepOutMetric(enemy.position, currentCenter));
+        minimumDistance = Math.min(minimumDistance, Math.hypot(
+          enemy.position.x - currentCenter.x,
+          enemy.position.y - currentCenter.y,
+          enemy.position.z - currentCenter.z,
+        ));
+        seenModes.add(enemy.flightMode);
+      }
+    }
+    expect(minimumMetric).toBeGreaterThanOrEqual(0.999);
+    expect(minimumDistance).toBeGreaterThanOrEqual(BALANCE.defense.fighterAttackPassRadiusMin - 0.1);
+    expect(maximumFighterCount).toBe(BALANCE.defense.fighterMaxCount);
+    expect(seenModes.has('ATTACK_PASS')).toBe(true);
+    expect(seenModes.has('RECOVER')).toBe(true);
+    expect(seenModes.has('ORBIT')).toBe(true);
+  }, 15_000);
 
   it('pairs SAM missiles with the facility position at the moment of firing', () => {
     const campaign = createNewCampaign(7412);

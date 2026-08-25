@@ -137,17 +137,25 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     if (!groundUnits?.length) return;
     setUnitPositionDefaults((previous) => {
       const next = { ...previous };
+      let changed = false;
       for (const unit of groundUnits) {
-        if (!next[unit.group]) next[unit.group] = { y: unit.y };
+        if (!next[unit.group]) {
+          next[unit.group] = { y: unit.y };
+          changed = true;
+        }
       }
-      return next;
+      return changed ? next : previous;
     });
     setUnitPositions((previous) => {
       const next = { ...previous };
+      let changed = false;
       for (const unit of groundUnits) {
-        if (!next[unit.group]) next[unit.group] = { y: unit.y };
+        if (!next[unit.group]) {
+          next[unit.group] = { y: unit.y };
+          changed = true;
+        }
       }
-      return next;
+      return changed ? next : previous;
     });
   }, [snapshot?.visuals.ground]);
 
@@ -161,6 +169,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const plasmaAvailability = snapshot?.abilities.plasma;
   const beamAvailability = snapshot?.abilities.beam;
   const overdriveAvailability = snapshot?.abilities.overdrive;
+  const assaultAvailability = snapshot?.abilities.assault;
   const extractAvailability = snapshot?.abilities.extract;
   const abilityHint = (availability: BattleRuntimeSnapshot['abilities'][keyof BattleRuntimeSnapshot['abilities']] | undefined) => {
     if (!availability || availability.enabled || !availability.reason) return undefined;
@@ -414,7 +423,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           title={abilityHint(empAvailability)}
           onClick={() => runtimeRef.current && runCommand(() => runtimeRef.current!.triggerAbility('emp'), t('battle.empActivated'))}
         >
-          <kbd>E</kbd><span>{t('tactical.emp')}</span>{abilityHint(empAvailability) ? <small>{abilityHint(empAvailability)}</small> : null}
+          <kbd>N</kbd><span>{t('tactical.emp')}</span>{abilityHint(empAvailability) ? <small>{abilityHint(empAvailability)}</small> : null}
         </button>
         <button
           className="battle-action-button battle-action-plasma"
@@ -424,7 +433,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           title={abilityHint(plasmaAvailability)}
           onClick={() => runtimeRef.current && runCommand(() => runtimeRef.current!.triggerAbility('plasma'), t('battle.plasmaActivated'))}
         >
-          <kbd>P</kbd><span>{t('tactical.plasma')}</span>{abilityHint(plasmaAvailability) ? <small>{abilityHint(plasmaAvailability)}</small> : null}
+          <kbd>M</kbd><span>{t('tactical.plasma')}</span>{abilityHint(plasmaAvailability) ? <small>{abilityHint(plasmaAvailability)}</small> : null}
         </button>
         <button
           className="battle-action-button battle-action-absorb"
@@ -434,7 +443,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           title={abilityHint(beamAvailability)}
           onClick={() => runtimeRef.current && runCommand(() => runtimeRef.current!.toggleAbsorption(), snapshot?.activeAbility === 'beam' ? t('battle.absorptionStopped') : t('battle.absorptionStarted'))}
         >
-          <kbd>B</kbd><span>{t('tactical.absorb')}</span>{abilityHint(beamAvailability) ? <small>{abilityHint(beamAvailability)}</small> : null}
+          <kbd>,</kbd><span>{t('tactical.absorb')}</span>{abilityHint(beamAvailability) ? <small>{abilityHint(beamAvailability)}</small> : null}
         </button>
         <button
           className="battle-action-button battle-action-overdrive"
@@ -444,7 +453,17 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           title={abilityHint(overdriveAvailability)}
           onClick={() => runtimeRef.current && runCommand(() => runtimeRef.current!.triggerAbility('overdrive'), t('battle.overdriveActivated'))}
         >
-          <kbd>S</kbd><span>{t('tactical.overdrive')}</span>{abilityHint(overdriveAvailability) ? <small>{abilityHint(overdriveAvailability)}</small> : null}
+          <kbd>.</kbd><span>{t('tactical.overdrive')}</span>{abilityHint(overdriveAvailability) ? <small>{abilityHint(overdriveAvailability)}</small> : null}
+        </button>
+        <button
+          className="battle-action-button battle-action-assault"
+          type="button"
+          data-testid="battle-action-assault"
+          disabled={phase !== 'ready' || !assaultAvailability?.enabled}
+          title={abilityHint(assaultAvailability)}
+          onClick={() => runtimeRef.current && runCommand(() => runtimeRef.current!.dropInfectedAssault(), t('battle.infectedAssaultActivated'))}
+        >
+          <kbd>/</kbd><span>{t('tactical.infectedAssault')}</span>{abilityHint(assaultAvailability) ? <small>{abilityHint(assaultAvailability)}</small> : null}
         </button>
         {extractionVisible ? <button
           className={`battle-action-button battle-action-extract ${extractionActive ? 'active' : ''}`}

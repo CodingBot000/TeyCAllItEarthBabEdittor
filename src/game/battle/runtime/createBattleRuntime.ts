@@ -16,7 +16,7 @@ import {
 import { loadScene } from 'babylonjs-editor-tools';
 import { BALANCE } from '../../domain/balance';
 import { scriptsMap } from '../../../scripts';
-import { activateAbility, applyMothershipProjectileDamage, startBeamOnTarget, stopBeam, tickCombat } from '../../domain/combatRules';
+import { activateAbility, applyMothershipProjectileDamage, fighterCombatCenter, fighterKeepOutMetric, startBeamOnTarget, stopBeam, tickCombat } from '../../domain/combatRules';
 import type { AbilityId, AbsorbableKind, CommandResult, CombatState, ExtractionStatus } from '../../domain/types';
 import type { BattleMapDefinition } from '../contracts/BattleMapDefinition';
 import type { BattleGameplayProfile } from '../gameplay/BattleGameplayProfile';
@@ -27,6 +27,8 @@ import { BattleAbsorbableRegions } from './BattleAbsorbableRegions';
 import { BattleCohortVisuals } from './BattleCohortVisuals';
 import { BattleCombatVfx } from './BattleCombatVfx';
 import { BattleEntityVisuals, type BattleEntityVisualSnapshot, type GroundUnitGroup } from './BattleEntityVisuals';
+import { BattleInfectedAssaultVfx, type InfectedAssaultVfxSnapshot } from './BattleInfectedAssaultVfx';
+import { BattleMothershipDestructionSequence, MOTHERSHIP_DESTRUCTION_TIMING, type MothershipDestructionVfxSnapshot } from './BattleMothershipDestructionSequence';
 import { normalizeBattleKey } from './battleKeyboardInput';
 import { GROUND_ABSORPTION_TARGET_Y } from './battleVisualCoordinates';
 
@@ -40,7 +42,7 @@ const GROUND_LAYER_UI_LIFT_PIXELS = 72;
 const CAMERA_Y = 5;
 const CAMERA_Z = -92;
 const CINEMATIC_EVASION_DURATION = 1.25;
-const CINEMATIC_CRASH_DURATION = 2.4;
+const CINEMATIC_CRASH_DURATION = MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds;
 const MOTHERSHIP_SIDE_VIEW_MAX_SPEED = 34;
 const MOTHERSHIP_SIDE_VIEW_ACCELERATION = MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
 const MOTHERSHIP_SIDE_VIEW_DECELERATION = MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
@@ -67,6 +69,7 @@ export interface BattleRuntime {
   resetCollisionOverlayScale(): void;
   triggerAbility(ability: Extract<AbilityId, 'emp' | 'plasma' | 'overdrive'>): CommandResult;
   toggleAbsorption(): CommandResult;
+  dropInfectedAssault(): CommandResult;
   beginExtraction(): CommandResult;
   abortMission(): CommandResult;
   setMovementInput(direction: -1 | 0 | 1, source?: 'keyboard' | 'pointer'): void;
@@ -127,11 +130,14 @@ export interface BattleRuntimeSnapshot {
   extractionProgress: number;
   result: CombatState['result'];
   endReason: CombatState['endReason'];
+  cinematic: { kind: MothershipCinematic['kind']; progress: number } | null;
+  mothershipDestruction: MothershipDestructionVfxSnapshot;
+  infectedAssault: InfectedAssaultVfxSnapshot;
   invincibilityEnabled: boolean;
   unitInvincibilityEnabled: boolean;
   effectiveAutoScanRange: number;
   profile: BattleRuntimeProfileSnapshot;
-  ship: { x: number; hull: number; maxHull: number; shield: number; maxShield: number; energy: number; maxEnergy: number };
+  ship: { x: number; z: number; worldX: number; worldY: number; worldZ: number; combatAltitude: number; hull: number; maxHull: number; shield: number; maxShield: number; energy: number; maxEnergy: number };
   cargo: { used: number; capacity: number; captives: number; biomass: number; alloy: number; intel: number; coreCharge: number };
   alert: number;
   overchargeCells: number;
@@ -148,7 +154,7 @@ export interface BattleRuntimeSnapshot {
     projectiles: Array<{ id: string; targetId: string; progress: number; startX: number; targetX: number; arcHeight: number }>;
   };
   cohorts: Array<{ id: string; x: number; strength: number; cohesion: number; order: CombatState['deployedCohorts'][number]['order']; deployed: boolean; recoverable: boolean }>;
-  enemies: Array<{ id: string; x: number; z: number; altitude: number; health: number }>;
+  enemies: Array<{ id: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; altitude: number; relativeDistance3D: number; keepOutMetric: number; keepOutCorrected: boolean; flightMode: CombatState['enemies'][number]['flightMode']; health: number }>;
   groundEntities: Array<{ id: string; kind: 'DEFENDER' | 'FACILITY'; x: number; health: number; destroyed: boolean; disabled: boolean }>;
   visuals: BattleEntityVisualSnapshot;
 }
@@ -235,6 +241,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   if (options.debugControls !== true) hideDebugPrototypes(fighterPoolRoot, dronePoolRoot, groundBattleRoot);
   const absorbableRegions = new BattleAbsorbableRegions(scene, options.language);
   const cohortVisuals = new BattleCohortVisuals(scene);
+  const infectedAssaultVfx = new BattleInfectedAssaultVfx(scene);
   const entityVisuals = new BattleEntityVisuals(scene, fighterPoolRoot, groundBattleRoot, mothershipGameplayRoot);
   const combatVfx = new BattleCombatVfx(
     scene,
@@ -243,6 +250,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     mothershipVisualRoot ?? undefined,
     camera,
   );
+  const mothershipDestructionVfx = new BattleMothershipDestructionSequence(scene);
+  mothershipDestructionVfx.setQuality('HIGH');
   setGameplayRenderingGroup(mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
   let paused = false;
   let elapsed = 0;
@@ -329,6 +338,11 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     emitSnapshot(true);
     return result;
   };
+  const dropInfectedAssault = (): CommandResult => {
+    infectedAssaultVfx.trigger(mothershipGameplayRoot.getAbsolutePosition());
+    emitSnapshot(true);
+    return { ok: true };
+  };
   const beginExtraction = (): CommandResult => {
     if (!combatState) return { ok: false, reason: 'COMBAT STATE UNAVAILABLE' };
     const result = beginSideViewExtraction(combatState);
@@ -378,7 +392,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       ? guidanceTarget.target.center.x < cameraX - visibleHalfWidth ? 'LEFT' : guidanceTarget.target.center.x > cameraX + visibleHalfWidth ? 'RIGHT' : 'ON_SCREEN'
       : null;
     return {
-      coordinateSystem: 'side-view world: x increases right; gameplay z is fixed at 0',
+      coordinateSystem: 'side-view world: x increases right, y increases up, z increases away from camera; fighters use true 3D coordinates',
       mapId: map.id,
       paused,
       elapsedSeconds: round(combatState.elapsedSeconds, 3),
@@ -387,6 +401,9 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       extractionProgress: round(combatState.mothership.extractionProgress, 4),
       result: combatState.result,
       endReason: combatState.endReason,
+      cinematic: cinematic ? { kind: cinematic.kind, progress: round(cinematic.elapsed / cinematic.duration, 4) } : null,
+      mothershipDestruction: mothershipDestructionVfx.getSnapshot(),
+      infectedAssault: infectedAssaultVfx.getSnapshot(),
       invincibilityEnabled,
       unitInvincibilityEnabled,
       effectiveAutoScanRange: round((gameplayProfile?.autoScanRange ?? 0) + combatState.modifiers.scanRangeBonus, 2),
@@ -401,6 +418,11 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       },
       ship: {
         x: round(combatState.mothership.position.x, 3),
+        z: round(combatState.mothership.position.z, 3),
+        worldX: round(mothershipGameplayRoot.getAbsolutePosition().x, 3),
+        worldY: round(mothershipGameplayRoot.getAbsolutePosition().y, 3),
+        worldZ: round(mothershipGameplayRoot.getAbsolutePosition().z, 3),
+        combatAltitude: BALANCE.mothership.baseAltitude,
         hull: round(combatState.mothership.hull, 2),
         maxHull: combatState.mothership.maxHull,
         shield: round(combatState.mothership.shield, 2),
@@ -462,7 +484,24 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         deployed: cohort.deployed,
         recoverable: cohort.recoverable,
       })),
-      enemies: combatState.enemies.map((enemy) => ({ id: enemy.id, x: round(enemy.position.x, 3), z: round(enemy.position.z, 3), altitude: round(enemy.altitude, 3), health: round(enemy.health, 2) })),
+      enemies: combatState.enemies.map((enemy) => {
+        const center = fighterCombatCenter(combatState);
+        return {
+          id: enemy.id,
+          x: round(enemy.position.x, 3),
+          y: round(enemy.position.y, 3),
+          z: round(enemy.position.z, 3),
+          vx: round(enemy.velocity.x, 3),
+          vy: round(enemy.velocity.y, 3),
+          vz: round(enemy.velocity.z, 3),
+          altitude: round(enemy.position.y, 3),
+          relativeDistance3D: round(Math.hypot(enemy.position.x - center.x, enemy.position.y - center.y, enemy.position.z - center.z), 3),
+          keepOutMetric: round(fighterKeepOutMetric(enemy.position, center), 3),
+          keepOutCorrected: enemy.keepOutCorrected,
+          flightMode: enemy.flightMode,
+          health: round(enemy.health, 2),
+        };
+      }),
       groundEntities: [
         ...combatState.groundDefenders.map((defender) => ({ id: defender.id, kind: 'DEFENDER' as const, x: round(defender.position.x, 3), health: round(defender.health, 2), destroyed: defender.health <= 0, disabled: defender.disabledUntil > combatState.elapsedSeconds })),
         ...combatState.facilities.map((facility) => ({ id: facility.id, kind: 'FACILITY' as const, x: round(facility.position.x, 3), health: round(facility.health, 2), destroyed: facility.destroyed, disabled: facility.disabledUntil > combatState.elapsedSeconds })),
@@ -484,6 +523,15 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (kind === 'CRASH' && combatState && combatState.result === 'ACTIVE') {
       combatState.mothership.shield = 0;
       applyMothershipProjectileDamage(combatState, combatState.mothership.hull + 100, 'sam', { x: -0.6, y: -0.4, z: -1 }, `crash-hit-${combatState.nextEntityId++}`);
+      combatState.result = 'FAILED';
+      combatState.endReason = 'MOTHERSHIP_DISABLED';
+    }
+    if (kind === 'CRASH') {
+      combatVfx.dispose();
+      mothershipDestructionVfx.start({
+        position: mothershipGameplayRoot.position.clone(),
+        rotation: mothershipGameplayRoot.rotation.clone(),
+      });
     }
   };
   const keyDown = (event: KeyboardEvent) => {
@@ -501,21 +549,25 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       event.preventDefault();
       triggerCombatHit('HULL');
     }
-    if (key === 'e') {
+    if (key === 'n') {
       event.preventDefault();
       triggerCombatAbility('emp');
     }
-    if (key === 'p') {
+    if (key === 'm') {
       event.preventDefault();
       triggerCombatAbility('plasma');
     }
-    if (key === 's') {
+    if (key === '.') {
       event.preventDefault();
       triggerCombatAbility('overdrive');
     }
-    if (key === 'b') {
+    if (key === ',') {
       event.preventDefault();
       triggerBeam();
+    }
+    if (key === '/') {
+      event.preventDefault();
+      dropInfectedAssault();
     }
     if (debugControls && key === 'q') { event.preventDefault(); startCinematic('EVASION'); }
     if (debugControls && key === 'c') { event.preventDefault(); startCinematic('CRASH'); }
@@ -539,12 +591,26 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (paused) return;
     elapsed += deltaSeconds;
     if (cinematic) {
-      updateMothershipCinematic(mothershipGameplayRoot, cinematic, deltaSeconds);
-      if (cinematic.elapsed >= cinematic.duration) {
+      if (cinematic.kind === 'CRASH') {
+        const destructionPose = mothershipDestructionVfx.sync(deltaSeconds);
+        if (destructionPose) {
+          mothershipGameplayRoot.position.copyFrom(destructionPose.position);
+          mothershipGameplayRoot.rotation.copyFrom(destructionPose.rotation);
+        }
+        cinematic.elapsed = mothershipDestructionVfx.getSnapshot().elapsedSeconds;
+      } else {
+        updateMothershipEvasionCinematic(mothershipGameplayRoot, cinematic, deltaSeconds);
+      }
+      const cinematicComplete = cinematic.kind === 'CRASH'
+        ? mothershipDestructionVfx.isComplete()
+        : cinematic.elapsed >= cinematic.duration;
+      if (cinematicComplete) {
         const finishedKind = cinematic.kind;
-        cinematic = null;
-        if (finishedKind === 'EVASION') mothershipGameplayRoot.rotation.set(0, 0, 0);
-        if (finishedKind === 'CRASH') {
+        if (finishedKind === 'EVASION') {
+          cinematic = null;
+          mothershipGameplayRoot.rotation.set(0, 0, 0);
+        }
+        if (finishedKind === 'CRASH' && !completedCombat) {
           completedCombat = true;
           if (combatState) {
             combatState.result = 'FAILED';
@@ -602,14 +668,17 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       absorbableRegions.sync(combatState);
       cohortVisuals.sync(combatState, elapsed);
       if (combatState.result !== 'ACTIVE' && !completedCombat) {
-        completedCombat = true;
-        options.onCombatComplete?.(combatState);
+        if (combatState.endReason === 'MOTHERSHIP_DISABLED') startCinematic('CRASH');
+        else {
+          completedCombat = true;
+          options.onCombatComplete?.(combatState);
+        }
       }
     }
     const desiredCameraX = Scalar.Clamp(mothershipGameplayRoot.position.x, -cameraTravel, cameraTravel);
     cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
     camera.position.x = cameraX;
-    camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
+    camera.setTarget(cinematic?.kind === 'CRASH' ? mothershipGameplayRoot.position.clone() : new Vector3(cameraX, CAMERA_Y, 0));
     applyBackgroundLayerPositions();
     cloudTextureOffset = (cloudTextureOffset + deltaSeconds * CLOUD_DRIFT_SPEED) % 1;
     for (const { layer, plane } of backgroundPlanes) {
@@ -618,11 +687,13 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       if (texture instanceof Texture) texture.uOffset = cloudTextureOffset;
     }
     combatVfx.update(deltaSeconds, elapsed);
+    infectedAssaultVfx.update(deltaSeconds);
     emitSnapshot();
   };
   const update = () => {
     if (!automationStepping) simulateStep(Math.min(engine.getDeltaTime() / 1000, 0.05));
-    updateMothershipPurpleGlow(mothershipPurpleGlow, elapsed);
+    if (cinematic?.kind === 'CRASH' && mothershipPurpleGlow) mothershipPurpleGlow.intensity = 0.08;
+    else updateMothershipPurpleGlow(mothershipPurpleGlow, elapsed);
   };
   const advanceTime = (milliseconds: number) => {
     automationStepping = true;
@@ -656,6 +727,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     resetCollisionOverlayScale,
     triggerAbility: triggerCombatAbility,
     toggleAbsorption: triggerBeam,
+    dropInfectedAssault,
     beginExtraction,
     abortMission,
     setMovementInput,
@@ -675,6 +747,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       cohortVisuals.dispose();
       entityVisuals.dispose();
       combatVfx.dispose();
+      infectedAssaultVfx.dispose();
+      mothershipDestructionVfx.dispose();
       mothershipPurpleGlow?.dispose();
       scene.dispose();
       engine.dispose();
@@ -741,28 +815,20 @@ function moveTowards(current: number, target: number, maxDelta: number): number 
   return current + Math.sign(delta) * maxDelta;
 }
 
-function updateMothershipCinematic(root: TransformNode, cinematic: MothershipCinematic, dt: number): void {
+function updateMothershipEvasionCinematic(root: TransformNode, cinematic: MothershipCinematic, dt: number): void {
   cinematic.elapsed = Math.min(cinematic.duration, cinematic.elapsed + dt);
   const progress = cinematic.elapsed / cinematic.duration;
   const eased = Math.sin(progress * Math.PI);
-  if (cinematic.kind === 'EVASION') {
-    root.position.x = cinematic.origin.x + cinematic.direction * eased * 8;
-    root.position.y = cinematic.origin.y + eased * 2.2;
-    root.position.z = cinematic.origin.z + Math.sin(progress * Math.PI * 2) * 1.2;
-    root.rotation.z = cinematic.direction * eased * 0.42;
-    root.rotation.y = cinematic.direction * eased * 0.24;
-    return;
-  }
-  root.position.x = cinematic.origin.x + cinematic.direction * eased * 2.5;
-  root.position.y = cinematic.origin.y - progress * 20;
-  root.position.z = cinematic.origin.z - progress * 18;
-  root.rotation.x = progress * 1.1;
-  root.rotation.z = cinematic.direction * progress * 0.75;
+  root.position.x = cinematic.origin.x + cinematic.direction * eased * 8;
+  root.position.y = cinematic.origin.y + eased * 2.2;
+  root.position.z = cinematic.origin.z + Math.sin(progress * Math.PI * 2) * 1.2;
+  root.rotation.z = cinematic.direction * eased * 0.42;
+  root.rotation.y = cinematic.direction * eased * 0.24;
 }
 
 function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elapsedSeconds: number): BattleRuntimeSnapshot {
   return {
-    coordinateSystem: 'side-view world: x increases right; gameplay z is fixed at 0',
+    coordinateSystem: 'side-view world: x increases right, y increases up, z increases away from camera; fighters use true 3D coordinates',
     mapId,
     paused,
     elapsedSeconds: round(elapsedSeconds, 3),
@@ -771,11 +837,14 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     extractionProgress: 0,
     result: 'ACTIVE',
     endReason: null,
+    cinematic: null,
+    mothershipDestruction: { active: false, phase: 'IDLE', elapsedSeconds: 0, durationSeconds: MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds, altitude: 0, fireCount: 0, flameFallbackActive: false, triggeredExplosions: 0, activeExplosions: 0, smokeCount: 0, debrisCount: 0, impactTriggered: false },
+    infectedAssault: { active: false, activeWaves: 0, fallingCount: 0, groundImpactCount: 0, totalDrops: 0 },
     invincibilityEnabled: true,
     unitInvincibilityEnabled: true,
     effectiveAutoScanRange: 0,
     profile: { id: null, version: null, enemyPressureMultiplier: 1, groundPressureMultiplier: 1, facilityCount: 0, groundDefenderCount: 0, requiredOccupationNodeCount: 0 },
-    ship: { x: round(shipX, 3), hull: 0, maxHull: 0, shield: 0, maxShield: 0, energy: 0, maxEnergy: 0 },
+    ship: { x: round(shipX, 3), z: 0, worldX: round(shipX, 3), worldY: 0, worldZ: 0, combatAltitude: BALANCE.mothership.baseAltitude, hull: 0, maxHull: 0, shield: 0, maxShield: 0, energy: 0, maxEnergy: 0 },
     cargo: { used: 0, capacity: 0, captives: 0, biomass: 0, alloy: 0, intel: 0, coreCharge: 0 },
     alert: 0,
     overchargeCells: 0,
@@ -801,6 +870,7 @@ function emptyAbilityAvailability(): Record<BattleActionId, AbilityAvailability>
     plasma: unavailable(90, 1),
     beam: unavailable(0, 0),
     overdrive: unavailable(280, 1),
+    assault: unavailable(0, 0),
     extract: unavailable(0, 0),
   };
 }

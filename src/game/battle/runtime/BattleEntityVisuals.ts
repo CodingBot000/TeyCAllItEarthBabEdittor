@@ -1,6 +1,7 @@
-import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, TrailMesh, TransformNode, Vector3, type Scene } from '@babylonjs/core';
+import { Color3, Engine, Material, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, Vector3, type Scene } from '@babylonjs/core';
 import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonjs/gui';
 import { BALANCE } from '../../domain/balance';
+import { fighterCombatCenter, fighterKeepOutMetric } from '../../domain/combatRules';
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
 import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y } from './battleVisualCoordinates';
 
@@ -8,18 +9,16 @@ const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-side-4way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 1;
-const FIGHTER_DEPTH_SCALE = 0.12;
-const FIGHTER_HIDDEN_GRACE_SECONDS = 0.35;
-const FIGHTER_MAX_HIDDEN_DEPTH = 0.78;
 const FIGHTER_NOZZLE_OFFSET = 1.15;
-const FIGHTER_TRAIL_LENGTH = 14;
-const FIGHTER_CORE_TRAIL_LENGTH = 7;
-const FIGHTER_TRAIL_DIAMETER = 0.18;
-const FIGHTER_CORE_TRAIL_DIAMETER = 0.07;
-const FIGHTER_SMOKE_INTERVAL = 0.08;
-const FIGHTER_SMOKE_LIFETIME = 1;
-const FIGHTER_SMOKE_MAX_PER_FIGHTER = 10;
-const FIGHTER_SMOKE_MAX_TOTAL = 120;
+const FIGHTER_TRAIL_WIDTH = 0.2;
+const FIGHTER_TRAIL_LIFETIME = 0.36;
+const FIGHTER_TRAIL_SPAWN_DISTANCE = 0.06;
+const FIGHTER_TRAIL_BREAK_DISTANCE = 3.5;
+const FIGHTER_TRAIL_MAX_SEGMENTS = 9;
+const FIGHTER_SMOKE_INTERVAL = 0.14;
+const FIGHTER_SMOKE_LIFETIME = 0.55;
+const FIGHTER_SMOKE_MAX_PER_FIGHTER = 4;
+const FIGHTER_SMOKE_MAX_TOTAL = 60;
 const FIGHTER_HIT_FLASH_DURATION = 0.14;
 const FIGHTER_EXPLOSION_DURATION = 0.62;
 const FIGHTER_EXPLOSION_FRAMES = [1, 5, 8, 9, 10, 11];
@@ -51,24 +50,33 @@ interface FighterVisual {
   material: StandardMaterial;
   texture: Texture;
   nozzle: TransformNode;
-  trail: TrailMesh;
-  coreTrail: TrailMesh;
+  trailSegments: FighterTrailSegment[];
+  trailLastPosition: Vector3 | null;
   jetFlame: Mesh;
   jetCore: Mesh;
   hitFlash: Mesh;
   smokePuffs: FighterSmokePuff[];
   previousHealth: number;
-  previousAltitude: number;
   hitElapsed: number;
   smokeAccumulator: number;
-  hiddenElapsed: number;
-  depthClamped: boolean;
   trailActive: boolean;
+  relativeDistance3D: number;
+  keepOutMetric: number;
+  keepOutCorrected: boolean;
+  behindMothership: boolean;
+  occluded: boolean;
+  flightMode: EnemyState['flightMode'];
 }
 
 interface FighterSmokePuff {
   mesh: Mesh;
   age: number;
+}
+
+interface FighterTrailSegment {
+  mesh: Mesh;
+  age: number;
+  baseWidth: number;
 }
 
 interface FighterExplosion {
@@ -98,7 +106,7 @@ interface GroundVisual {
 }
 
 export interface BattleEntityVisualSnapshot {
-  fighters: Array<{ id: string; x: number; y: number; z: number; bank: number; hiddenElapsed: number; depthClamped: boolean; trailVisible: boolean; smokePuffCount: number }>;
+  fighters: Array<{ id: string; x: number; y: number; z: number; bank: number; pitch: number; relativeDistance3D: number; keepOutMetric: number; keepOutCorrected: boolean; flightMode: EnemyState['flightMode']; behindMothership: boolean; occluded: boolean; trailVisible: boolean; smokePuffCount: number }>;
   ground: Array<{ id: string; kind: 'DEFENDER' | 'FACILITY'; group: GroundUnitGroup; x: number; y: number; z: number; destroyed: boolean }>;
 }
 
@@ -116,6 +124,7 @@ export class BattleEntityVisuals {
   private readonly fighterHitMaterial: StandardMaterial;
   private readonly fighterExplosionMaterial: StandardMaterial;
   private readonly fighterExplosionTexture: Texture;
+  private readonly fighterSmokeTexture: Texture;
   private readonly healthTrackMaterial: StandardMaterial;
   private readonly healthFillMaterial: StandardMaterial;
   private readonly samTexture: Texture;
@@ -139,9 +148,21 @@ export class BattleEntityVisuals {
     this.fighterCoreTrailMaterial.alpha = 0.95;
     this.fighterCoreTrailMaterial.alphaMode = Engine.ALPHA_ADD;
     this.fighterCoreTrailMaterial.disableDepthWrite = true;
-    this.fighterSmokeMaterial = this.material('battle-fighter-smoke', new Color3(0.48, 0.55, 0.57));
-    this.fighterSmokeMaterial.alpha = 0.62;
+    this.fighterSmokeTexture = new Texture('/assets/runtime/vfx/mothership-smoke-8x8.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
+    this.fighterSmokeTexture.hasAlpha = true;
+    this.fighterSmokeTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
+    this.fighterSmokeTexture.wrapV = Texture.CLAMP_ADDRESSMODE;
+    setAtlasFrame(this.fighterSmokeTexture, 8, 8, 10);
+    this.fighterSmokeMaterial = new StandardMaterial('battle-fighter-smoke', scene);
+    this.fighterSmokeMaterial.diffuseColor = new Color3(0.64, 0.69, 0.7);
+    this.fighterSmokeMaterial.emissiveColor = new Color3(0.08, 0.09, 0.1);
+    this.fighterSmokeMaterial.disableLighting = true;
+    this.fighterSmokeMaterial.backFaceCulling = false;
+    this.fighterSmokeMaterial.useAlphaFromDiffuseTexture = true;
+    this.fighterSmokeMaterial.transparencyMode = Material.MATERIAL_ALPHABLEND;
+    this.fighterSmokeMaterial.alpha = 0.48;
     this.fighterSmokeMaterial.disableDepthWrite = true;
+    this.fighterSmokeMaterial.diffuseTexture = this.fighterSmokeTexture;
     this.fighterHitMaterial = this.material('battle-fighter-hit', new Color3(1, 0.92, 0.64));
     this.fighterExplosionMaterial = this.material('battle-fighter-explosion', new Color3(1, 0.45, 0.08));
     this.fighterExplosionMaterial.alphaMode = Engine.ALPHA_ADD;
@@ -174,7 +195,7 @@ export class BattleEntityVisuals {
       const visual = this.fighterVisuals.get(enemy.id) ?? this.createFighter(enemy, this.fighterVisualRoot);
       if (enemy.health < visual.previousHealth - 0.001) visual.hitElapsed = FIGHTER_HIT_FLASH_DURATION;
       visual.previousHealth = enemy.health;
-      this.syncFighter(visual, enemy, state.elapsedSeconds, dt);
+      this.syncFighter(visual, enemy, state, dt);
     }
     for (const [id, visual] of this.fighterVisuals) {
       if (activeFighterIds.has(id)) continue;
@@ -213,9 +234,14 @@ export class BattleEntityVisuals {
         y: round(visual.root.position.y),
         z: round(visual.root.position.z),
         bank: round(-visual.sprite.rotation.z),
-        hiddenElapsed: round(visual.hiddenElapsed),
-        depthClamped: visual.depthClamped,
-        trailVisible: visual.trailActive && visual.trail.visibility > 0,
+        pitch: round(-visual.fallback.rotation.x),
+        relativeDistance3D: round(visual.relativeDistance3D),
+        keepOutMetric: round(visual.keepOutMetric),
+        keepOutCorrected: visual.keepOutCorrected,
+        flightMode: visual.flightMode,
+        behindMothership: visual.behindMothership,
+        occluded: visual.occluded,
+        trailVisible: visual.trailActive,
         smokePuffCount: visual.smokePuffs.length,
       })).sort((a, b) => a.id.localeCompare(b.id)),
       ground: [...this.groundVisuals.values()].map((visual) => ({
@@ -272,6 +298,7 @@ export class BattleEntityVisuals {
     this.groundSpriteTextures.clear();
     this.fighterExplosions.splice(0).forEach((effect) => this.disposeFighterExplosion(effect));
     [this.fighterFallbackMaterial, this.fighterTrailMaterial, this.fighterCoreTrailMaterial, this.fighterSmokeMaterial, this.fighterHitMaterial, this.fighterExplosionMaterial, this.healthTrackMaterial, this.healthFillMaterial, this.samMaterial].forEach((material) => material.dispose());
+    this.fighterSmokeTexture.dispose();
     this.samTexture.dispose();
     this.fighterExplosionTexture.dispose();
     this.fighterVisualRoot.dispose(false, true);
@@ -295,7 +322,10 @@ export class BattleEntityVisuals {
     material.disableLighting = true;
     material.backFaceCulling = false;
     material.useAlphaFromDiffuseTexture = true;
-    material.transparencyMode = Engine.ALPHA_COMBINE;
+    material.transparencyMode = Material.MATERIAL_ALPHATESTANDBLEND;
+    material.alphaCutOff = 0.08;
+    material.needDepthPrePass = true;
+    material.forceDepthWrite = true;
     material.diffuseTexture = texture;
     material.emissiveTexture = texture;
     sprite.material = material;
@@ -307,14 +337,6 @@ export class BattleEntityVisuals {
     const nozzle = new TransformNode(`${root.name}-nozzle`, this.scene);
     nozzle.parent = root;
     nozzle.position.y = -0.14;
-    const trail = new TrailMesh(`${root.name}-trail`, nozzle, this.scene, FIGHTER_TRAIL_DIAMETER, FIGHTER_TRAIL_LENGTH, true);
-    trail.material = this.fighterTrailMaterial;
-    trail.renderingGroupId = 3;
-    trail.isPickable = false;
-    const coreTrail = new TrailMesh(`${root.name}-core-trail`, nozzle, this.scene, FIGHTER_CORE_TRAIL_DIAMETER, FIGHTER_CORE_TRAIL_LENGTH, true);
-    coreTrail.material = this.fighterCoreTrailMaterial;
-    coreTrail.renderingGroupId = 3;
-    coreTrail.isPickable = false;
     nozzle.isVisible = false;
     const jetFlame = MeshBuilder.CreatePlane(`${root.name}-jet-flame`, { width: 1.8, height: 0.42 }, this.scene);
     jetFlame.parent = root;
@@ -333,57 +355,76 @@ export class BattleEntityVisuals {
     hitFlash.renderingGroupId = 3;
     hitFlash.isPickable = false;
     hitFlash.visibility = 0;
-    trail.start();
-    coreTrail.start();
-    const visual = { id: enemy.id, root, sprite, fallback, material, texture, nozzle, trail, coreTrail, jetFlame, jetCore, hitFlash, smokePuffs: [], previousHealth: enemy.health, previousAltitude: enemy.altitude, hitElapsed: 0, smokeAccumulator: 0, hiddenElapsed: 0, depthClamped: false, trailActive: true };
+    const visual: FighterVisual = {
+      id: enemy.id,
+      root,
+      sprite,
+      fallback,
+      material,
+      texture,
+      nozzle,
+      trailSegments: [],
+      trailLastPosition: null,
+      jetFlame,
+      jetCore,
+      hitFlash,
+      smokePuffs: [],
+      previousHealth: enemy.health,
+      hitElapsed: 0,
+      smokeAccumulator: 0,
+      trailActive: true,
+      relativeDistance3D: 0,
+      keepOutMetric: 1,
+      keepOutCorrected: false,
+      behindMothership: false,
+      occluded: false,
+      flightMode: enemy.flightMode,
+    };
     this.fighterVisuals.set(enemy.id, visual);
     return visual;
   }
 
-  private syncFighter(visual: FighterVisual, enemy: EnemyState, elapsedSeconds: number, dt: number): void {
-    const rawDepth = enemy.position.z * FIGHTER_DEPTH_SCALE;
-    if (rawDepth > FIGHTER_MAX_HIDDEN_DEPTH) visual.hiddenElapsed += dt;
-    else visual.hiddenElapsed = 0;
-    const depthClamped = visual.hiddenElapsed > FIGHTER_HIDDEN_GRACE_SECONDS && rawDepth > FIGHTER_MAX_HIDDEN_DEPTH;
-    if (depthClamped && !visual.depthClamped) {
-      visual.trail.reset();
-      visual.coreTrail.reset();
+  private syncFighter(visual: FighterVisual, enemy: EnemyState, state: Readonly<CombatState>, dt: number): void {
+    const combatCenter = fighterCombatCenter(state);
+    const mothershipWorld = this.mothershipRoot.getAbsolutePosition();
+    const relative = new Vector3(
+      enemy.position.x - combatCenter.x,
+      enemy.position.y - combatCenter.y,
+      enemy.position.z - combatCenter.z,
+    );
+    visual.root.position.copyFrom(mothershipWorld.add(relative));
+    visual.relativeDistance3D = relative.length();
+    visual.keepOutMetric = fighterKeepOutMetric(enemy.position, combatCenter);
+    visual.keepOutCorrected = enemy.keepOutCorrected;
+    visual.flightMode = enemy.flightMode;
+    visual.behindMothership = relative.z > 0;
+    const silhouetteMetric = (relative.x / 17) ** 2 + (relative.y / 5.2) ** 2;
+    visual.occluded = visual.behindMothership && silhouetteMetric <= 1;
+    if (enemy.keepOutCorrected) {
+      this.clearFighterTrail(visual);
       this.clearSmokePuffs(visual);
     }
-    visual.depthClamped = depthClamped;
-    const mothershipY = this.mothershipRoot.getAbsolutePosition().y;
-    const sideViewAltitude = mothershipY + (enemy.altitude - BALANCE.mothership.baseAltitude) * 0.22;
-    visual.root.position.set(enemy.position.x, sideViewAltitude, depthClamped ? FIGHTER_MAX_HIDDEN_DEPTH : rawDepth);
     visual.sprite.rotation.z = -enemy.bank;
     visual.fallback.rotation.y = enemy.heading;
+    visual.fallback.rotation.x = -enemy.pitch;
     const spriteReady = visual.texture.isReady();
     visual.sprite.isVisible = spriteReady;
     visual.fallback.isVisible = !spriteReady;
-    const verticalVelocity = dt > 0 ? (enemy.altitude - visual.previousAltitude) / dt : 0;
-    visual.previousAltitude = enemy.altitude;
-    setAtlasFrame(visual.texture, FIGHTER_ATLAS_COLUMNS, FIGHTER_ATLAS_ROWS, sideViewFrame(enemy.velocity.x, verticalVelocity));
-    const speed = Math.hypot(enemy.velocity.x, enemy.velocity.z);
+    setAtlasFrame(visual.texture, FIGHTER_ATLAS_COLUMNS, FIGHTER_ATLAS_ROWS, sideViewFrame(enemy.velocity.x, enemy.velocity.y));
+    const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y, enemy.velocity.z);
     const direction = speed > 0.001
-      ? new Vector3(enemy.velocity.x, 0, enemy.velocity.z * FIGHTER_DEPTH_SCALE).normalize()
-      : new Vector3(Math.sin(enemy.heading), 0, Math.cos(enemy.heading) * FIGHTER_DEPTH_SCALE).normalize();
-    visual.nozzle.position.set(-direction.x * FIGHTER_NOZZLE_OFFSET, -0.14, -direction.z * FIGHTER_NOZZLE_OFFSET);
-    visual.nozzle.rotation.set(0, enemy.heading, enemy.bank * 0.18);
-    const disabled = enemy.disabledUntil > elapsedSeconds;
+      ? new Vector3(enemy.velocity.x, enemy.velocity.y, enemy.velocity.z).normalize()
+      : new Vector3(Math.sin(enemy.heading), Math.sin(enemy.pitch), Math.cos(enemy.heading)).normalize();
+    visual.nozzle.position.set(-direction.x * FIGHTER_NOZZLE_OFFSET, -direction.y * FIGHTER_NOZZLE_OFFSET - 0.14, -direction.z * FIGHTER_NOZZLE_OFFSET);
+    visual.nozzle.rotation.set(-enemy.pitch, enemy.heading, enemy.bank * 0.18);
+    const disabled = enemy.disabledUntil > state.elapsedSeconds;
     const trailVisible = !disabled && speed > 0.2;
-    if (trailVisible && !visual.trailActive) {
-      visual.trail.start();
-      visual.coreTrail.start();
-    } else if (!trailVisible && visual.trailActive) {
-      visual.trail.stop();
-      visual.coreTrail.stop();
-      visual.trail.reset();
-      visual.coreTrail.reset();
+    if (!trailVisible && visual.trailActive) {
+      this.clearFighterTrail(visual);
       this.clearSmokePuffs(visual);
     }
     visual.trailActive = trailVisible;
     const speedRatio = Math.max(0, Math.min(1, speed / 16));
-    visual.trail.visibility = trailVisible ? 0.52 + speedRatio * 0.38 : 0;
-    visual.coreTrail.visibility = trailVisible ? 0.72 + speedRatio * 0.28 : 0;
     visual.jetFlame.position.copyFrom(visual.nozzle.position);
     visual.jetFlame.scaling.set(0.9 + speedRatio * 0.65, 1, 1);
     visual.jetFlame.rotation.z = enemy.bank * 0.3;
@@ -392,6 +433,8 @@ export class BattleEntityVisuals {
     visual.jetCore.scaling.set(1.5 + speedRatio * 0.8, 0.7, 0.7);
     visual.jetCore.visibility = trailVisible ? 1 : 0;
     if (trailVisible) {
+      visual.nozzle.computeWorldMatrix(true);
+      this.extendFighterTrail(visual, visual.nozzle.getAbsolutePosition());
       visual.smokeAccumulator += dt;
       while (visual.smokeAccumulator >= FIGHTER_SMOKE_INTERVAL) {
         visual.smokeAccumulator -= FIGHTER_SMOKE_INTERVAL;
@@ -405,10 +448,7 @@ export class BattleEntityVisuals {
   }
 
   private disposeFighter(visual: FighterVisual): void {
-    visual.trail.stop();
-    visual.coreTrail.stop();
-    visual.trail.dispose();
-    visual.coreTrail.dispose();
+    this.clearFighterTrail(visual);
     this.clearSmokePuffs(visual);
     visual.nozzle.dispose();
     visual.root.dispose(false, true);
@@ -418,13 +458,23 @@ export class BattleEntityVisuals {
 
   private updateFighterEffects(dt: number): void {
     for (const visual of this.fighterVisuals.values()) {
+      for (let index = visual.trailSegments.length - 1; index >= 0; index -= 1) {
+        const segment = visual.trailSegments[index];
+        segment.age += dt;
+        const progress = Math.min(1, segment.age / FIGHTER_TRAIL_LIFETIME);
+        segment.mesh.visibility = Math.max(0, 0.72 * (1 - progress));
+        segment.mesh.scaling.y = segment.baseWidth * (1 - progress * 0.72);
+        if (progress >= 1) {
+          segment.mesh.dispose();
+          visual.trailSegments.splice(index, 1);
+        }
+      }
       for (let index = visual.smokePuffs.length - 1; index >= 0; index -= 1) {
         const puff = visual.smokePuffs[index];
         puff.age += dt;
         const progress = Math.min(1, puff.age / FIGHTER_SMOKE_LIFETIME);
-        puff.mesh.visibility = Math.max(0, 0.84 * (1 - progress));
-        puff.mesh.scaling.setAll(0.55 + progress * 1.15);
-        if (puff.mesh.position.z > FIGHTER_MAX_HIDDEN_DEPTH) puff.mesh.visibility = 0;
+        puff.mesh.visibility = Math.max(0, 0.38 * (1 - progress));
+        puff.mesh.scaling.setAll(0.5 + progress * 0.72);
         if (progress >= 1) {
           puff.mesh.dispose();
           visual.smokePuffs.splice(index, 1);
@@ -449,17 +499,50 @@ export class BattleEntityVisuals {
     }
   }
 
+  private extendFighterTrail(visual: FighterVisual, position: Vector3): void {
+    const previous = visual.trailLastPosition;
+    if (!previous) {
+      visual.trailLastPosition = position.clone();
+      return;
+    }
+    const distance = Vector3.Distance(previous, position);
+    if (distance > FIGHTER_TRAIL_BREAK_DISTANCE) {
+      this.clearFighterTrail(visual);
+      visual.trailLastPosition = position.clone();
+      return;
+    }
+    const dx = position.x - previous.x;
+    const dy = position.y - previous.y;
+    const visibleLength = Math.hypot(dx, dy);
+    if (visibleLength < FIGHTER_TRAIL_SPAWN_DISTANCE) {
+      if (distance >= FIGHTER_TRAIL_SPAWN_DISTANCE) visual.trailLastPosition = position.clone();
+      return;
+    }
+    const segment = MeshBuilder.CreatePlane(`${visual.root.name}-trail-segment-${visual.trailSegments.length}`, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+    segment.position.copyFrom(previous.add(position).scale(0.5));
+    segment.scaling.set(visibleLength, FIGHTER_TRAIL_WIDTH, 1);
+    segment.rotation.z = Math.atan2(dy, dx);
+    segment.material = this.fighterTrailMaterial;
+    segment.renderingGroupId = 3;
+    segment.isPickable = false;
+    segment.visibility = 0.72;
+    visual.trailSegments.push({ mesh: segment, age: 0, baseWidth: FIGHTER_TRAIL_WIDTH });
+    visual.trailLastPosition = position.clone();
+    while (visual.trailSegments.length > FIGHTER_TRAIL_MAX_SEGMENTS) visual.trailSegments.shift()?.mesh.dispose();
+  }
+
   private createSmokePuff(visual: FighterVisual): void {
     this.trimGlobalSmokeBudget();
     while (visual.smokePuffs.length >= FIGHTER_SMOKE_MAX_PER_FIGHTER) {
       visual.smokePuffs.shift()?.mesh.dispose();
     }
-    const puff = MeshBuilder.CreateSphere(`${visual.root.name}-smoke-${visual.smokePuffs.length}`, { diameter: 1.2, segments: 8 }, this.scene);
+    const puff = MeshBuilder.CreatePlane(`${visual.root.name}-smoke-${visual.smokePuffs.length}`, { size: 1.2, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
     puff.position = visual.nozzle.getAbsolutePosition().clone();
+    puff.billboardMode = Mesh.BILLBOARDMODE_ALL;
     puff.material = this.fighterSmokeMaterial;
     puff.renderingGroupId = 3;
     puff.isPickable = false;
-    puff.visibility = 0.84;
+    puff.visibility = 0.38;
     visual.smokePuffs.push({ mesh: puff, age: 0 });
   }
 
@@ -489,6 +572,11 @@ export class BattleEntityVisuals {
   private clearSmokePuffs(visual: FighterVisual): void {
     visual.smokePuffs.splice(0).forEach((puff) => puff.mesh.dispose());
     visual.smokeAccumulator = 0;
+  }
+
+  private clearFighterTrail(visual: FighterVisual): void {
+    visual.trailSegments.splice(0).forEach((segment) => segment.mesh.dispose());
+    visual.trailLastPosition = null;
   }
 
   private createFighterExplosion(position: Vector3): void {

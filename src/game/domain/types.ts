@@ -39,6 +39,12 @@ export interface Vec2 {
   z: number;
 }
 
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface ResourceWallet {
   biomass: number;
   alloy: number;
@@ -560,23 +566,28 @@ export interface CombatFacilityState extends FacilityDefinition {
 export interface EnemyState {
   id: string;
   kind: 'fighter';
-  position: Vec2;
-  velocity: Vec2;
-  altitude: number;
+  position: Vec3;
+  velocity: Vec3;
   heading: number;
+  pitch: number;
   bank: number;
   squadId: number;
   formationSlot: number;
   orbitDirection: -1 | 1;
   orbitRadius: number;
+  orbitVerticalRadius: number;
+  orbitDepthRadius: number;
+  orbitPlaneTilt: number;
   orbitPhase: number;
   orbitAngularSpeed: number;
   orbitEccentricity: number;
-  orbitVerticalAmplitude: number;
-  orbitDepthAmplitude: number;
   orbitWobblePhase: number;
   attackRunPhase: number;
   attackRunStrength: number;
+  attackRunElapsed: number;
+  recoverDuration: number;
+  flightMode: 'ORBIT' | 'ATTACK_PASS' | 'RECOVER';
+  keepOutCorrected: boolean;
   health: number;
   attackCooldown: number;
   disabledUntil: number;

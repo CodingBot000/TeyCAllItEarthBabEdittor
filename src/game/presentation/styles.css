@@ -72,6 +72,8 @@
 .battle-action-plasma kbd { color: #ff9d70; }
 .battle-action-absorb kbd { color: #8ff5d1; }
 .battle-action-overdrive kbd { color: #d6a7ff; }
+.battle-action-assault { border-color: rgba(255, 116, 164, .52); color: #ffc2d8; }
+.battle-action-assault kbd { color: #ff78a8; }
 .battle-action-extract { border-color: rgba(244, 184, 90, .6); color: #ffe1a7; }
 .battle-action-extract kbd { color: #f4b85a; }
 .battle-action-extract.active { background: rgba(128, 77, 16, .76); }

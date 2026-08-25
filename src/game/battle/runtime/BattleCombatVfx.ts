@@ -67,6 +67,28 @@ interface AbilityEffect {
   secondRingFrames: number[];
 }
 
+interface PlasmaArcVisual {
+  glowSegments: Mesh[];
+  coreSegments: Mesh[];
+  direction: Vector3;
+  phase: number;
+  amplitude: number;
+}
+
+interface PlasmaEffect {
+  root: TransformNode;
+  elapsed: number;
+  duration: number;
+  start: Vector3;
+  center: Vector3;
+  orb: Mesh;
+  orbCore: Mesh;
+  orbHalo: Mesh;
+  pulseRing: Mesh;
+  shockRing: Mesh;
+  arcs: PlasmaArcVisual[];
+}
+
 interface AbsorptionVisual {
   beam: Mesh;
   core: Mesh;
@@ -177,6 +199,16 @@ const GROUND_SWARM_ORBIT_VERTICAL_MIN_RADIUS = 0.1;
 const GROUND_SWARM_ORBIT_VERTICAL_MAX_RADIUS = 0.3;
 const GROUND_SWARM_ORBIT_DEPTH_MIN_RADIUS = 0.22;
 const GROUND_SWARM_ORBIT_DEPTH_MAX_RADIUS = 0.62;
+const PLASMA_EFFECT_DURATION = 1.85;
+// The orb travels for the full effect lifetime. Tune this value to change
+// the vertical descent speed while keeping the impact height unchanged.
+const PLASMA_DROP_DURATION = PLASMA_EFFECT_DURATION;
+const PLASMA_ARC_START_SECONDS = 0.04;
+const PLASMA_ARC_RAMP_SECONDS = 0.16;
+const PLASMA_ARC_COUNT = 22;
+const PLASMA_ARC_SEGMENTS = 7;
+const PLASMA_ORB_SCALE = 2;
+const EMP_DISTORTION_DURATION = 1.05;
 const scaleMothershipEffect = (value: number): number => value * BALANCE.mothership.visualScale;
 
 Effect.ShadersStore.battleOverdriveDistortionFragmentShader = `
@@ -191,6 +223,9 @@ uniform float distortionInnerRadius;
 uniform float distortionStrength;
 uniform float intensity;
 uniform float time;
+uniform vec2 empCenter;
+uniform float empIntensity;
+uniform float empTime;
 
 void main(void) {
   vec2 centered = vUV - distortionCenter;
@@ -204,8 +239,19 @@ void main(void) {
   float ripple = 0.5 + 0.5 * sin(time * 7.5 - distanceFromCenter * 58.0);
   float animatedStrength = distortionStrength * intensity * ring * (0.82 + ripple * 0.18);
   vec2 uvOffset = vec2(direction.x / aspect, direction.y) * animatedStrength;
-  vec2 warpedUv = clamp(vUV - uvOffset, 0.001, 0.999);
-  vec2 fringe = vec2(direction.x / aspect, direction.y) * animatedStrength * 0.38;
+  vec2 empCentered = vUV - empCenter;
+  vec2 empCorrected = vec2(empCentered.x * aspect, empCentered.y);
+  float empDistance = length(empCorrected);
+  vec2 empDirection = empCorrected / max(empDistance, 0.0001);
+  float empWaveRadius = min(1.0, empTime * 0.9);
+  float empFront = exp(-pow((empDistance - empWaveRadius) * 31.0, 2.0));
+  float empBody = exp(-pow(empDistance * 2.2, 2.0)) * max(0.0, 1.0 - empTime * 0.7);
+  float empRipple = sin(empDistance * 74.0 - empTime * 52.0);
+  float empStrength = empIntensity * (empFront * (0.025 + 0.009 * empRipple) + empBody * 0.007);
+  vec2 empOffset = vec2(empDirection.x / aspect, empDirection.y) * empStrength;
+  vec2 warpedUv = clamp(vUV - uvOffset - empOffset, 0.001, 0.999);
+  vec2 fringe = vec2(direction.x / aspect, direction.y) * animatedStrength * 0.38
+    + vec2(empDirection.x / aspect, empDirection.y) * empStrength * 0.42;
 
   vec3 original = texture2D(textureSampler, vUV).rgb;
   vec3 warped = vec3(
@@ -214,7 +260,9 @@ void main(void) {
     texture2D(textureSampler, clamp(warpedUv - fringe, 0.001, 0.999)).b
   );
   vec3 lensTint = vec3(0.22, 0.72, 1.0) * ring * intensity * (0.045 + ripple * 0.035);
-  gl_FragColor = vec4(mix(original, warped, ring * intensity), 1.0) + vec4(lensTint, 0.0);
+  vec3 empTint = vec3(0.32, 0.82, 1.0) * empIntensity * (empFront * 0.12 + empBody * 0.035);
+  float distortionMix = clamp(ring * intensity + empFront * empIntensity * 0.92 + empBody * empIntensity * 0.2, 0.0, 1.0);
+  gl_FragColor = vec4(mix(original, warped, distortionMix), 1.0) + vec4(lensTint + empTint, 0.0);
 }
 `;
 
@@ -225,6 +273,7 @@ export class BattleCombatVfx {
   private readonly smokeTexture: Texture;
   private readonly damageEffects: DamageEffect[] = [];
   private readonly abilityEffects: AbilityEffect[] = [];
+  private readonly plasmaEffects: PlasmaEffect[] = [];
   private readonly airDefenseEffects: AirDefenseVisual[] = [];
   private readonly consumedHitIds = new Set<string>();
   private consumedAirDefenseId: string | null = null;
@@ -239,6 +288,9 @@ export class BattleCombatVfx {
   private readonly hullDebrisMaterial: StandardMaterial;
   private readonly empMaterial: StandardMaterial;
   private readonly plasmaMaterial: StandardMaterial;
+  private readonly plasmaArcGlowMaterial: StandardMaterial;
+  private readonly plasmaArcCoreMaterial: StandardMaterial;
+  private readonly plasmaOrbCoreMaterial: StandardMaterial;
   private readonly beamMaterial: StandardMaterial;
   private readonly beamCoreMaterial: StandardMaterial;
   private readonly beamFunnelMaterial: StandardMaterial;
@@ -289,6 +341,8 @@ export class BattleCombatVfx {
   private hullShakePhase = 0;
   private overdriveDistortionIntensity = 0;
   private overdriveDistortionTime = 0;
+  private empDistortionIntensity = 0;
+  private empDistortionTime = EMP_DISTORTION_DURATION;
   private disposed = false;
 
   constructor(
@@ -325,6 +379,18 @@ export class BattleCombatVfx {
     this.hullDebrisMaterial = this.material('battle-hull-impact-debris', new Color3(0.52, 0.17, 0.055), new Color3(0.9, 0.18, 0.015));
     this.empMaterial = this.material('battle-emp', new Color3(0.22, 0.78, 1), new Color3(0.08, 0.85, 1));
     this.plasmaMaterial = this.material('battle-plasma', new Color3(1, 0.38, 0.08), new Color3(1, 0.12, 0.01));
+    this.plasmaArcGlowMaterial = this.material('battle-plasma-arc-glow', new Color3(0.42, 0.08, 0.86), new Color3(0.72, 0.08, 1));
+    this.plasmaArcGlowMaterial.alpha = 0.34;
+    this.plasmaArcGlowMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.plasmaArcGlowMaterial.disableDepthWrite = true;
+    this.plasmaArcCoreMaterial = this.material('battle-plasma-arc-core', new Color3(0.82, 0.7, 1), new Color3(0.95, 0.88, 1));
+    this.plasmaArcCoreMaterial.alpha = 0.92;
+    this.plasmaArcCoreMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.plasmaArcCoreMaterial.disableDepthWrite = true;
+    this.plasmaOrbCoreMaterial = this.material('battle-plasma-orb-core', new Color3(0.32, 0.06, 0.62), new Color3(0.7, 0.08, 1));
+    this.plasmaOrbCoreMaterial.alpha = 0.82;
+    this.plasmaOrbCoreMaterial.alphaMode = Engine.ALPHA_COMBINE;
+    this.plasmaOrbCoreMaterial.disableDepthWrite = true;
     this.beamMaterial = this.material('battle-abduction-beam', new Color3(0.2, 0.85, 0.76), new Color3(0.15, 0.95, 0.8));
     this.beamMaterial.alpha = 0.34;
     this.beamCoreMaterial = this.material('battle-abduction-beam-core', new Color3(0.72, 1, 0.94), new Color3(0.35, 1, 0.92));
@@ -392,7 +458,7 @@ export class BattleCombatVfx {
     this.overdriveDistortion = new PostProcess('battle-overdrive-distortion', 'battleOverdriveDistortion', {
       camera: this.camera ?? this.scene.activeCamera,
       samplingMode: Texture.BILINEAR_SAMPLINGMODE,
-      uniforms: ['screenSize', 'distortionCenter', 'distortionRadius', 'distortionInnerRadius', 'distortionStrength', 'intensity', 'time'],
+      uniforms: ['screenSize', 'distortionCenter', 'distortionRadius', 'distortionInnerRadius', 'distortionStrength', 'intensity', 'time', 'empCenter', 'empIntensity', 'empTime'],
     });
     this.overdriveDistortion.autoClear = false;
     this.overdriveDistortion.onApply = (effect) => {
@@ -410,6 +476,9 @@ export class BattleCombatVfx {
       effect.setFloat('distortionStrength', 0.028);
       effect.setFloat('intensity', this.overdriveDistortionIntensity);
       effect.setFloat('time', this.overdriveDistortionTime);
+      effect.setVector2('empCenter', new Vector2(projected.x / width, 1 - projected.y / height));
+      effect.setFloat('empIntensity', this.empDistortionIntensity);
+      effect.setFloat('empTime', this.empDistortionTime);
     };
 
   }
@@ -429,58 +498,143 @@ export class BattleCombatVfx {
 
   triggerAbility(kind: HeavyAbility, target: Vector3): void {
     if (this.disposed) return;
+    if (kind === 'plasma') {
+      this.triggerPlasmaEffect();
+      return;
+    }
+    this.triggerEmpDistortion();
     while (this.abilityEffects.length >= MAX_ABILITY_EFFECTS) this.abilityEffects.shift()?.root.dispose();
     const root = new TransformNode(`battle-${kind}-${this.abilityId.value++}`, this.scene);
     const ship = this.shipPosition();
     const start = ship.add(new Vector3(0, -scaleMothershipEffect(0.7), -scaleMothershipEffect(0.5)));
     const targetPoint = target.clone();
-    const sourceMaterial = kind === 'plasma' ? this.plasmaMaterial : this.empMaterial;
-    const tracerFrames = kind === 'plasma' ? [5, 6, 11] : [12, 5, 3];
-    const impactFrames = kind === 'plasma' ? [1, 8, 10] : [2, 9, 11];
-    const ringFrames = kind === 'plasma' ? [3, 10, 12] : [3, 7, 12];
-    const secondRingFrames = kind === 'plasma' ? [8, 1, 10] : [9, 2, 11];
+    const sourceMaterial = this.empMaterial;
+    const tracerFrames = [12, 5, 3];
+    const impactFrames = [2, 9, 11];
+    const ringFrames = [3, 7, 12];
+    const secondRingFrames = [9, 2, 11];
     const tracer = this.flipbook(`${root.name}-tracer`, this.vfxTexture, 4, 4, tracerFrames[0], sourceMaterial.diffuseColor, 'ADDITIVE');
     tracer.parent = root;
     this.alignSpriteTracer(tracer, start, targetPoint);
     const impact = this.flipbook(`${root.name}-impact`, this.vfxTexture, 4, 4, impactFrames[0], sourceMaterial.diffuseColor, 'ADDITIVE');
     impact.parent = root;
     impact.position = targetPoint.clone();
-    impact.scaling.setAll(kind === 'plasma' ? 4.6 : 4);
+    impact.scaling.setAll(4);
     const ring = this.flipbook(`${root.name}-ring`, this.vfxTexture, 4, 4, ringFrames[0], sourceMaterial.diffuseColor, 'ADDITIVE');
     ring.parent = root;
     ring.position = targetPoint.clone();
-    ring.scaling.setAll(kind === 'plasma' ? 5.6 : 9.2);
+    ring.scaling.setAll(9.2);
     const secondRing = this.flipbook(`${root.name}-ring-secondary`, this.vfxTexture, 4, 4, secondRingFrames[0], Color3.White(), 'ADDITIVE');
     secondRing.parent = root;
     secondRing.position = targetPoint.clone();
-    secondRing.scaling.setAll(kind === 'plasma' ? 3.8 : 6.2);
+    secondRing.scaling.setAll(6.2);
     const explosion = this.flipbook(`${root.name}-explosion`, this.explosionTexture, 5, 5, 0, Color3.White(), 'ALPHA');
     explosion.parent = root;
     explosion.position = targetPoint.add(new Vector3(0, 0.48, 0));
-    explosion.scaling.setAll(kind === 'plasma' ? 3.4 : 3);
+    explosion.scaling.setAll(3);
     const smoke = this.flipbook(`${root.name}-smoke`, this.smokeTexture, 8, 8, 0, new Color3(0.52, 0.54, 0.56), 'ALPHA');
     smoke.parent = root;
     smoke.position = targetPoint.add(new Vector3(0, 0.68, 0));
     smoke.scaling.setAll(1.4);
-    const fallbackTracer = MeshBuilder.CreateCylinder(`${root.name}-fallback-tracer`, { diameter: scaleMothershipEffect(kind === 'plasma' ? 0.9 : 0.6), height: 1, tessellation: 12 }, this.scene);
+    const fallbackTracer = MeshBuilder.CreateCylinder(`${root.name}-fallback-tracer`, { diameter: scaleMothershipEffect(0.6), height: 1, tessellation: 12 }, this.scene);
     fallbackTracer.parent = root;
     fallbackTracer.material = sourceMaterial;
     alignCylinder(fallbackTracer, start, targetPoint);
-    const fallbackImpact = MeshBuilder.CreateSphere(`${root.name}-fallback-impact`, { diameter: kind === 'plasma' ? 2.1 : 1.6, segments: 16 }, this.scene);
+    const fallbackImpact = MeshBuilder.CreateSphere(`${root.name}-fallback-impact`, { diameter: 1.6, segments: 16 }, this.scene);
     fallbackImpact.parent = root;
     fallbackImpact.position = targetPoint.clone();
     fallbackImpact.material = sourceMaterial;
-    const fallbackRing = MeshBuilder.CreateTorus(`${root.name}-fallback-ring`, { diameter: kind === 'plasma' ? 4.2 : 8.5, thickness: 0.28, tessellation: 36 }, this.scene);
+    const fallbackRing = MeshBuilder.CreateTorus(`${root.name}-fallback-ring`, { diameter: 8.5, thickness: 0.28, tessellation: 36 }, this.scene);
     fallbackRing.parent = root;
     fallbackRing.position = targetPoint.clone();
     fallbackRing.material = sourceMaterial;
-    const fallbackSecondRing = MeshBuilder.CreateTorus(`${root.name}-fallback-ring-2`, { diameter: kind === 'plasma' ? 2.3 : 5.2, thickness: 0.16, tessellation: 32 }, this.scene);
+    const fallbackSecondRing = MeshBuilder.CreateTorus(`${root.name}-fallback-ring-2`, { diameter: 5.2, thickness: 0.16, tessellation: 32 }, this.scene);
     fallbackSecondRing.parent = root;
     fallbackSecondRing.position = targetPoint.clone();
     fallbackSecondRing.material = sourceMaterial;
     [tracer, impact, ring, secondRing, explosion, smoke].forEach((mesh) => { mesh.renderingGroupId = 3; });
     [fallbackTracer, fallbackImpact, fallbackRing, fallbackSecondRing].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
-    this.abilityEffects.push({ kind, root, elapsed: 0, duration: kind === 'plasma' ? 1.7 : ABILITY_DURATION, target: targetPoint, tracer, impact, ring, secondRing, explosion, smoke, fallbackTracer, fallbackImpact, fallbackRing, fallbackSecondRing, tracerFrames, impactFrames, ringFrames, secondRingFrames });
+    this.abilityEffects.push({ kind, root, elapsed: 0, duration: ABILITY_DURATION, target: targetPoint, tracer, impact, ring, secondRing, explosion, smoke, fallbackTracer, fallbackImpact, fallbackRing, fallbackSecondRing, tracerFrames, impactFrames, ringFrames, secondRingFrames });
+  }
+
+  private triggerPlasmaEffect(): void {
+    while (this.plasmaEffects.length >= 2) this.disposePlasmaEffect(this.plasmaEffects.shift()!);
+    const root = new TransformNode(`battle-plasma-drop-${this.abilityId.value++}`, this.scene);
+    const ship = this.shipPosition();
+    const start = ship.add(new Vector3(0, -scaleMothershipEffect(1.25), -0.65));
+    const center = new Vector3(
+      ship.x,
+      (ship.y + GROUND_ATTACK_TARGET_Y) * 0.5,
+      ship.z - 0.7,
+    );
+    const orb = this.flipbook(`${root.name}-orb`, this.vfxTexture, 4, 4, 9, new Color3(0.66, 0.3, 1), 'ALPHA');
+    orb.parent = root;
+    orb.scaling.setAll(3.8);
+    const orbCore = MeshBuilder.CreateSphere(`${root.name}-orb-core`, { diameter: 1.45, segments: 20 }, this.scene);
+    orbCore.parent = root;
+    orbCore.material = this.plasmaOrbCoreMaterial;
+    orbCore.position.z = -0.55;
+    const orbHalo = this.flipbook(`${root.name}-orb-halo`, this.vfxTexture, 4, 4, 11, new Color3(0.72, 0.18, 1), 'ADDITIVE');
+    orbHalo.parent = root;
+    orbHalo.scaling.setAll(4.9);
+    const pulseRing = this.flipbook(`${root.name}-pulse-ring`, this.vfxTexture, 4, 4, 10, new Color3(0.42, 0.88, 1), 'ADDITIVE');
+    pulseRing.parent = root;
+    pulseRing.scaling.setAll(4.8);
+    const shockRing = this.flipbook(`${root.name}-shock-ring`, this.vfxTexture, 4, 4, 3, new Color3(0.48, 0.92, 1), 'ADDITIVE');
+    shockRing.parent = root;
+    shockRing.scaling.setAll(1.4);
+    const arcs = this.createPlasmaArcs(root, center);
+    [orb, orbCore, orbHalo, pulseRing, shockRing, ...arcs.flatMap((arc) => [...arc.glowSegments, ...arc.coreSegments])].forEach((mesh) => {
+      mesh.renderingGroupId = 3;
+      mesh.isPickable = false;
+    });
+    this.plasmaEffects.push({ root, elapsed: 0, duration: PLASMA_EFFECT_DURATION, start, center, orb, orbCore, orbHalo, pulseRing, shockRing, arcs });
+  }
+
+  private triggerEmpDistortion(): void {
+    this.empDistortionTime = 0;
+    this.empDistortionIntensity = 1;
+  }
+
+  private createPlasmaArcs(root: TransformNode, center: Vector3): PlasmaArcVisual[] {
+    const { halfWidth, halfHeight } = this.plasmaScreenRadii(center);
+    return Array.from({ length: PLASMA_ARC_COUNT }, (_, index) => {
+      const angle = index / PLASMA_ARC_COUNT * Math.PI * 2 + (seededUnit(index * 13 + 17) - 0.5) * 0.22;
+      const reach = 0.88 + seededUnit(index * 29 + 11) * 0.2;
+      const direction = new Vector3(
+        Math.cos(angle) * halfWidth * reach,
+        Math.sin(angle) * halfHeight * reach,
+        -0.55 - seededUnit(index * 37 + 5) * 0.45,
+      );
+      const glowSegments = Array.from({ length: PLASMA_ARC_SEGMENTS }, (_, segment) => {
+        const mesh = MeshBuilder.CreateCylinder(`${root.name}-arc-glow-${index}-${segment}`, { diameter: 0.42, height: 1, tessellation: 6 }, this.scene);
+        mesh.material = this.plasmaArcGlowMaterial;
+        return mesh;
+      });
+      const coreSegments = Array.from({ length: PLASMA_ARC_SEGMENTS }, (_, segment) => {
+        const mesh = MeshBuilder.CreateCylinder(`${root.name}-arc-core-${index}-${segment}`, { diameter: 0.13, height: 1, tessellation: 6 }, this.scene);
+        mesh.material = this.plasmaArcCoreMaterial;
+        return mesh;
+      });
+      [...glowSegments, ...coreSegments].forEach((mesh) => { mesh.parent = root; });
+      return {
+        glowSegments,
+        coreSegments,
+        direction,
+        phase: seededUnit(index * 43 + 23) * Math.PI * 2,
+        amplitude: 0.9 + seededUnit(index * 47 + 31) * 1.7,
+      };
+    });
+  }
+
+  private plasmaScreenRadii(center: Vector3): { halfWidth: number; halfHeight: number } {
+    const engine = this.scene.getEngine();
+    const camera = this.camera ?? this.scene.activeCamera;
+    if (!camera) return { halfWidth: 52, halfHeight: 29 };
+    const distance = Math.max(1, Math.abs(camera.position.z - center.z));
+    const visibleHeight = 2 * distance * Math.tan(camera.fov / 2);
+    const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+    return { halfWidth: visibleHeight * aspect * 0.56, halfHeight: visibleHeight * 0.54 };
   }
 
   syncCombatState(state: Readonly<CombatState>): void {
@@ -502,7 +656,12 @@ export class BattleCombatVfx {
     this.syncGroundSwarm(state);
     if (state.lastAirDefenseShot && state.lastAirDefenseShot.id !== this.consumedAirDefenseId) {
       this.consumedAirDefenseId = state.lastAirDefenseShot.id;
-      this.triggerAirDefenseShot(state.lastAirDefenseShot.origin, state.lastAirDefenseShot.target, state.lastAirDefenseShot.targetAltitude);
+      this.triggerAirDefenseShot(
+        state.lastAirDefenseShot.origin,
+        state.lastAirDefenseShot.target,
+        state.lastAirDefenseShot.targetAltitude,
+        this.projectileVisualOriginResolver?.('fighter', state.lastAirDefenseShot.targetId) ?? undefined,
+      );
     }
     if (state.lastPointDefenseShot && state.lastPointDefenseShot.id !== this.consumedPointDefenseId) {
       this.consumedPointDefenseId = state.lastPointDefenseShot.id;
@@ -608,9 +767,12 @@ export class BattleCombatVfx {
   update(dt: number, elapsed: number): void {
     if (this.disposed) return;
     this.overdriveDistortionTime += Math.max(0, dt);
+    this.empDistortionTime += Math.max(0, dt);
+    if (this.empDistortionTime >= EMP_DISTORTION_DURATION) this.empDistortionIntensity = 0;
     this.updateHullShake(dt);
     this.updateDamageEffects(dt);
     this.updateAbilityEffects(dt);
+    this.updatePlasmaEffects(dt);
     this.updateAirDefenseEffects(dt);
     this.updateMissileTrails(dt);
     this.updateGroundSwarmImpacts(dt);
@@ -623,6 +785,7 @@ export class BattleCombatVfx {
     this.disposed = true;
     this.damageEffects.splice(0).forEach((effect) => this.disposeDamageEffect(effect));
     this.abilityEffects.splice(0).forEach((effect) => effect.root.dispose());
+    this.plasmaEffects.splice(0).forEach((effect) => this.disposePlasmaEffect(effect));
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
     this.projectileVisualPositions.clear();
@@ -658,7 +821,7 @@ export class BattleCombatVfx {
       this.absorption.rods.forEach((rod) => { rod.body.dispose(); rod.core.dispose(); });
     }
     this.overdriveDistortion.dispose();
-    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.samMissileJetGlowMaterial, this.samMissileJetCoreMaterial, this.collisionHullOverlayMaterial, this.collisionShieldOverlayMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.searchBeamMaterial, this.searchGroundRingMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
+    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.plasmaArcGlowMaterial, this.plasmaArcCoreMaterial, this.plasmaOrbCoreMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.samMissileJetGlowMaterial, this.samMissileJetCoreMaterial, this.collisionHullOverlayMaterial, this.collisionShieldOverlayMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.searchBeamMaterial, this.searchGroundRingMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
     this.samProjectileTexture.dispose();
     this.collisionHullOverlay.dispose();
     this.collisionShieldOverlay.dispose();
@@ -876,8 +1039,8 @@ export class BattleCombatVfx {
     }
   }
 
-  private triggerAirDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number): void {
-    this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial);
+  private triggerAirDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, visualTarget?: Vector3): void {
+    this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial, false, visualTarget);
   }
 
   private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, visualTarget?: Vector3): void {
@@ -901,8 +1064,13 @@ export class BattleCombatVfx {
       expired.impact.dispose();
       expired.explosion?.dispose(false, true);
     }
-    const start = new Vector3(origin.x, this.shipPosition().y + scaleMothershipEffect(1.4), origin.z * 0.12);
-    const end = visualTarget?.clone() ?? new Vector3(target.x, 8 + (targetAltitude - 33) * 0.22, target.z * 0.12);
+    const shipPosition = this.shipPosition();
+    const start = shipPosition.add(new Vector3(0, scaleMothershipEffect(1.4), 0));
+    const end = visualTarget?.clone() ?? shipPosition.add(new Vector3(
+      target.x - origin.x,
+      targetAltitude - BALANCE.mothership.baseAltitude,
+      target.z - origin.z,
+    ));
     const beam = MeshBuilder.CreateCylinder(name, { diameter: 0.72, height: 1, tessellation: 12 }, this.scene);
     beam.material = beamMaterial;
     const core = MeshBuilder.CreateCylinder(`${name}-core`, { diameter: 0.2, height: 1, tessellation: 10 }, this.scene);
@@ -919,6 +1087,80 @@ export class BattleCombatVfx {
     impact.position = end;
     [beam, core, impact, ...(explosion ? [explosion] : [])].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
     this.airDefenseEffects.push({ beam, core, impact, explosion, elapsed: 0, duration: withExplosion ? 0.42 : 0.24, explosionDuration: withExplosion ? 0.72 : undefined, origin: start, target: end });
+  }
+
+  private updatePlasmaEffects(dt: number): void {
+    const materialReady = this.vfxTexture.isReady();
+    for (const effect of this.plasmaEffects) {
+      effect.elapsed += dt;
+      const dropProgress = Math.min(1, effect.elapsed / PLASMA_DROP_DURATION);
+      const dropEased = dropProgress;
+      const orbPosition = Vector3.Lerp(effect.start, effect.center, dropEased);
+      const primaryBounce = 0.5 + 0.5 * Math.sin(effect.elapsed * 8.4 - Math.PI / 2);
+      const secondaryBounce = 0.5 + 0.5 * Math.sin(effect.elapsed * 16.8 + Math.PI / 5);
+      const bounce = 0.78 + primaryBounce * 0.34 + secondaryBounce * 0.08;
+      const burstProgress = Math.min(1, Math.max(0, (effect.elapsed - PLASMA_ARC_START_SECONDS) / PLASMA_ARC_RAMP_SECONDS));
+      const fadeOut = Math.max(0, 1 - Math.max(0, effect.elapsed - (effect.duration - 0.12)) / 0.12);
+      const arcVisibility = burstProgress * fadeOut;
+
+      effect.orb.position.copyFrom(orbPosition);
+      effect.orb.scaling.setAll(PLASMA_ORB_SCALE * (3.45 + bounce * 0.55));
+      effect.orb.isVisible = materialReady && effect.elapsed < effect.duration;
+      effect.orb.visibility = Math.min(1, 0.62 + burstProgress * 0.38) * fadeOut;
+
+      effect.orbCore.position.copyFrom(orbPosition);
+      effect.orbCore.position.z -= 0.55;
+      effect.orbCore.scaling.setAll(PLASMA_ORB_SCALE * (0.84 + bounce * 0.12));
+      effect.orbCore.visibility = Math.min(1, 0.5 + burstProgress * 0.5) * fadeOut;
+
+      effect.orbHalo.position.copyFrom(orbPosition);
+      effect.orbHalo.scaling.setAll(PLASMA_ORB_SCALE * (4.2 + bounce * 0.8));
+      effect.orbHalo.isVisible = materialReady && effect.elapsed < effect.duration;
+      effect.orbHalo.visibility = arcVisibility * 0.85;
+
+      effect.pulseRing.position.copyFrom(orbPosition);
+      effect.pulseRing.scaling.setAll(3.4 + bounce * 0.4);
+      effect.pulseRing.isVisible = materialReady && effect.elapsed > PLASMA_ARC_START_SECONDS;
+      effect.pulseRing.visibility = arcVisibility * 0.58;
+
+      effect.shockRing.position.copyFrom(orbPosition);
+      effect.shockRing.scaling.setAll(1.2 + bounce * 0.6);
+      effect.shockRing.isVisible = materialReady && effect.elapsed > PLASMA_ARC_START_SECONDS;
+      effect.shockRing.visibility = arcVisibility * 0.5;
+
+      const activeCenter = orbPosition;
+      effect.arcs.forEach((arc, arcIndex) => {
+        arc.glowSegments.forEach((glow, segmentIndex) => {
+          const startT = segmentIndex / PLASMA_ARC_SEGMENTS;
+          const endT = (segmentIndex + 1) / PLASMA_ARC_SEGMENTS;
+          const start = this.plasmaArcPoint(activeCenter, arc, startT, effect.elapsed, arcIndex, segmentIndex);
+          const end = this.plasmaArcPoint(activeCenter, arc, endT, effect.elapsed, arcIndex, segmentIndex + 1);
+          alignCylinder(glow, start, end);
+          alignCylinder(arc.coreSegments[segmentIndex], start, end);
+          const flicker = 0.68 + Math.abs(Math.sin(effect.elapsed * 34 + arc.phase + segmentIndex * 1.7)) * 0.32;
+          glow.visibility = arcVisibility * flicker * 0.9;
+          arc.coreSegments[segmentIndex].visibility = arcVisibility * flicker;
+        });
+      });
+    }
+    for (let index = this.plasmaEffects.length - 1; index >= 0; index -= 1) {
+      if (this.plasmaEffects[index].elapsed < this.plasmaEffects[index].duration) continue;
+      this.disposePlasmaEffect(this.plasmaEffects[index]);
+      this.plasmaEffects.splice(index, 1);
+    }
+  }
+
+  private plasmaArcPoint(center: Vector3, arc: PlasmaArcVisual, progress: number, elapsed: number, arcIndex: number, segmentIndex: number): Vector3 {
+    if (progress <= 0) return center.clone();
+    const base = center.add(arc.direction.scale(progress));
+    const jitterEnvelope = Math.sin(progress * Math.PI) * arc.amplitude * (0.62 + progress * 0.38);
+    const xJitter = Math.sin(elapsed * 22 + arc.phase + segmentIndex * 2.3 + arcIndex * 0.17) * jitterEnvelope;
+    const yJitter = Math.cos(elapsed * 27 + arc.phase * 0.73 + segmentIndex * 1.9) * jitterEnvelope;
+    return base.add(new Vector3(xJitter, yJitter, 0));
+  }
+
+  private disposePlasmaEffect(effect: PlasmaEffect): void {
+    effect.root.dispose(false, true);
   }
 
   private updateAirDefenseEffects(dt: number): void {
