@@ -7,12 +7,12 @@ const sourceRoot = path.join(projectRoot, 'art-source/battlescene/maps/city-nigh
 const masterSource = path.join(sourceRoot, 'night-master-v2.png');
 const groundSource = path.join(sourceRoot, 'night-ground-sideview-v2.png');
 const cityLayerSources = {
-  far: path.join(sourceRoot, 'city-far-night-v3-raw.png'),
+  far: path.join(sourceRoot, 'city-far-night-v4-raw.png'),
   middle: path.join(sourceRoot, 'city-middle-night-v3-raw.png'),
   near: path.join(sourceRoot, 'city-near-night-v4-raw.png'),
 };
 const cityLayerCleanSources = {
-  far: path.join(sourceRoot, 'city-far-night-v3.png'),
+  far: path.join(sourceRoot, 'city-far-night-v4.png'),
   middle: path.join(sourceRoot, 'city-middle-night-v3.png'),
   near: path.join(sourceRoot, 'city-near-night-v4.png'),
 };
@@ -44,7 +44,7 @@ const layers = [
     { offset: 0.5, opacity: 0 },
     { offset: 1, opacity: 0 },
   ], WIDTH, HEIGHT, 2.8)],
-  ['city-far-night.webp', await createCityLayer(cityLayerSources.far, cityLayerCleanSources.far, 200)],
+  ['city-far-night.webp', await createCityLayer(cityLayerSources.far, cityLayerCleanSources.far)],
   ['city-middle-night.webp', await createCityLayer(cityLayerSources.middle, cityLayerCleanSources.middle)],
   ['city-near-night.webp', await createCityLayer(cityLayerSources.near, cityLayerCleanSources.near, -140)],
   ['ground-sideview-night.webp', await createGroundLayer(groundSource)],
@@ -102,7 +102,10 @@ function removeGeneratedCheckerboard(rgb, width, height) {
     const blue = rgb[offset + 2];
     const minimum = Math.min(red, green, blue);
     const maximum = Math.max(red, green, blue);
-    return minimum >= 125 && maximum - minimum <= 42;
+    const channelSpread = maximum - minimum;
+    const lightChecker = minimum >= 125 && channelSpread <= 42;
+    const darkChecker = minimum >= 24 && maximum <= 68 && channelSpread <= 6;
+    return lightChecker || darkChecker;
   };
 
   const enqueue = (pixelIndex) => {

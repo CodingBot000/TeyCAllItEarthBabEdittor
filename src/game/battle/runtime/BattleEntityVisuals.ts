@@ -1,7 +1,7 @@
-import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, type Scene } from '@babylonjs/core';
+import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, Vector3, type Scene } from '@babylonjs/core';
 import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonjs/gui';
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
-import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y } from './battleVisualCoordinates';
+import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y } from './battleVisualCoordinates';
 
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-8way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
@@ -45,6 +45,7 @@ interface GroundVisual {
   maximumHealth: number;
   isSam: boolean;
   spriteKey: GroundSpriteKey | null;
+  attackSpawn?: TransformNode;
   destroyed: boolean;
   labelAnchor?: Mesh;
   labelPanel?: Rectangle;
@@ -145,6 +146,13 @@ export class BattleEntityVisuals {
     };
   }
 
+  getGroundAttackSpawnPosition(facilityId: string): Vector3 | null {
+    const visual = this.groundVisuals.get(`facility:${facilityId}`);
+    if (!visual?.isSam || !visual.attackSpawn) return null;
+    visual.attackSpawn.computeWorldMatrix(true);
+    return visual.attackSpawn.getAbsolutePosition().clone();
+  }
+
   dispose(): void {
     this.fighterVisuals.forEach((visual) => this.disposeFighter(visual));
     this.fighterVisuals.clear();
@@ -216,6 +224,11 @@ export class BattleEntityVisuals {
     const root = new TransformNode(`battle-ground-${id}`, this.scene);
     root.parent = parent;
     const isSam = kind === 'FACILITY' && facilityKind === 'SAM';
+    const attackSpawn = isSam ? new TransformNode(`${root.name}-attack-spawn`, this.scene) : undefined;
+    if (attackSpawn) {
+      attackSpawn.parent = root;
+      attackSpawn.position.set(GROUND_SAM_ATTACK_SPAWN_LOCAL.x, GROUND_SAM_ATTACK_SPAWN_LOCAL.y, GROUND_SAM_ATTACK_SPAWN_LOCAL.z);
+    }
     const spriteKey = isSam ? null : kind === 'DEFENDER' ? 'DEFENDER' : facilitySpriteKey(facilityKind);
     const spriteDimensions = spriteKey ? GROUND_SPRITE_DIMENSIONS[spriteKey] : null;
     const body = isSam
@@ -267,7 +280,7 @@ export class BattleEntityVisuals {
       labelPanel.linkWithMesh(labelAnchor);
       labelPanel.linkOffsetY = -48;
     }
-    const visual = { id, kind, root, body, healthFill, healthTrack, maximumHealth, isSam, spriteKey, destroyed: false, labelAnchor, labelPanel };
+    const visual = { id, kind, root, body, healthFill, healthTrack, maximumHealth, isSam, spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel };
     this.groundVisuals.set(id, visual);
     return visual;
   }

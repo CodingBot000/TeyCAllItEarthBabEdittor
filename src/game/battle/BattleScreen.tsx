@@ -32,6 +32,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const [snapshot, setSnapshot] = useState<BattleRuntimeSnapshot | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [abortConfirmationOpen, setAbortConfirmationOpen] = useState(false);
+  const [backgroundDebugOpen, setBackgroundDebugOpen] = useState(true);
   const [backgroundLayerY, setBackgroundLayerY] = useState<BackgroundLayerYValues>(() => ({ ...INITIAL_BACKGROUND_LAYER_Y }));
   const [backgroundCopyStatus, setBackgroundCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const fallbackMap = getBattleMapDefinition(request.mapId);
@@ -183,13 +184,16 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
         <span>BATTLE SCENE</span>
         <strong>{map.displayName.toUpperCase()}</strong>
       </div>
-      {debugOptions.directBattle ? <aside className="battle-background-debug" data-testid="battle-background-debug">
+      {debugOptions.directBattle ? backgroundDebugOpen ? <aside className="battle-background-debug" data-testid="battle-background-debug">
         <div className="battle-background-debug-header">
           <div>
             <span>DEBUG TOOL</span>
             <strong>BACKGROUND ALIGNMENT</strong>
           </div>
-          <button type="button" disabled={phase !== 'ready'} onClick={resetBackgroundLayers} aria-label="Reset background layer positions">RESET</button>
+          <div className="battle-background-debug-header-actions">
+            <button type="button" onClick={() => setBackgroundDebugOpen(false)} aria-label="Close background alignment debug panel">CLOSE</button>
+            <button type="button" disabled={phase !== 'ready'} onClick={resetBackgroundLayers} aria-label="Reset background layer positions">RESET</button>
+          </div>
         </div>
         <p className="battle-background-debug-hint">Y WORLD UNITS · ▲ UP / ▼ DOWN · DRAG FOR FINE ADJUSTMENT</p>
         <div className="battle-background-debug-list">
@@ -222,7 +226,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           <textarea readOnly value={backgroundLayerOutput} rows={BATTLE_BACKGROUND_LAYERS.length} aria-label="Final background layer positions" />
           {backgroundCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Send the layer number and Y value, for example: 03 far y=9.25</small>}
         </div>
-      </aside> : null}
+      </aside> : <button className="battle-background-debug-toggle" data-testid="battle-background-debug-toggle" type="button" onClick={() => setBackgroundDebugOpen(true)} aria-label="Open background alignment debug panel">BG DEBUG</button> : null}
       <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
       {snapshot ? <section className="battle-status-hud" aria-label={t('battle.status')}>
         <BattleStat label={t('debrief.hull')} value={snapshot.ship.hull} maximum={snapshot.ship.maxHull} tone="hull" />

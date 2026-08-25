@@ -24,6 +24,7 @@ import { BattleAbsorbableRegions } from './BattleAbsorbableRegions';
 import { BattleCohortVisuals } from './BattleCohortVisuals';
 import { BattleCombatVfx } from './BattleCombatVfx';
 import { BattleEntityVisuals, type BattleEntityVisualSnapshot } from './BattleEntityVisuals';
+import { normalizeBattleKey } from './battleKeyboardInput';
 
 const WORLD_WIDTH = 360;
 const BACKGROUND_TILE_WIDTH = 120;
@@ -145,13 +146,13 @@ interface MothershipCinematic {
 }
 
 export const BATTLE_BACKGROUND_LAYERS: BattleBackgroundLayer[] = [
-  { name: 'SkyRoot', key: 'sky', z: 30, y: 4, parallax: 0, renderingGroupId: 0 },
-  { name: 'CloudRoot', key: 'clouds', z: 27, y: 4, parallax: 0, renderingGroupId: 0 },
-  { name: 'CityFarRoot', key: 'far', z: 22, y: 9, parallax: 0.15, renderingGroupId: 0 },
-  { name: 'CityMiddleRoot', key: 'middle', z: 16, y: -6, parallax: 0.35, renderingGroupId: 1 },
-  { name: 'CityNearRoot', key: 'near', z: 10, y: -20, parallax: 0.6, renderingGroupId: 2 },
+  { name: 'SkyRoot', key: 'sky', z: 30, y: 6.5, parallax: 0, renderingGroupId: 0 },
+  { name: 'CloudRoot', key: 'clouds', z: 27, y: 13.25, parallax: 0, renderingGroupId: 0 },
+  { name: 'CityFarRoot', key: 'far', z: 22, y: 7, parallax: 0.15, renderingGroupId: 0 },
+  { name: 'CityMiddleRoot', key: 'middle', z: 16, y: 11.75, parallax: 0.35, renderingGroupId: 1 },
+  { name: 'CityNearRoot', key: 'near', z: 10, y: -5, parallax: 0.6, renderingGroupId: 2 },
   { name: 'GroundRoot', key: 'ground', z: 4, y: -12, parallax: 1, renderingGroupId: 2 },
-  { name: 'ForegroundRoot', key: 'foregroundAtmosphere', z: -5, y: 1, parallax: 0.8, renderingGroupId: 3 },
+  { name: 'ForegroundRoot', key: 'foregroundAtmosphere', z: -5, y: 0.5, parallax: 0.8, renderingGroupId: 3 },
 ];
 
 export async function createBattleRuntime(canvas: HTMLCanvasElement, map: BattleMapDefinition, options: BattleRuntimeOptions = {}): Promise<BattleRuntime> {
@@ -202,10 +203,10 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const dronePoolRoot = getOrCreateNode(scene, 'DronePoolRoot');
   const groundBattleRoot = getOrCreateNode(scene, 'GroundBattleRoot');
   if (options.debugControls !== true) hideDebugPrototypes(fighterPoolRoot, dronePoolRoot, groundBattleRoot);
-  const combatVfx = new BattleCombatVfx(scene, mothershipGameplayRoot);
   const absorbableRegions = new BattleAbsorbableRegions(scene, options.language);
   const cohortVisuals = new BattleCohortVisuals(scene);
   const entityVisuals = new BattleEntityVisuals(scene, fighterPoolRoot, groundBattleRoot);
+  const combatVfx = new BattleCombatVfx(scene, mothershipGameplayRoot, (sourceId) => entityVisuals.getGroundAttackSpawnPosition(sourceId));
   setGameplayRenderingGroup(mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
   let paused = false;
   let elapsed = 0;
@@ -420,42 +421,43 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     }
   };
   const keyDown = (event: KeyboardEvent) => {
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key.toLowerCase() === 'a' || event.key.toLowerCase() === 'd') {
+    const key = normalizeBattleKey(event);
+    if (key === 'arrowleft' || key === 'arrowright' || key === 'a' || key === 'd') {
       event.preventDefault();
-      pressedKeys.add(event.key.toLowerCase());
+      pressedKeys.add(key);
       syncKeyboardMovement();
     }
-    if (debugControls && event.key === '1') {
+    if (debugControls && key === '1') {
       event.preventDefault();
       triggerCombatHit('SHIELD');
     }
-    if (debugControls && event.key === '2') {
+    if (debugControls && key === '2') {
       event.preventDefault();
       triggerCombatHit('HULL');
     }
-    if (event.key.toLowerCase() === 'e') {
+    if (key === 'e') {
       event.preventDefault();
       triggerCombatAbility('emp');
     }
-    if (event.key.toLowerCase() === 'p') {
+    if (key === 'p') {
       event.preventDefault();
       triggerCombatAbility('plasma');
     }
-    if (event.key.toLowerCase() === 's') {
+    if (key === 's') {
       event.preventDefault();
       triggerCombatAbility('overdrive');
     }
-    if (event.key.toLowerCase() === 'b') {
+    if (key === 'b') {
       event.preventDefault();
       triggerBeam();
     }
-    if (debugControls && event.key.toLowerCase() === 'q') { event.preventDefault(); startCinematic('EVASION'); }
-    if (debugControls && event.key.toLowerCase() === 'c') { event.preventDefault(); startCinematic('CRASH'); }
-    if (event.key.toLowerCase() === 'x' && combatState) { event.preventDefault(); beginExtraction(); }
-    if (event.key === 'Escape') { paused = !paused; emitSnapshot(true); }
+    if (debugControls && key === 'q') { event.preventDefault(); startCinematic('EVASION'); }
+    if (debugControls && key === 'c') { event.preventDefault(); startCinematic('CRASH'); }
+    if (key === 'x' && combatState) { event.preventDefault(); beginExtraction(); }
+    if (key === 'escape') { paused = !paused; emitSnapshot(true); }
   };
   const keyUp = (event: KeyboardEvent) => {
-    pressedKeys.delete(event.key.toLowerCase());
+    pressedKeys.delete(normalizeBattleKey(event));
     syncKeyboardMovement();
   };
   const resetMovementInputs = () => {
@@ -496,10 +498,10 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       tickCombat(combatState, deltaSeconds);
       if (gameplayProfile) tickSideViewBattle(combatState, gameplayProfile, deltaSeconds);
       mothershipGameplayRoot.position.x = combatState.mothership.position.x;
+      entityVisuals.sync(combatState);
       combatVfx.syncCombatState(combatState);
       absorbableRegions.sync(combatState);
       cohortVisuals.sync(combatState, elapsed);
-      entityVisuals.sync(combatState);
       if (combatState.result !== 'ACTIVE' && !completedCombat) {
         completedCombat = true;
         options.onCombatComplete?.(combatState);
@@ -532,8 +534,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   if (combatState) {
     absorbableRegions.sync(combatState);
     cohortVisuals.sync(combatState, elapsed);
-    combatVfx.syncCombatState(combatState);
     entityVisuals.sync(combatState);
+    combatVfx.syncCombatState(combatState);
   }
   emitSnapshot(true);
   scene.onBeforeRenderObservable.add(update);

@@ -579,6 +579,9 @@ export interface EnemyState {
 export interface MissileState {
   id: string;
   source: 'sam' | 'fighter';
+  sourceId: string;
+  launchPosition: Vec2;
+  launchY: number;
   position: Vec2;
   y: number;
   target: Vec2;

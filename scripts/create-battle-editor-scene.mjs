@@ -44,13 +44,13 @@ const BACKGROUND_PLANE_HEIGHTS = {
 };
 
 const layers = [
-  ['SkyRoot', 'backgrounds/sky-day-base.webp', 30, 4, false],
-  ['CloudRoot', 'backgrounds/clouds-day.webp', 27, 4, true],
-  ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 9, true],
-  ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, -6, true],
-  ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -20, true],
+  ['SkyRoot', 'backgrounds/sky-day-base.webp', 30, 6.5, false],
+  ['CloudRoot', 'backgrounds/clouds-day.webp', 27, 13.25, true],
+  ['CityFarRoot', 'backgrounds/city-far-day.webp', 22, 7, true],
+  ['CityMiddleRoot', 'backgrounds/city-middle-day.webp', 16, 11.75, true],
+  ['CityNearRoot', 'backgrounds/city-near-day.webp', 10, -5, true],
   ['GroundRoot', 'backgrounds/ground-sideview-day.webp', 4, -12, true],
-  ['ForegroundRoot', 'backgrounds/foreground-atmosphere-day.webp', -5, 1, true],
+  ['ForegroundRoot', 'backgrounds/foreground-atmosphere-day.webp', -5, 0.5, true],
 ];
 for (let index = 0; index < layers.length; index += 1) {
   const [name, asset, z, y, hasAlpha] = layers[index];

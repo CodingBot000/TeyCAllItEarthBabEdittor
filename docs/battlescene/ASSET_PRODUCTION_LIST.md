@@ -52,7 +52,7 @@
 | `city-day` | 6 | WebP 생성·Editor 패킹 완료 |
 | `city-night` | 7 | 참고 night master 기반 독립 레이어 WebP 생성·카탈로그 등록 완료 |
 
-`city-night`은 공통 Battle Scene을 복제하지 않고 `map.manifest.json`과 7개 배경 레이어 경로만 교체하는 맵이다. `night-master-v2.png`를 기준으로 하늘·연무를 만들고, 건물 전체 높이가 끊기지 않도록 먼 도시·중간 도시·가까운 도시를 별도 투명 원본으로 다시 구성했다. 최종 원본은 `art-source/battlescene/maps/city-night/`에 보관하며, 생성 도구의 체크무늬 원본은 `*-raw.png`, 알파 정리된 게임 기준 원본은 `city-*-night-v3.png`와 `city-near-night-v4.png`이다.
+`city-night`은 공통 Battle Scene을 복제하지 않고 `map.manifest.json`과 7개 배경 레이어 경로만 교체하는 맵이다. `night-master-v2.png`를 기준으로 하늘·연무를 만들고, 건물 전체 높이가 끊기지 않도록 먼 도시·중간 도시·가까운 도시를 별도 투명 원본으로 다시 구성했다. 최종 원본은 `art-source/battlescene/maps/city-night/`에 보관하며, 생성 도구의 체크무늬 원본은 `*-raw.png`, 알파 정리된 게임 기준 원본은 `city-far-night-v4.png`, `city-middle-night-v3.png`, `city-near-night-v4.png`이다. 이전 먼 도시 색상본은 `city-far-night-v3-backup.png`으로 보존한다.
 
 배틀 화면은 하나의 Babylon Editor 씬과 하나의 런타임 화면을 공유한다. 맵 스타일이 추가될 때 씬을 복제하지 않고 `maps/<map-id>/` 패키지만 추가한다.
 

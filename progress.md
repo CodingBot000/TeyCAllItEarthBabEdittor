@@ -103,3 +103,12 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - C7 완료: `test:e2e:side-view` runner와 GitHub Actions CI를 추가했다. 기본 runner는 로컬 Chrome fallback/CI Playwright Chromium을 모두 지원한다. 정상 RAID·대파·모바일 900/640·포기·visual sync·production debug 7개 결과가 전부 true/errors=[]였고, 최종 check 36/36·lint 오류 0건·diff check를 통과했다.
 - C8 시작: River/Desert 마스터 기반 레이어의 alpha/중복 실루엣/패럴랙스 이음새를 실제 맵 화면과 파일 메타데이터로 점검한다. 필요한 경우 투명 레이어 아트 산출물을 만들고, 그렇지 않으면 남은 최종 아트 요구사항을 명시적으로 기록한다.
 - C8 완료: built-in ImageGen으로 River/Desert Far/Middle/Near/Ground 독립 alpha PNG v2 원본 8개를 만들고, `generate:battle:biomes`가 2048×724 alpha WebP와 manifest v2를 만들도록 연결했다. flattened preview와 좌우 이동 battle screenshot을 검토했고 biome-art E2E가 River/Desert v2 manifest/path를 검증했다. 최종 `npm run check:full`은 36/36·lint 오류 0건(기존 경고 2건)·browser E2E 8/8·diff check를 통과했다.
+
+## 2026-08-25 — SAM 이동 발사 소켓 연결
+
+- SAM 미사일이 실제 SAM 스프라이트와 분리된 공중 좌표에서 생성되는 문제를 확인했다.
+- SAM 게임 오브젝트 루트의 미사일 발사대 끝에 자식 `attackSpawn` TransformNode를 추가했다.
+- 미사일 상태에 `sourceId`, `launchPosition`, `launchY`를 저장하고, 발사 당시 SAM 위치를 고정했다.
+- 렌더링은 SAM 발사 소켓에서 시작해 우주선으로 이동하며, SAM이 이후 이동해도 이미 발사된 미사일은 발사 당시 위치를 유지한다.
+- SAM 위치를 바꾼 뒤 발사 위치도 함께 바뀌는 규칙 테스트를 추가했다.
+- TypeScript, Vitest 42/42, `git diff --check`, 로컬 city-night 브라우저 화면과 Playwright 검증 루프를 통과했다.

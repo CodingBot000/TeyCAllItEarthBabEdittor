@@ -807,7 +807,7 @@ function tickSamSites(state: CombatState, dt: number): void {
     state.facilityCooldowns[facility.id] = Math.max(0, (state.facilityCooldowns[facility.id] ?? 0) - dt);
     if (state.facilityCooldowns[facility.id] > 0) continue;
     state.facilityCooldowns[facility.id] = cooldown;
-    spawnHostileProjectile(state, 'sam', facility.position, 3.5, BALANCE.defense.missileSpeed * state.defenseMultiplier, (BALANCE.defense.missileDamage + state.localAlert * 0.25) * state.defenseMultiplier);
+    spawnHostileProjectile(state, 'sam', facility.id, facility.position, 3.5, BALANCE.defense.missileSpeed * state.defenseMultiplier, (BALANCE.defense.missileDamage + state.localAlert * 0.25) * state.defenseMultiplier);
   }
 }
 
@@ -863,7 +863,7 @@ function tickEnemies(state: CombatState, dt: number): void {
     const distanceToShip = distance(enemy.position, state.mothership.position);
     const inAttackEnvelope = distanceToShip >= BALANCE.defense.fighterMinAttackRange && distanceToShip <= BALANCE.defense.fighterAttackRange;
     if (enemy.attackCooldown <= 0 && inAttackEnvelope) {
-      if (state.missiles.length < 16) spawnHostileProjectile(state, 'fighter', enemy.position, enemy.altitude, BALANCE.defense.fighterProjectileSpeed * state.defenseMultiplier, BALANCE.defense.fighterDamage * state.defenseMultiplier);
+      if (state.missiles.length < 16) spawnHostileProjectile(state, 'fighter', enemy.id, enemy.position, enemy.altitude, BALANCE.defense.fighterProjectileSpeed * state.defenseMultiplier, BALANCE.defense.fighterDamage * state.defenseMultiplier);
       enemy.attackCooldown = (BALANCE.defense.fighterInterval + enemy.formationSlot * 0.12) / (state.defenseMultiplier * state.enemyPressureMultiplier);
     }
   }
@@ -1019,10 +1019,13 @@ function runPointDefense(state: CombatState): void {
   if ((state.nextEntityId * 17) % 4 !== 0) missile.age = 99;
 }
 
-function spawnHostileProjectile(state: CombatState, source: 'sam' | 'fighter', position: Vec2, y: number, speed: number, damage: number): void {
+function spawnHostileProjectile(state: CombatState, source: 'sam' | 'fighter', sourceId: string, position: Vec2, y: number, speed: number, damage: number): void {
   state.missiles.push({
     id: `${source}-projectile-${state.nextEntityId++}`,
     source,
+    sourceId,
+    launchPosition: { ...position },
+    launchY: y,
     position: { ...position },
     y,
     target: { ...state.mothership.position },

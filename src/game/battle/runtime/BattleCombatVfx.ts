@@ -90,6 +90,8 @@ interface GroundSwarmImpactVisual {
   duration: number;
 }
 
+type GroundAttackSpawnResolver = (sourceId: string) => Vector3 | null;
+
 const SHIELD_DURATION = 1.05;
 const HULL_DURATION = 1.8;
 const MAX_DAMAGE_EFFECTS = 6;
@@ -131,6 +133,7 @@ export class BattleCombatVfx {
   private readonly groundSwarmMaterial: StandardMaterial;
   private readonly groundSwarmCoreMaterial: StandardMaterial;
   private readonly projectileMeshes = new Map<string, Mesh>();
+  private readonly projectileLaunchPositions = new Map<string, Vector3>();
   private readonly groundSwarmVisuals = new Map<string, GroundSwarmVisual>();
   private readonly consumedGroundSwarmImpactIds = new Set<string>();
   private readonly groundSwarmImpactEffects: GroundSwarmImpactVisual[] = [];
@@ -140,6 +143,7 @@ export class BattleCombatVfx {
   constructor(
     private readonly scene: import('@babylonjs/core').Scene,
     private readonly mothershipRoot: TransformNode,
+    private readonly groundAttackSpawnResolver?: GroundAttackSpawnResolver,
   ) {
     this.shieldImpactTexture = new Texture('/assets/runtime/vfx/shield-impact.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.vfxTexture = new Texture('/assets/runtime/vfx/vfx-atlas.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
@@ -314,6 +318,7 @@ export class BattleCombatVfx {
     this.abilityEffects.splice(0).forEach((effect) => effect.root.dispose());
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
+    this.projectileLaunchPositions.clear();
     this.groundSwarmVisuals.forEach((visual) => {
       visual.trail.stop();
       visual.trail.dispose();
@@ -648,13 +653,38 @@ export class BattleCombatVfx {
         mesh.isPickable = false;
         this.projectileMeshes.set(missile.id, mesh);
       }
-      mesh.position.set(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
+      if (missile.source === 'sam' && !this.projectileLaunchPositions.has(missile.id)) {
+        this.projectileLaunchPositions.set(missile.id, this.groundAttackSpawnResolver?.(missile.sourceId) ?? new Vector3(
+          missile.launchPosition.x,
+          8 + (missile.launchY - 33) * 0.22,
+          missile.launchPosition.z * 0.12,
+        ));
+      }
+      const launchPosition = this.projectileLaunchPositions.get(missile.id);
+      if (missile.source === 'sam' && launchPosition) {
+        const launchDistance = Math.max(0.001, Math.hypot(
+          missile.launchPosition.x - missile.target.x,
+          missile.launchY - missile.targetY,
+          missile.launchPosition.z - missile.target.z,
+        ));
+        const remainingDistance = Math.hypot(
+          missile.position.x - missile.target.x,
+          missile.y - missile.targetY,
+          missile.position.z - missile.target.z,
+        );
+        const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
+        const targetPosition = new Vector3(missile.target.x, 8 + (missile.targetY - 33) * 0.22, missile.target.z * 0.12);
+        mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
+      } else {
+        mesh.position.set(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
+      }
       mesh.visibility = Math.max(0, 1 - Math.max(0, missile.age - 6) / 2);
     }
     for (const [id, mesh] of this.projectileMeshes) {
       if (activeIds.has(id)) continue;
       mesh.dispose();
       this.projectileMeshes.delete(id);
+      this.projectileLaunchPositions.delete(id);
     }
   }
 

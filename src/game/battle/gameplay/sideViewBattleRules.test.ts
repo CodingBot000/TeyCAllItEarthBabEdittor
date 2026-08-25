@@ -139,6 +139,21 @@ describe('side-view battle gameplay', () => {
     expect(desert.combatState.enemies.length).toBeGreaterThan(coastal.combatState.enemies.length);
   });
 
+  it('pairs SAM missiles with the facility position at the moment of firing', () => {
+    const campaign = createNewCampaign(7412);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const sam = combatState.facilities.find((facility) => facility.kind === 'SAM')!;
+    sam.position = { x: 0, z: 0 };
+    combatState.facilityCooldowns[sam.id] = 0;
+
+    tickCombat(combatState, 0.01);
+
+    const missile = combatState.missiles.find((candidate) => candidate.source === 'sam' && candidate.sourceId === sam.id);
+    expect(missile?.launchPosition).toEqual(sam.position);
+    expect(missile?.launchY).toBe(3.5);
+  });
+
   it('builds the side-view encounter from the 2D biome catalog instead of 3D preset geometry', () => {
     const campaign = createNewCampaign(7411);
     const sourceCity = CITIES.find((candidate) => candidate.id === 'seoul')!;
