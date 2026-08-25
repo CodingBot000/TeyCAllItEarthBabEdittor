@@ -9,6 +9,10 @@ const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-side-4way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 1;
+// Temporary finalization: the fighter atlas already contains engine flames.
+// Keep all additional exhaust planes, trail segments, and smoke disabled until
+// a texture-based exhaust tail is redesigned.
+const FIGHTER_AUXILIARY_EXHAUST_ENABLED = false;
 const FIGHTER_NOZZLE_OFFSET = 1.15;
 const FIGHTER_TRAIL_WIDTH = 0.2;
 const FIGHTER_TRAIL_LIFETIME = 0.36;
@@ -418,8 +422,8 @@ export class BattleEntityVisuals {
     visual.nozzle.position.set(-direction.x * FIGHTER_NOZZLE_OFFSET, -direction.y * FIGHTER_NOZZLE_OFFSET - 0.14, -direction.z * FIGHTER_NOZZLE_OFFSET);
     visual.nozzle.rotation.set(-enemy.pitch, enemy.heading, enemy.bank * 0.18);
     const disabled = enemy.disabledUntil > state.elapsedSeconds;
-    const trailVisible = !disabled && speed > 0.2;
-    if (!trailVisible && visual.trailActive) {
+    const trailVisible = FIGHTER_AUXILIARY_EXHAUST_ENABLED && !disabled && speed > 0.2;
+    if (!trailVisible) {
       this.clearFighterTrail(visual);
       this.clearSmokePuffs(visual);
     }
@@ -428,10 +432,10 @@ export class BattleEntityVisuals {
     visual.jetFlame.position.copyFrom(visual.nozzle.position);
     visual.jetFlame.scaling.set(0.9 + speedRatio * 0.65, 1, 1);
     visual.jetFlame.rotation.z = enemy.bank * 0.3;
-    visual.jetFlame.visibility = trailVisible ? 0.92 : 0;
+    visual.jetFlame.visibility = 0;
     visual.jetCore.position.copyFrom(visual.nozzle.position);
     visual.jetCore.scaling.set(1.5 + speedRatio * 0.8, 0.7, 0.7);
-    visual.jetCore.visibility = trailVisible ? 1 : 0;
+    visual.jetCore.visibility = 0;
     if (trailVisible) {
       visual.nozzle.computeWorldMatrix(true);
       this.extendFighterTrail(visual, visual.nozzle.getAbsolutePosition());

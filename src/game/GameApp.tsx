@@ -19,6 +19,7 @@ import { WorldMapScreen } from './presentation/screens/WorldMapScreen';
 import { DebriefScreen } from './presentation/screens/DebriefScreen';
 import { DebriefAllocationScreen } from './presentation/screens/DebriefAllocationScreen';
 import { UpgradeScreen } from './presentation/screens/UpgradeScreen';
+import { BackgroundMusic } from './audio/BackgroundMusic';
 
 type GameScreen = 'MAIN_MENU' | 'WORLD_MAP' | 'MISSION_LOADOUT' | 'TRAVEL' | 'BATTLE' | 'DEBRIEF' | 'DEBRIEF_ALLOCATION' | 'UPGRADE';
 
@@ -203,43 +204,50 @@ export function GameApp() {
     setScreen('DEBRIEF');
   }, [campaign, isDebugSession]);
 
+  const renderWithBackgroundMusic = (content: React.ReactNode) => (
+    <>
+      <BackgroundMusic isBattle={screen === 'BATTLE'} />
+      {content}
+    </>
+  );
+
   if (!storageReady || !campaign || screen === 'MAIN_MENU') {
-    return <MainMenuScreen hasSave={Boolean(campaign)} onNewGame={startNewGame} onContinue={continueGame} onQuickBattle={process.env.NODE_ENV !== 'production' ? () => startQuickBattle() : undefined} onQuickNightBattle={process.env.NODE_ENV !== 'production' ? startQuickNightBattle : undefined} onReset={resetGame} />;
+    return renderWithBackgroundMusic(<MainMenuScreen hasSave={Boolean(campaign)} onNewGame={startNewGame} onContinue={continueGame} onQuickBattle={process.env.NODE_ENV !== 'production' ? () => startQuickBattle() : undefined} onQuickNightBattle={process.env.NODE_ENV !== 'production' ? startQuickNightBattle : undefined} onReset={resetGame} />);
   }
 
   const selectedCity = selectedCityId ? CITY_BY_ID[selectedCityId] : null;
 
   if (screen === 'MISSION_LOADOUT' && selectedCity) {
     const existingLoadout = campaign.plannedMission?.cityId === selectedCity.id && !campaign.activeTransit ? campaign.plannedMission : null;
-    return <MissionLoadoutScreen campaign={campaign} city={selectedCity} existingLoadout={existingLoadout} onCancel={() => setScreen('WORLD_MAP')} onConfirm={commitMission} onResume={enterBattle} onEmergencyCharge={requestEmergencyCharge} />;
+    return renderWithBackgroundMusic(<MissionLoadoutScreen campaign={campaign} city={selectedCity} existingLoadout={existingLoadout} onCancel={() => setScreen('WORLD_MAP')} onConfirm={commitMission} onResume={enterBattle} onEmergencyCharge={requestEmergencyCharge} />);
   }
 
   if (screen === 'WORLD_MAP' || screen === 'TRAVEL') {
-    return <WorldMapScreen campaign={campaign} cities={CITIES} selectedCityId={selectedCityId} travel={travel} notice={notice} onSelectCity={(cityId) => { setSelectedCityId(cityId); setNotice(null); }} onMove={openMissionLoadout} onEngage={enterBattle} onOpenUpgrades={() => setScreen('UPGRADE')} onReturnMenu={() => { setNotice(null); setScreen('MAIN_MENU'); }} />;
+    return renderWithBackgroundMusic(<WorldMapScreen campaign={campaign} cities={CITIES} selectedCityId={selectedCityId} travel={travel} notice={notice} onSelectCity={(cityId) => { setSelectedCityId(cityId); setNotice(null); }} onMove={openMissionLoadout} onEngage={enterBattle} onOpenUpgrades={() => setScreen('UPGRADE')} onReturnMenu={() => { setNotice(null); setScreen('MAIN_MENU'); }} />);
   }
 
   if (screen === 'BATTLE' && battleRequest) {
-    return <BattleScreen campaign={campaign} request={battleRequest} onComplete={completeBattle} />;
+    return renderWithBackgroundMusic(<BattleScreen campaign={campaign} request={battleRequest} onComplete={completeBattle} />);
   }
 
   if (screen === 'DEBRIEF' && debrief) {
-    return <DebriefScreen summary={debrief} onAllocate={() => { setDebrief(null); setScreen('DEBRIEF_ALLOCATION'); }} />;
+    return renderWithBackgroundMusic(<DebriefScreen summary={debrief} onAllocate={() => { setDebrief(null); setScreen('DEBRIEF_ALLOCATION'); }} />);
   }
 
   if (screen === 'DEBRIEF_ALLOCATION' && campaign.pendingDebrief) {
-    return <DebriefAllocationScreen campaign={campaign} pending={campaign.pendingDebrief} onFinalize={(plan) => {
+    return renderWithBackgroundMusic(<DebriefAllocationScreen campaign={campaign} pending={campaign.pendingDebrief} onFinalize={(plan) => {
       const finalized = finalizeDebriefAllocation(campaign, plan);
       if (finalized === campaign) return;
       if (!isDebugSession) saveCampaign(finalized);
       setCampaign(finalized);
       setSelectedCityId(campaign.pendingDebrief?.cityId ?? null);
       setScreen('WORLD_MAP');
-    }} />;
+    }} />);
   }
 
   if (screen === 'UPGRADE') {
-    return <UpgradeScreen campaign={campaign} onSave={(next) => { if (!isDebugSession) saveCampaign(next); setCampaign(next); }} onBack={() => setScreen('WORLD_MAP')} />;
+    return renderWithBackgroundMusic(<UpgradeScreen campaign={campaign} onSave={(next) => { if (!isDebugSession) saveCampaign(next); setCampaign(next); }} onBack={() => setScreen('WORLD_MAP')} />);
   }
 
-  return null;
+  return renderWithBackgroundMusic(null);
 }

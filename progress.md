@@ -467,6 +467,25 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 감염체마다 팔 2개와 다리 2개를 추가하고, 낙하 중 서로 다른 위상으로 팔·다리를 크게 휘젓고 몸통을 비틀도록 보강했다. 밤 배경에서 바둥거리는 작은 실루엣이 포자 폭포 안에서 읽히는 것을 확인했다.
 - 기존 지상 유닛 초기화 effect가 값이 바뀌지 않아도 새 객체를 반환하던 문제를 안정화해 브라우저의 `Maximum update depth exceeded` 오류가 재현되지 않도록 했다. 관련 캡처의 오류 목록은 비어 있다.
 
+## 2026-08-26 — 감염 강습부대 낙하 렌더링 최적화
+
+- 팔·다리 애니메이션을 제거하고 사람형 감염체를 몸통·머리·낙하 궤적 3개 인스턴스로 단순화했다.
+- 웨이브당 사람형 64개와 저비용 포자 점 96개로 밀도를 유지하고, 최대 동시 웨이브를 2개로 제한했다.
+- 사람형·포자·지상 충격 링을 런타임 생성 시 미리 풀링해 버튼 입력 순간의 `createInstance`/dispose 폭주를 제거했다.
+- Babylon 인스턴스에 매 프레임 `visibility`를 쓰던 경로를 `setEnabled` 기반으로 바꿔 불필요한 경고와 갱신을 줄였다.
+- 최적화 후 밤 배경 브라우저 캡처에서 포자 밀도와 지상 충격 링을 유지하면서 콘솔 오류 0건을 확인했다. TypeScript, 관련 테스트 4개, production build가 통과했다.
+
+## 2026-08-26 — 도주 민간인 군중 스프라이트 리소스
+
+- 기존 `civilian-4x4.webp`의 clean HD 인간형 스타일을 참고해, 지상에서 작게 보여도 방향성이 읽히는 도주 군중 1x4 애니메이션 시트를 생성했다.
+- 4개 프레임 모두 8~12명의 피난민이 같은 방향으로 달리며, 투명 RGBA 배경의 `2048×683` PNG로 저장했다.
+- 리소스 경로: `public/assets/runtime/sprites/infected-fleeing-crowd-1x4.png`.
+
+## 2026-08-26 — 조밀한 지상 도주 군중 시안
+
+- SAM과 비슷한 작은 화면 크기에서 개별 인물보다 군중 덩어리로 읽히도록 약 50명의 피난민이 촘촘히 달리는 단일 클러스터 시안을 생성했다.
+- 512×256 RGBA PNG로 크로마키 정리했으며, 리소스 경로는 `public/assets/runtime/sprites/infected-fleeing-crowd-swarm-v1.png`이다.
+
 ## 2026-08-26 — 원본 모선 파괴 시퀀스 독립 이식
 
 - 사용자 지시서 `mothership_destroyed_implement.md`에 따라 `/Users/switch/Development/game/webgame/TheyCallItEarth`의 `MothershipDestructionVisual`, TacticalScene 연결부, flipbook/atlas/material/geometry 헬퍼를 모두 조사했다.
@@ -518,6 +537,14 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 기존 GroundRootPlane이 삭제된 `ground-road-day.webp`를 참조하던 404를 현행 `ground-sideview-day.webp`로 정리했다.
 - 최종 `npm run check` 통과: TypeScript, Vitest 48/48, production build 성공. 표준 web-game 클라이언트 빠른 전투 2회 캡처에서 우측 이동과 `render_game_to_text` 동기화, 콘솔 오류 0건을 확인했다.
 
+## 2026-08-26 — 전투기 깨짐으로 오인되는 일반 선체 파편 제거
+
+- 사용자 지정 검증 경로 `http://localhost:3000/?battle-fast=1`의 `빠른 전투 테스트`에서 전투기 주변에 큰 주황 사각 조각이 겹치는 현상을 재현했다.
+- 조각은 전투기 sprite/trail이 아니라 실드 소진 후 일반 projectile 선체 피격마다 `BattleCombatVfx`가 생성하던 10개의 solid box debris였다. 최대 6회분이 동시에 남아 전투기와 겹치면서 기체가 삼각형·사각형으로 깨진 것처럼 보였다.
+- 일반 HULL 피격의 box debris 생성을 제거했다. 폭발·충격 링·연기·흔들림은 유지하고, 실제 모선 대파 시 파편은 별도 `BattleMothershipDestructionSequence`가 계속 담당한다.
+- 동일 지정 URL에서 82.4초까지 진행해 shield 0, fighter 4대인 반복 피격 상태를 캡처했다. 전투기 형태는 모두 정상이고 큰 주황 조각은 없으며 브라우저 오류도 0건이었다.
+- TypeScript와 Vitest 48/48이 통과했다.
+
 ## 2026-08-26 — Babylon Editor 모선 계층 적용 롤백
 
 - 사용자 요청에 따라 실제 Editor 계층 적용만 역순으로 되돌렸다.
@@ -551,3 +578,72 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 공통 지상 기준 `-18.50`은 유지하고 SAM 전용 루트 기준만 `GROUND_SAM_ROOT_Y=-16.50`으로 분리했다.
 - SAM 본체·체력바·라벨·발사 소켓과 SAM 공격 목표 Y가 함께 새 기준을 사용하도록 연결했다. 다른 지상 유닛과 흡수 대상 위치는 변경하지 않았다.
 - 표준 web-game 검증에서 세 SAM의 `visuals.ground[].y=-16.5`, 모선 `worldY=16.5`, 우측 이동, 콘솔 오류 0건을 확인했고 TypeScript와 `git diff --check`를 통과했다.
+
+## 2026-08-26 — 방어막 국소 피격 패치 원형화
+
+- 기존 방어막 피격 부위의 `shield-impact.webp` 방사형 스프라이트와 LineSystem 동심선/방사선을 확인했다. 이 조합이 피격 부위를 삼각형·육각형처럼 보이게 만들었다.
+- 전체 bubble shield는 계속 비활성화한 채, 피격 위치의 법선 방향으로 정렬된 얇은 3D Sphere 패치만 남겼다. 패치는 기존 피격 반경을 유지하며 국소적으로 표시되고, 기존 링은 짧은 원형 ripple로만 남는다.
+- TypeScript, Vitest 48/48, production build, `git diff --check`를 통과했다. 개발 서버에서 전투 진입과 방어막 효과 로딩을 확인했다.
+
+## 2026-08-26 — 전체 방어막 표시 원복
+
+- 사용자 요청에 따라 국소 3D 방어막 패치 변경을 다시 되돌렸다.
+- 초기 구현의 `shield-impact.webp` 방사형 스프라이트와 우주선 전체를 감싸는 `shieldBubble` 표시(`SHOW_SHIELD_BUBBLE=true`)를 복원했다.
+- 피격 지점에만 붙던 3D Sphere 패치와 LineSystem 패치 경로는 제거했다.
+- 실제 전투 피격 화면에서 우주선 전체 bubble과 기존 방사형 효과가 함께 표시되고 콘솔 오류가 없음을 확인했다.
+- 최종 TypeScript, Vitest 48/48, production build, `git diff --check` 통과.
+
+## 2026-08-26 — 쉴드 소진 후 hull 파편 복원
+
+- 쉴드가 0이 된 뒤 hull 피격 시 `createHullEffect()`가 파편을 빈 배열로 만들고 `createDebris()` 호출도 제거된 상태를 확인했다.
+- 원래의 10개 파편 생성·속도·회전·수명 로직과 `damageId` 시드를 복원했다. 쉴드 피격 bubble/방사형 효과와 hull 파편 효과는 서로 다른 경로로 유지된다.
+- 무적을 끄고 실제 전투에서 쉴드 소진 후 hull 피격을 재현했으며, 우주선 주변으로 붉은 파편 조각이 튀는 프레임을 확인했다. 전체 TypeScript/Vitest 48/48/production build와 `git diff --check`도 통과했다.
+
+## 2026-08-26 — 발전소형 MACHINERY 에셋 교체
+
+- 기존 소형 기계 장치를 대형 고정형 발전소 설비로 재제작했다.
+- 대형 발전기 홀, 냉각탑, 변압기, 고압 송전 케이블, 산업용 배관과 점검 데크를 포함했다.
+- 상·하단 투명 공백을 제거한 `460×258` RGBA 이미지로 정리하고, 기존 `target-machinery-fabrication-line-y0-web.png` 경로에 적용했다.
+- 런타임에서는 원본 비율을 유지하면서 SAM 대비 약 2배 폭으로 표시하도록 `BattleAbsorbableRegions`의 MACHINERY 스케일을 조정했다.
+- TypeScript, Vitest 48/48, 브라우저 전투 화면과 콘솔 오류 0건을 확인했다.
+
+## 2026-08-26 — 전투기 프레임 누적 잔상 근본 수정 계획
+
+- 지정 경로 `http://localhost:3000/?battle-fast=1`에서 DAY 빠른 전투의 70~86초를 1초 간격으로 캡처했다.
+- snapshot에는 계속 전투기 4대만 존재하지만 84~86초 캔버스에는 이전 위치의 전투기 영상이 6~9개까지 누적되어, 엔티티 중복이나 trail 개수 문제가 아닌 프레임버퍼 누적으로 판정했다.
+- `scene.autoClear=true`와 달리 상시 부착된 EMP/오버드라이브 PostProcess만 `autoClear=false`인 점을 최우선 원인으로 특정했다.
+- 개별 VFX를 추가로 삭제하는 대신 후처리 렌더 타깃 clear 계약을 수정하고, 필요할 때만 전투기 depth 재질을 A/B 검증하는 단계형 계획을 `docs/battlescene/FIGHTER_FRAME_GHOSTING_ROOT_FIX_PLAN.md`에 작성했다.
+- 이번 단계에서는 계획만 수립했으며 후처리 및 전투기 렌더링 코드는 아직 변경하지 않았다.
+
+## 2026-08-26 — 전투기 프레임 누적 잔상 근본 수정 완료
+
+- 상시 부착된 EMP/오버드라이브 PostProcess의 `autoClear=false`가 이전 color buffer를 남겨 이동 전투기 영상이 누적되는 원인이었다.
+- PostProcess `autoClear=true`, scene `autoClearDepthAndStencil=true`로 프레임 clear 계약을 복원했다.
+- P1만으로 이전 위치 복제가 사라져 계획의 P3 전투기 depth 재질 변경은 수행하지 않았다.
+- runtime snapshot에 `sceneAutoClear`, `sceneAutoClearDepthAndStencil`, `postProcessAutoClear`를 추가했다.
+- 지정 URL 전용 `verify-fighter-frame-ghosting.mjs`를 추가해 70~78초 9프레임의 enemy/visual ID와 clear 계약을 검사하고 EMP·오버드라이브 화면도 캡처한다.
+- `npm run test:e2e:fighter-ghosting` 결과 ok=true, fighter 4대 유지, clear 세 값 true, 브라우저 오류 0건이었다.
+- TypeScript, Vitest 48/48, production build, `git diff --check`가 통과했다.
+
+## 2026-08-26 — 전투기 추가 배기 꼬리 임시 비활성화
+
+- 전투기 아틀라스 자체에 이미 엔진 불꽃이 포함되어 있으므로, 별도로 붙이던 직사각형 jet flame/core, trail segment, smoke puff를 모두 비활성화했다.
+- 관련 생성·정리 코드는 추후 텍스처 기반 꼬리 재설계를 위해 보존하고 `FIGHTER_AUXILIARY_EXHAUST_ENABLED=false`로 차단했다.
+- visual-sync 검증도 trail/smoke가 0이어야 통과하도록 현재 의도에 맞게 변경했다.
+- 지정 DAY 빠른 전투의 70~78초 9프레임에서 전투기 4대가 정상이며 아틀라스에 포함된 엔진 불꽃 외의 연한 직사각형 꼬리와 연기 잔상이 없음을 확인했다.
+- frame-clear 계약 세 값 true, EMP/오버드라이브 캡처, 브라우저 오류 0건을 확인했다.
+
+## 2026-08-26 — 전투기 탄환을 SAM 미사일 외형으로 통일
+
+- 전투기 projectile의 기존 청색 sphere 렌더링을 제거하고 SAM과 동일한 흰색 미사일 sprite material을 사용하도록 변경했다.
+- 전투기 미사일에도 SAM과 동일한 비행 방향 회전, 적색 jet glow/core, 연속 smoke trail을 적용했다.
+- 전투기와 SAM의 도메인 속도·피해·발사 간격·충돌 판정은 변경하지 않고 시각 표현만 통합했다.
+- TypeScript와 Vitest 48/48이 통과했다.
+- 지정 DAY 빠른 전투 브라우저 검증은 병행 소스 변경으로 개발 서버가 전투 로딩 중 반복 재컴파일되어 최종 편대 캡처가 완료되지 못했다. 정적 렌더 경로와 전체 타입·규칙 검증은 통과했다.
+
+## 2026-08-26 — 흡수 완료 생산설비 잔상 제거
+
+- 흡수 잔량이 0이 된 대상의 스프라이트를 기존 `0.18` 투명도에서 완전히 숨기도록 수정했다.
+- 흡수 완료 대상의 생산설비 라벨도 함께 숨겨 빈 투명 형체가 남지 않도록 했다.
+- 생산설비 흡수 전·후 화면과 `DEPLETED / remainingAmount=0` 상태를 직접 확인했으며 콘솔 오류는 0건이다.
+- TypeScript와 Vitest 48/48 통과.

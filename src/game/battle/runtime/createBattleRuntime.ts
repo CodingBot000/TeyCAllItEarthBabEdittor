@@ -141,6 +141,7 @@ export interface BattleRuntimeSnapshot {
   effectiveAutoScanRange: number;
   profile: BattleRuntimeProfileSnapshot;
   camera: { x: number; y: number; z: number; targetX: number; targetY: number; targetZ: number };
+  rendering: { sceneAutoClear: boolean; sceneAutoClearDepthAndStencil: boolean; postProcessAutoClear: boolean };
   ship: { x: number; z: number; worldX: number; worldY: number; worldZ: number; combatAltitude: number; hull: number; maxHull: number; shield: number; maxShield: number; energy: number; maxEnergy: number };
   cargo: { used: number; capacity: number; captives: number; biomass: number; alloy: number; intel: number; coreCharge: number };
   alert: number;
@@ -202,6 +203,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const scene = new Scene(engine);
   scene.clearColor.set(0.04, 0.12, 0.17, 1);
   scene.autoClear = true;
+  scene.autoClearDepthAndStencil = true;
 
   try {
     await withTimeout(loadScene('/scene/', 'battlescene.babylon', scene, scriptsMap, { texturesQuality: 'high' }), 15000, 'Editor scene load timed out');
@@ -437,6 +439,11 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         targetX: round(camera.getTarget().x, 3),
         targetY: round(camera.getTarget().y, 3),
         targetZ: round(camera.getTarget().z, 3),
+      },
+      rendering: {
+        sceneAutoClear: scene.autoClear,
+        sceneAutoClearDepthAndStencil: scene.autoClearDepthAndStencil,
+        postProcessAutoClear: combatVfx.getPostProcessAutoClear(),
       },
       ship: {
         x: round(combatState.mothership.position.x, 3),
@@ -870,6 +877,7 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     effectiveAutoScanRange: 0,
     profile: { id: null, version: null, enemyPressureMultiplier: 1, groundPressureMultiplier: 1, facilityCount: 0, groundDefenderCount: 0, requiredOccupationNodeCount: 0 },
     camera: { x: round(shipX, 3), y: CAMERA_Y, z: CAMERA_Z, targetX: round(shipX, 3), targetY: CAMERA_Y, targetZ: 0 },
+    rendering: { sceneAutoClear: true, sceneAutoClearDepthAndStencil: true, postProcessAutoClear: true },
     ship: { x: round(shipX, 3), z: 0, worldX: round(shipX, 3), worldY: 0, worldZ: 0, combatAltitude: BALANCE.mothership.baseAltitude, hull: 0, maxHull: 0, shield: 0, maxShield: 0, energy: 0, maxEnergy: 0 },
     cargo: { used: 0, capacity: 0, captives: 0, biomass: 0, alloy: 0, intel: 0, coreCharge: 0 },
     alert: 0,

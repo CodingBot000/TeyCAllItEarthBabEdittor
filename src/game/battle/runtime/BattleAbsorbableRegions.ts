@@ -10,7 +10,8 @@ interface RegionVisual {
   beacon: Mesh;
   sprite: Mesh;
   spriteTexture: Texture;
-  spriteBaseScale: number;
+  spriteBaseScaleX: number;
+  spriteBaseScaleY: number;
   labelPanel: Rectangle;
   baseScaleX: number;
 }
@@ -47,12 +48,13 @@ const LABEL_BY_KIND: Record<AbsorbableKind, string> = {
 const SPRITE_GROUND_ANCHOR_BY_KIND: Record<AbsorbableKind, number> = {
   ORGANIC: 0.375,
   VEHICLE: 0.375,
-  MACHINERY: 0.375,
+  MACHINERY: 0.5,
   POWER: 0.375,
   DATA: 0.375,
   RELIC: 0.375,
 };
 
+const MACHINERY_SPRITE_ASPECT = 460 / 259;
 const SPRITE_GROUND_Y = GROUND_ENTITY_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y - GROUND_SAM_BODY_HEIGHT * 0.375;
 
 export class BattleAbsorbableRegions {
@@ -107,15 +109,14 @@ export class BattleAbsorbableRegions {
       visual.core.scaling.setAll(nearShip ? 1.15 : 0.88);
       visual.beacon.scaling.y = target.discovered ? 1.5 : 0.62;
       visual.beacon.visibility = target.remainingAmount <= 0 ? 0 : target.discovered ? 0.62 : 0.16;
-      const spriteScale = visual.spriteBaseScale;
-      visual.sprite.scaling.setAll(spriteScale);
-      visual.sprite.position.y = SPRITE_GROUND_Y + spriteScale * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
+      visual.sprite.scaling.set(visual.spriteBaseScaleX, visual.spriteBaseScaleY, 1);
+      visual.sprite.position.y = SPRITE_GROUND_Y + visual.spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
       visual.sprite.material = this.spriteMaterials.get(target.kind)!;
       const spriteVisibility = target.discovered
-        ? target.remainingAmount <= 0 ? 0.18 : active ? 1 : nearShip ? 0.9 : 0.68
+        ? target.remainingAmount <= 0 ? 0 : active ? 1 : nearShip ? 0.9 : 0.68
         : 0.08;
       visual.sprite.visibility = visual.spriteTexture.isReady() ? spriteVisibility : 0;
-      visual.labelPanel.isVisible = target.discovered && visual.spriteTexture.isReady();
+      visual.labelPanel.isVisible = target.discovered && target.remainingAmount > 0 && visual.spriteTexture.isReady();
       const material = target.remainingAmount <= 0
         ? this.depletedMaterial
         : !target.discovered
@@ -186,9 +187,9 @@ export class BattleAbsorbableRegions {
     sprite.material = this.spriteMaterials.get(kind)!;
     sprite.renderingGroupId = 3;
     sprite.isPickable = false;
-    const spriteBaseScale = kind === 'ORGANIC' ? Math.max(8, radius * 1.12) : Math.max(6.4, radius * 1.42);
-    sprite.scaling.setAll(spriteBaseScale);
-    sprite.position.y = SPRITE_GROUND_Y + spriteBaseScale * SPRITE_GROUND_ANCHOR_BY_KIND[kind];
+    const { width: spriteBaseScaleX, height: spriteBaseScaleY } = spriteDimensionsForKind(kind, radius);
+    sprite.scaling.set(spriteBaseScaleX, spriteBaseScaleY, 1);
+    sprite.position.y = SPRITE_GROUND_Y + spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[kind];
     const labelPanel = new Rectangle(`${root.name}-label`);
     labelPanel.width = '112px';
     labelPanel.height = '26px';
@@ -208,7 +209,7 @@ export class BattleAbsorbableRegions {
     this.labelUi.addControl(labelPanel);
     labelPanel.linkWithMesh(sprite);
     labelPanel.linkOffsetY = -64;
-    const visual = { root, pad, core, beacon, sprite, spriteTexture, spriteBaseScale, labelPanel, baseScaleX: radius };
+    const visual = { root, pad, core, beacon, sprite, spriteTexture, spriteBaseScaleX, spriteBaseScaleY, labelPanel, baseScaleX: radius };
     this.visuals.set(id, visual);
     return visual;
   }
@@ -224,4 +225,17 @@ export class BattleAbsorbableRegions {
     material.backFaceCulling = false;
     return material;
   }
+}
+
+function spriteDimensionsForKind(kind: AbsorbableKind, radius: number): { width: number; height: number } {
+  if (kind === 'ORGANIC') {
+    const size = Math.max(8, radius * 1.12);
+    return { width: size, height: size };
+  }
+  if (kind === 'MACHINERY') {
+    const width = Math.max(12.8, radius * 2.84);
+    return { width, height: width / MACHINERY_SPRITE_ASPECT };
+  }
+  const size = Math.max(6.4, radius * 1.42);
+  return { width: size, height: size };
 }

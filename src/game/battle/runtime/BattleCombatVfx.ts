@@ -169,7 +169,7 @@ interface MissileJetVisual {
 type ProjectileVisualOriginResolver = (source: 'sam' | 'fighter', sourceId: string) => Vector3 | null;
 
 const SHIELD_DURATION = 1.05;
-const SHOW_SHIELD_BUBBLE = false;
+const SHOW_SHIELD_BUBBLE = true;
 const HULL_DURATION = 1.8;
 const HULL_SHAKE_DURATION = 0.32;
 const HULL_SHAKE_OFFSET = 0.11;
@@ -460,7 +460,10 @@ export class BattleCombatVfx {
       samplingMode: Texture.BILINEAR_SAMPLINGMODE,
       uniforms: ['screenSize', 'distortionCenter', 'distortionRadius', 'distortionInnerRadius', 'distortionStrength', 'intensity', 'time', 'empCenter', 'empIntensity', 'empTime'],
     });
-    this.overdriveDistortion.autoClear = false;
+    // This post-process is attached for the whole battle, including frames
+    // where both effects have zero intensity. Clear its output every frame so
+    // moving sprites cannot accumulate in the previous color buffer.
+    this.overdriveDistortion.autoClear = true;
     this.overdriveDistortion.onApply = (effect) => {
       const engine = this.scene.getEngine();
       const width = Math.max(1, this.overdriveDistortion.width || engine.getRenderWidth());
@@ -765,6 +768,10 @@ export class BattleCombatVfx {
     this.collisionShieldOverlay.setEnabled(visible);
   }
 
+  getPostProcessAutoClear(): boolean {
+    return this.overdriveDistortion.autoClear;
+  }
+
   resetCollisionOverlayScale(): void {
     this.collisionHullOverlayScale = 1;
     this.collisionShieldOverlayScale = 1;
@@ -842,14 +849,6 @@ export class BattleCombatVfx {
     bubble.scaling = new Vector3(BALANCE.mothership.shieldVisualRadius, BALANCE.mothership.shieldVisualHalfHeight, BALANCE.mothership.shieldVisualRadius);
     bubble.material = this.shieldBubbleMaterial;
     bubble.visibility = SHOW_SHIELD_BUBBLE ? 1 : 0;
-    const shieldPatch = createShieldImpactPatch(
-      'battle-shield-impact-patch',
-      normal,
-      scaleMothershipEffect(3.4),
-      this.shieldRingMaterial,
-      this.scene,
-    );
-    shieldPatch.position = impact;
     const core = MeshBuilder.CreateSphere('battle-shield-impact-core', { diameter: scaleMothershipEffect(1.25), segments: 12 }, this.scene);
     core.position = impact;
     core.material = this.shieldCoreMaterial;
@@ -863,8 +862,8 @@ export class BattleCombatVfx {
       explosionSprite.position = impact.add(normal.scale(scaleMothershipEffect(0.65)));
       explosionSprite.scaling.setAll(scaleMothershipEffect(3.2));
     }
-    this.setRenderingGroup([bubble, shieldPatch, core, ring, secondRing, sprite, ...(explosionSprite ? [explosionSprite] : [])]);
-    return { kind: 'SHIELD', elapsed: 0, duration: SHIELD_DURATION, normal, localImpact, bubble, shieldPatch, core, ring, secondRing, sprite, explosionSprite, debris: [] };
+    this.setRenderingGroup([bubble, core, ring, secondRing, sprite, ...(explosionSprite ? [explosionSprite] : [])]);
+    return { kind: 'SHIELD', elapsed: 0, duration: SHIELD_DURATION, normal, localImpact, bubble, core, ring, secondRing, sprite, explosionSprite, debris: [] };
   }
 
   private startHullShake(): void {
@@ -954,9 +953,6 @@ export class BattleCombatVfx {
         effect.bubble!.position = this.shipPosition();
         effect.bubble!.scaling = new Vector3(BALANCE.mothership.shieldVisualRadius + pulse * scaleMothershipEffect(0.45), BALANCE.mothership.shieldVisualHalfHeight + pulse * scaleMothershipEffect(0.2), BALANCE.mothership.shieldVisualRadius + pulse * scaleMothershipEffect(0.45));
         effect.bubble!.visibility = SHOW_SHIELD_BUBBLE ? pulse * 0.9 : 0;
-        effect.shieldPatch!.position = impact;
-        effect.shieldPatch!.scaling.setAll(0.76 + pulse * 0.38);
-        effect.shieldPatch!.visibility = pulse * 0.94;
         effect.core.position = impact;
         effect.core.scaling.setAll(scaleMothershipEffect(0.45 + pulse * 1.4));
         effect.core.visibility = 1 - progress;
@@ -1408,18 +1404,15 @@ export class BattleCombatVfx {
       activeIds.add(missile.id);
       let mesh = this.projectileMeshes.get(missile.id);
       if (!mesh) {
-        const isSam = missile.source === 'sam';
-        mesh = isSam
-          ? MeshBuilder.CreatePlane(`battle-projectile-${missile.id}`, { size: 1.05 * SAM_MISSILE_SPRITE_SCALE, sideOrientation: Mesh.DOUBLESIDE }, this.scene)
-          : MeshBuilder.CreateSphere(`battle-projectile-${missile.id}`, { diameter: 0.42, segments: 8 }, this.scene);
-        mesh.material = isSam ? this.samProjectileSpriteMaterial : this.fighterProjectileMaterial;
+        mesh = MeshBuilder.CreatePlane(`battle-projectile-${missile.id}`, { size: 1.05 * SAM_MISSILE_SPRITE_SCALE, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+        mesh.material = this.samProjectileSpriteMaterial;
         // The side-view plane already faces the camera. Keep it fixed so the
         // homing Z rotation below controls the missile nose direction.
-        if (isSam) mesh.billboardMode = Mesh.BILLBOARDMODE_NONE;
+        mesh.billboardMode = Mesh.BILLBOARDMODE_NONE;
         mesh.renderingGroupId = 3;
         mesh.isPickable = false;
         this.projectileMeshes.set(missile.id, mesh);
-        if (isSam) this.createMissileJetVisual(missile.id);
+        this.createMissileJetVisual(missile.id);
       }
       // The root is only the visual path endpoint. Gameplay collision removes
       // the projectile at the shield or hull surface before it reaches here.
@@ -1432,7 +1425,7 @@ export class BattleCombatVfx {
         ));
       }
       const launchPosition = this.projectileLaunchPositions.get(missile.id);
-      if (launchPosition && missile.source === 'sam') {
+      if (launchPosition) {
         const launchDistance = Math.max(0.001, Math.hypot(
           missile.launchPosition.x - missile.target.x,
           missile.launchY - missile.targetY,
@@ -1445,10 +1438,8 @@ export class BattleCombatVfx {
         );
         const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
-        // The sprite travels on the launch-socket-to-target visual path above,
-        // which can differ from the gameplay Y mapping. Use that same visible
-        // path for the nose direction so the horizontal sprite follows its
-        // actual on-screen trajectory.
+        // SAM and fighter missiles share the same visible homing path, sprite,
+        // jet, and smoke treatment. Their gameplay speed/damage remain distinct.
         const visualDirection = targetPosition.subtract(mesh.position);
         if (visualDirection.lengthSquared() > 0.0001) {
           const visualAngle = Math.atan2(visualDirection.y, visualDirection.x);
@@ -1471,19 +1462,6 @@ export class BattleCombatVfx {
             jet.core.visibility = mesh.visibility;
           }
         }
-      } else if (launchPosition && missile.source === 'fighter') {
-        const launchDistance = Math.max(0.001, Math.hypot(
-          missile.launchPosition.x - missile.target.x,
-          missile.launchY - missile.targetY,
-          missile.launchPosition.z - missile.target.z,
-        ));
-        const remainingDistance = Math.hypot(
-          missile.position.x - missile.target.x,
-          missile.y - missile.targetY,
-          missile.position.z - missile.target.z,
-        );
-        const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
-        mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
       } else {
         mesh.position.set(
           targetPosition.x + missile.position.x - missile.target.x,
@@ -1662,38 +1640,6 @@ function setAtlasFrame(mesh: Mesh | Texture, columns: number, rows: number, fram
 function frameForProgress(frames: number[], progress: number): number {
   const index = Math.min(frames.length - 1, Math.floor(Math.max(0, progress) * frames.length));
   return frames[Math.max(0, index)] ?? 0;
-}
-
-function createShieldImpactPatch(name: string, normal: Vector3, radius: number, material: StandardMaterial, scene: import('@babylonjs/core').Scene): Mesh {
-  let tangent = Vector3.Cross(Vector3.Up(), normal);
-  if (tangent.lengthSquared() < 0.001) tangent = Vector3.Cross(Vector3.Right(), normal);
-  tangent.normalize();
-  const bitangent = Vector3.Cross(normal, tangent).normalize();
-  const lines: Vector3[][] = [];
-  const ringSegments = 28;
-  const patchPoint = (distance: number, angle: number): Vector3 => tangent.scale(Math.cos(angle) * distance)
-    .add(bitangent.scale(Math.sin(angle) * distance))
-    .add(normal.scale((distance * distance) / Math.max(0.001, radius * 2)));
-
-  for (let ringIndex = 1; ringIndex <= 4; ringIndex += 1) {
-    const ringRadius = radius * ringIndex / 4;
-    const ring: Vector3[] = [];
-    for (let segment = 0; segment <= ringSegments; segment += 1) {
-      ring.push(patchPoint(ringRadius, segment / ringSegments * Math.PI * 2));
-    }
-    lines.push(ring);
-  }
-  for (let spoke = 0; spoke < 12; spoke += 1) {
-    const angle = spoke / 12 * Math.PI * 2;
-    lines.push([normal.scale(0.04), patchPoint(radius, angle)]);
-  }
-
-  const patch = MeshBuilder.CreateLineSystem(name, { lines }, scene);
-  patch.material = material;
-  patch.renderingGroupId = 3;
-  patch.isPickable = false;
-  patch.visibility = 0;
-  return patch;
 }
 
 function alignCylinder(mesh: Mesh, start: Vector3, end: Vector3): void {

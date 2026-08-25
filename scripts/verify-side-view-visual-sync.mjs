@@ -38,9 +38,9 @@ try {
     if (enemy.keepOutMetric < 0.999 || fighter.keepOutMetric < 0.999) throw new Error(`Fighter ${enemy.id} entered the mothership keep-out envelope.`);
     if (enemy.relativeDistance3D < 29.9 || fighter.relativeDistance3D < 29.9) throw new Error(`Fighter ${enemy.id} moved inside the minimum attack-pass radius.`);
   }
-  if (!state.visuals.fighters.some((fighter) => fighter.trailVisible)) throw new Error('No fighter jet trail is visible after the formation wave spawned.');
+  if (state.visuals.fighters.some((fighter) => fighter.trailVisible)) throw new Error('Temporary fighter exhaust trail should be disabled.');
   if (!state.visuals.fighters.some((fighter) => Math.abs(fighter.bank) > 0.01)) throw new Error('Formation fighters never produced a visible bank value.');
-  if (state.visuals.fighters.some((fighter) => fighter.smokePuffCount > 10)) throw new Error('Fighter smoke puff budget exceeded.');
+  if (state.visuals.fighters.some((fighter) => fighter.smokePuffCount !== 0)) throw new Error('Temporary fighter exhaust smoke should be disabled.');
   const groundEntityIds = state.groundEntities.map((entity) => `${entity.kind}:${entity.id}`).sort();
   const groundVisualIds = state.visuals.ground.map((visual) => `${visual.kind}:${visual.id}`).sort();
   if (JSON.stringify(groundEntityIds) !== JSON.stringify(groundVisualIds)) throw new Error(`Ground visual IDs diverged: ${JSON.stringify({ groundEntityIds, groundVisualIds })}`);
