@@ -4,10 +4,11 @@ interface MainMenuScreenProps {
   hasSave: boolean;
   onNewGame: () => void;
   onContinue: () => void;
+  onQuickBattle?: () => void;
   onReset: () => void;
 }
 
-export function MainMenuScreen({ hasSave, onNewGame, onContinue, onReset }: MainMenuScreenProps) {
+export function MainMenuScreen({ hasSave, onNewGame, onContinue, onQuickBattle, onReset }: MainMenuScreenProps) {
   const { t } = useI18n();
   return (
     <main className="menu-screen scanlines">
@@ -23,6 +24,7 @@ export function MainMenuScreen({ hasSave, onNewGame, onContinue, onReset }: Main
         <div className="menu-actions">
           <button className="primary-button" onClick={onNewGame}>{t('main.newCampaign')}</button>
           <button className="secondary-button" onClick={onContinue} disabled={!hasSave}>{t('main.continue')}</button>
+          {onQuickBattle ? <button className="secondary-button quick-battle-button" onClick={onQuickBattle}>{t('main.quickBattle')}</button> : null}
         </div>
         <button className="text-button" onClick={onReset} disabled={!hasSave}>{t('main.erase')}</button>
       </section>

@@ -42,6 +42,9 @@ const BACKGROUND_PLANE_HEIGHTS = {
   GroundRoot: 42.4,
   ForegroundRoot: 67.5,
 };
+const BACKGROUND_PLANE_WIDTHS = {
+  GroundRoot: BACKGROUND_WORLD_WIDTH * 2,
+};
 
 const layers = [
   ['SkyRoot', 'backgrounds/sky-day-base.webp', 30, 6.5, false],
@@ -56,9 +59,10 @@ for (let index = 0; index < layers.length; index += 1) {
   const [name, asset, z, y, hasAlpha] = layers[index];
   const root = childNode(name, environmentRoot);
   root.position.set(0, y, z);
-  const textureUScale = name === 'SkyRoot' || name === 'CloudRoot' ? 1 : BACKGROUND_REPEAT;
+  const planeWidth = BACKGROUND_PLANE_WIDTHS[name] ?? BACKGROUND_WORLD_WIDTH;
+  const textureUScale = name === 'SkyRoot' || name === 'CloudRoot' ? 1 : BACKGROUND_REPEAT * (planeWidth / BACKGROUND_WORLD_WIDTH);
   const plane = MeshBuilder.CreatePlane(name + 'Plane', {
-    width: BACKGROUND_WORLD_WIDTH,
+    width: planeWidth,
     height: BACKGROUND_PLANE_HEIGHTS[name],
     sideOrientation: Mesh.DOUBLESIDE,
   }, scene);

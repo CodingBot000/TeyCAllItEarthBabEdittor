@@ -48,6 +48,7 @@ export interface BattleRuntime {
   beginExtraction(): CommandResult;
   abortMission(): CommandResult;
   setMovementInput(direction: -1 | 0 | 1, source?: 'keyboard' | 'pointer'): void;
+  setInvincibilityEnabled(enabled: boolean): void;
   setPaused(paused: boolean): void;
   advanceTime(milliseconds: number): void;
   getSnapshot(): BattleRuntimeSnapshot;
@@ -102,6 +103,7 @@ export interface BattleRuntimeSnapshot {
   extractionProgress: number;
   result: CombatState['result'];
   endReason: CombatState['endReason'];
+  invincibilityEnabled: boolean;
   effectiveAutoScanRange: number;
   profile: BattleRuntimeProfileSnapshot;
   ship: { x: number; hull: number; maxHull: number; shield: number; maxShield: number; energy: number; maxEnergy: number };
@@ -215,6 +217,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   let automationStepping = false;
   let cloudTextureOffset = 0;
   let cameraX = mothershipGameplayRoot.position.x;
+  let invincibilityEnabled = true;
   camera.position.x = cameraX;
   camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
   const applyBackgroundLayerPositions = () => {
@@ -296,6 +299,10 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const setMovementInput = (direction: -1 | 0 | 1, source: 'keyboard' | 'pointer' = 'keyboard') => {
     movementInputs[source] = direction;
   };
+  const setInvincibilityEnabled = (enabled: boolean) => {
+    invincibilityEnabled = enabled;
+    emitSnapshot(true);
+  };
   const syncKeyboardMovement = () => {
     const moveLeft = pressedKeys.has('arrowleft') || pressedKeys.has('a');
     const moveRight = pressedKeys.has('arrowright') || pressedKeys.has('d');
@@ -324,6 +331,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       extractionProgress: round(combatState.mothership.extractionProgress, 4),
       result: combatState.result,
       endReason: combatState.endReason,
+      invincibilityEnabled,
       effectiveAutoScanRange: round((gameplayProfile?.autoScanRange ?? 0) + combatState.modifiers.scanRangeBonus, 2),
       profile: {
         id: gameplayProfile?.id ?? null,
@@ -495,8 +503,17 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (combatState && !cinematic) {
       combatState.mothership.position.x = mothershipGameplayRoot.position.x;
       combatState.mothership.position.z = 0;
+      const hullBeforeStep = invincibilityEnabled ? combatState.mothership.hull : null;
+      if (invincibilityEnabled && gameplayProfile) combatState.survivalUnlockSeconds += deltaSeconds;
       tickCombat(combatState, deltaSeconds);
       if (gameplayProfile) tickSideViewBattle(combatState, gameplayProfile, deltaSeconds);
+      if (invincibilityEnabled && hullBeforeStep !== null) {
+        combatState.mothership.hull = hullBeforeStep;
+        if (combatState.result === 'FAILED' && combatState.endReason === 'MOTHERSHIP_DISABLED') {
+          combatState.result = 'ACTIVE';
+          combatState.endReason = null;
+        }
+      }
       mothershipGameplayRoot.position.x = combatState.mothership.position.x;
       entityVisuals.sync(combatState);
       combatVfx.syncCombatState(combatState);
@@ -555,6 +572,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     beginExtraction,
     abortMission,
     setMovementInput,
+    setInvincibilityEnabled,
     setPaused(nextPaused: boolean) { paused = nextPaused; emitSnapshot(true); },
     advanceTime,
     getSnapshot,
@@ -604,6 +622,7 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     extractionProgress: 0,
     result: 'ACTIVE',
     endReason: null,
+    invincibilityEnabled: true,
     effectiveAutoScanRange: 0,
     profile: { id: null, version: null, enemyPressureMultiplier: 1, groundPressureMultiplier: 1, facilityCount: 0, groundDefenderCount: 0, requiredOccupationNodeCount: 0 },
     ship: { x: round(shipX, 3), hull: 0, maxHull: 0, shield: 0, maxShield: 0, energy: 0, maxEnergy: 0 },
@@ -664,14 +683,20 @@ function applyEditorBackgroundMaterials(
 ): void {
   for (const { layer, plane } of layers) {
     if (!plane) continue;
+    const planeScaleX = getBackgroundPlaneScaleX(layer.key);
     const url = mapBackgroundUrl(map, layer.key);
+    plane.scaling.x = planeScaleX;
     plane.isVisible = true;
     plane.setEnabled(true);
     plane.isPickable = false;
     plane.renderingGroupId = layer.renderingGroupId;
     if (layer.key === 'foregroundAtmosphere') plane.visibility = 0;
-    if (url) assignBackgroundMaterial(plane, url, scene, layer.key === 'foregroundAtmosphere', getBackgroundTextureRepeat(layer.key, map));
+    if (url) assignBackgroundMaterial(plane, url, scene, layer.key === 'foregroundAtmosphere', getBackgroundTextureRepeat(layer.key, map) * planeScaleX);
   }
+}
+
+function getBackgroundPlaneScaleX(key: keyof BattleMapDefinition['backgrounds']): number {
+  return key === 'ground' ? 2 : 1;
 }
 
 function getBackgroundTextureRepeat(key: keyof BattleMapDefinition['backgrounds'], map: BattleMapDefinition): number {

@@ -601,6 +601,15 @@ export interface AirDefenseShotEvent {
   occurredAt: number;
 }
 
+export interface PointDefenseShotEvent {
+  id: string;
+  targetId: string;
+  origin: Vec2;
+  target: Vec2;
+  targetAltitude: number;
+  occurredAt: number;
+}
+
 export interface MothershipHitEvent {
   id: string;
   source: 'sam' | 'fighter';
@@ -655,6 +664,7 @@ export interface CombatState {
   groundSwarmProjectiles: GroundSwarmProjectileState[];
   groundSwarmImpacts: GroundSwarmImpactEvent[];
   lastAirDefenseShot: AirDefenseShotEvent | null;
+  lastPointDefenseShot: PointDefenseShotEvent | null;
   mothershipHits: MothershipHitEvent[];
   objectives: { id: string; label: string; progress: number; target: number; complete: boolean; linkedTargetId?: string }[];
   cargo: MissionCargo;

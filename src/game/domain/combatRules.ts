@@ -126,6 +126,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     groundSwarmProjectiles: [],
     groundSwarmImpacts: [],
     lastAirDefenseShot: null,
+    lastPointDefenseShot: null,
     mothershipHits: [],
     objectives: [
       { id: 'harvest', label: `ABSORB ${BALANCE.objectives.absorbTarget.toLocaleString()} UNITS`, progress: 0, target: BALANCE.objectives.absorbTarget, complete: false },
@@ -1013,7 +1014,17 @@ function runPointDefense(state: CombatState): void {
   if (!missile) return;
   state.mothership.energy -= BALANCE.defense.pointDefenseEnergy;
   state.lastPointDefenseAt = state.elapsedSeconds;
-  if ((state.nextEntityId * 17) % 4 !== 0) missile.age = 99;
+  if ((state.nextEntityId * 17) % 4 !== 0) {
+    state.lastPointDefenseShot = {
+      id: `point-defense-${state.nextEntityId++}`,
+      targetId: missile.id,
+      origin: { ...state.mothership.position },
+      target: { ...missile.position },
+      targetAltitude: missile.y,
+      occurredAt: state.elapsedSeconds,
+    };
+    missile.age = 99;
+  }
 }
 
 function spawnHostileProjectile(state: CombatState, source: 'sam' | 'fighter', sourceId: string, position: Vec2, y: number, speed: number, damage: number): void {

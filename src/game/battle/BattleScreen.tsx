@@ -30,6 +30,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<BattleRuntimeSnapshot | null>(null);
+  const [invincibilityEnabled, setInvincibilityEnabled] = useState(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [abortConfirmationOpen, setAbortConfirmationOpen] = useState(false);
   const [backgroundDebugOpen, setBackgroundDebugOpen] = useState(true);
@@ -42,6 +43,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     () => getBattleDebugOptions(typeof window === 'undefined' ? '' : window.location.search),
     [],
   );
+  const backgroundDebugEnabled = debugOptions.directBattle || debugOptions.fastBattle;
   const city = CITY_BY_ID[request.cityId];
   const preset = city ? TACTICAL_PRESETS[city.tacticalPresetId] : undefined;
   const session = useMemo(
@@ -151,6 +153,11 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     if (!result.ok) setActionMessage(result.reason ?? t('battle.commandUnavailable'));
     setAbortConfirmationOpen(false);
   };
+  const toggleInvincibility = () => {
+    const next = !invincibilityEnabled;
+    setInvincibilityEnabled(next);
+    runtimeRef.current?.setInvincibilityEnabled(next);
+  };
   const setBackgroundLayerPosition = (key: BattleBackgroundLayerKey, value: number) => {
     const nextValue = Math.max(-80, Math.min(80, Math.round(value * 100) / 100));
     setBackgroundLayerY((previous) => ({ ...previous, [key]: nextValue }));
@@ -184,7 +191,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
         <span>BATTLE SCENE</span>
         <strong>{map.displayName.toUpperCase()}</strong>
       </div>
-      {debugOptions.directBattle ? backgroundDebugOpen ? <aside className="battle-background-debug" data-testid="battle-background-debug">
+      {backgroundDebugEnabled ? backgroundDebugOpen ? <aside className="battle-background-debug" data-testid="battle-background-debug">
         <div className="battle-background-debug-header">
           <div>
             <span>DEBUG TOOL</span>
@@ -227,7 +234,12 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           {backgroundCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Send the layer number and Y value, for example: 03 far y=9.25</small>}
         </div>
       </aside> : <button className="battle-background-debug-toggle" data-testid="battle-background-debug-toggle" type="button" onClick={() => setBackgroundDebugOpen(true)} aria-label="Open background alignment debug panel">BG DEBUG</button> : null}
-      <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
+      <div className="battle-top-right-actions">
+        <button className={`battle-invincibility-button ${invincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-invincibility-toggle" type="button" aria-pressed={invincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleInvincibility}>
+          {invincibilityEnabled ? t('battle.invincibilityOn') : t('battle.invincibilityOff')}
+        </button>
+        <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
+      </div>
       {snapshot ? <section className="battle-status-hud" aria-label={t('battle.status')}>
         <BattleStat label={t('debrief.hull')} value={snapshot.ship.hull} maximum={snapshot.ship.maxHull} tone="hull" />
         <BattleStat label={t('debrief.shield')} value={snapshot.ship.shield} maximum={snapshot.ship.maxShield} tone="shield" />

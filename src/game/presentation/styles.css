@@ -46,8 +46,13 @@
 .battle-background-debug-output textarea { width: 100%; min-height: 104px; resize: vertical; padding: 6px; border: 1px solid rgba(125, 231, 212, .22); outline: 0; background: rgba(0, 10, 15, .74); color: #e0fffa; font: 7px/1.45 'Space Mono', monospace; }
 .battle-background-debug-output textarea:focus { border-color: #7de7d4; }
 .battle-background-debug-output small { color: #71959d; font: 6px/1.35 'Space Mono', monospace; }
-.battle-exit-button { position: absolute; right: 18px; top: 16px; z-index: 3; padding: 9px 12px; border: 1px solid rgba(168, 244, 227, .35); background: rgba(4, 16, 23, .58); color: #c9efea; font: 8px 'Space Mono', monospace; letter-spacing: .08em; cursor: pointer; }
-.battle-exit-button:hover { border-color: #a8f4e3; color: #fff; background: rgba(10, 45, 55, .78); }
+.battle-top-right-actions { position: absolute; right: 18px; top: 16px; z-index: 3; display: flex; align-items: center; gap: 6px; }
+.battle-invincibility-button, .battle-exit-button { padding: 9px 12px; border: 1px solid rgba(168, 244, 227, .35); background: rgba(4, 16, 23, .58); color: #c9efea; font: 8px 'Space Mono', monospace; letter-spacing: .08em; cursor: pointer; }
+.battle-invincibility-button { border-color: rgba(244, 184, 90, .66); color: #ffe1a7; background: rgba(47, 31, 8, .72); }
+.battle-invincibility-button.is-on { border-color: rgba(125, 231, 212, .72); color: #dffff8; background: rgba(7, 45, 40, .78); }
+.battle-invincibility-button:hover:not(:disabled) { border-color: #f4b85a; color: #fff4d1; }
+.battle-invincibility-button.is-on:hover:not(:disabled) { border-color: #7de7d4; color: #fff; }
+.battle-exit-button:hover:not(:disabled) { border-color: #a8f4e3; color: #fff; background: rgba(10, 45, 55, .78); }
 .battle-scene-state { position: absolute; left: 50%; top: 50%; z-index: 4; padding: 12px 16px; transform: translate(-50%, -50%); color: #c9efea; background: rgba(4, 16, 23, .82); border: 1px solid rgba(168, 244, 227, .35); font: 9px 'Space Mono', monospace; letter-spacing: .1em; }
 .battle-scene-error { position: absolute; left: 50%; top: 50%; z-index: 5; display: grid; gap: 12px; width: min(440px, calc(100% - 32px)); padding: 22px; transform: translate(-50%, -50%); color: #f4f8f7; background: rgba(36, 13, 19, .94); border: 1px solid rgba(240, 126, 138, .66); box-shadow: 0 20px 70px rgba(0, 0, 0, .45); font: 10px 'Space Mono', monospace; }
 .battle-scene-error strong { color: #ff9da8; letter-spacing: .09em; }
@@ -82,7 +87,7 @@
 @media (max-width: 1000px) { .battle-action-bar { left: auto; right: 18px; transform: none; } }
 @media (hover: hover) and (pointer: fine) { .battle-movement-controls { display: none; } }
 @media (hover: none), (pointer: coarse) { .battle-target-hud { bottom: 92px; } }
-@media (max-width: 640px) { .battle-scene-label { left: 10px; top: 10px; }.battle-exit-button { right: 10px; top: 10px; }.battle-background-debug { top: 46px; right: 8px; width: min(244px, calc(100% - 16px)); padding: 8px; }.battle-background-debug-toggle { top: 46px; right: 8px; }.battle-status-hud { left: 10px; top: 54px; width: 150px; padding: 7px; }.battle-status-readouts { display: none; }.battle-survival-hud { top: 10px; max-width: 42vw; padding: 6px 8px; gap: 6px; font-size: 5px; }.battle-survival-hud strong { font-size: 8px; }.battle-target-hud { left: 10px; bottom: 92px; width: 150px; padding: 6px 7px; }.battle-action-bar { left: auto; right: 10px; bottom: 24px; max-width: calc(100% - 180px); flex-wrap: wrap; justify-content: flex-end; transform: none; }.battle-action-button { min-width: 0; padding: 5px 6px; font-size: 7px; }.battle-action-button span, .battle-action-button small { display: none; }.battle-movement-controls { left: 10px; bottom: 24px; gap: 6px; }.battle-movement-controls button { width: 48px; height: 48px; }.battle-action-message { bottom: 72px; font-size: 5px; }.battle-control-hint { bottom: 7px; font-size: 5px; }.battle-screen { min-height: 0; } }
+@media (max-width: 640px) { .battle-scene-label { left: 10px; top: 10px; }.battle-top-right-actions { right: 10px; top: 10px; gap: 4px; }.battle-invincibility-button, .battle-exit-button { padding: 7px 8px; font-size: 6px; }.battle-background-debug { top: 46px; right: 8px; width: min(244px, calc(100% - 16px)); padding: 8px; }.battle-background-debug-toggle { top: 46px; right: 8px; }.battle-status-hud { left: 10px; top: 54px; width: 150px; padding: 7px; }.battle-status-readouts { display: none; }.battle-survival-hud { top: 10px; max-width: 42vw; padding: 6px 8px; gap: 6px; font-size: 5px; }.battle-survival-hud strong { font-size: 8px; }.battle-target-hud { left: 10px; bottom: 92px; width: 150px; padding: 6px 7px; }.battle-action-bar { left: auto; right: 10px; bottom: 24px; max-width: calc(100% - 180px); flex-wrap: wrap; justify-content: flex-end; transform: none; }.battle-action-button { min-width: 0; padding: 5px 6px; font-size: 7px; }.battle-action-button span, .battle-action-button small { display: none; }.battle-movement-controls { left: 10px; bottom: 24px; gap: 6px; }.battle-movement-controls button { width: 48px; height: 48px; }.battle-action-message { bottom: 72px; font-size: 5px; }.battle-control-hint { bottom: 7px; font-size: 5px; }.battle-screen { min-height: 0; } }
 
 /* M6 cohort command surface. */
 .tactical-cohort-panel {
@@ -175,6 +180,8 @@ h1, h2, h3, p { margin-top: 0; }
 .primary-button:hover { background: #c9fff3; transform: translateY(-1px); box-shadow: 0 0 32px rgba(125,231,212,.35); }
 .secondary-button, .small-button { color: var(--cyan); background: rgba(18, 52, 62, .36); }
 .secondary-button:hover, .small-button:hover { border-color: var(--cyan); background: rgba(125, 231, 212, .1); }
+.quick-battle-button { color: var(--amber); border-color: rgba(244, 184, 90, .5); background: rgba(244, 184, 90, .08); }
+.quick-battle-button:hover { border-color: var(--amber); background: rgba(244, 184, 90, .14); }
 .text-button { padding: 14px 0; border: 0; color: var(--muted); font-size: 10px; }
 .text-button:hover { color: var(--red); }
 .menu-card > .text-button { position: absolute; left: 32px; bottom: 38px; }

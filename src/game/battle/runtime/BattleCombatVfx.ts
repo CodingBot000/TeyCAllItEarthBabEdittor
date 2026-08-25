@@ -34,6 +34,7 @@ interface DamageEffect {
   secondRing: Mesh;
   smoke?: Mesh;
   smokeSprite?: Mesh;
+  explosionSprite?: Mesh;
   sprite: Mesh;
   debris: DebrisPiece[];
 }
@@ -72,8 +73,10 @@ interface AirDefenseVisual {
   beam: Mesh;
   core: Mesh;
   impact: Mesh;
+  explosion?: Mesh;
   elapsed: number;
   duration: number;
+  explosionDuration?: number;
   origin: Vector3;
   target: Vector3;
 }
@@ -90,6 +93,14 @@ interface GroundSwarmImpactVisual {
   duration: number;
 }
 
+interface MissileTrailParticle {
+  mesh: Mesh;
+  age: number;
+  lifetime: number;
+  baseScale: number;
+  drift: Vector3;
+}
+
 type GroundAttackSpawnResolver = (sourceId: string) => Vector3 | null;
 
 const SHIELD_DURATION = 1.05;
@@ -101,6 +112,11 @@ const MAX_GROUND_SWARM_IMPACTS = 12;
 const ABILITY_DURATION = 1.8;
 const BEAM_RADIUS = 6.5;
 const BEAM_RANGE = 22;
+const SAM_MISSILE_SPRITE_URL = '/assets/runtime/sprites/sam-missile-white-jet-web.png';
+const SAM_MISSILE_ART_ANGLE = Math.PI / 4;
+const SAM_MISSILE_TRAIL_MAX_PARTICLES = 8;
+const SAM_MISSILE_TRAIL_SPAWN_DISTANCE = 0.28;
+const SAM_MISSILE_TRAIL_LIFETIME = 0.46;
 
 export class BattleCombatVfx {
   private readonly shieldImpactTexture: Texture;
@@ -112,6 +128,7 @@ export class BattleCombatVfx {
   private readonly airDefenseEffects: AirDefenseVisual[] = [];
   private readonly consumedHitIds = new Set<string>();
   private consumedAirDefenseId: string | null = null;
+  private consumedPointDefenseId: string | null = null;
   private readonly damageId = { value: 0 };
   private readonly abilityId = { value: 0 };
   private readonly shieldBubbleMaterial: StandardMaterial;
@@ -126,14 +143,20 @@ export class BattleCombatVfx {
   private readonly beamCoreMaterial: StandardMaterial;
   private readonly beamFunnelMaterial: StandardMaterial;
   private readonly beamRingMaterial: StandardMaterial;
-  private readonly samProjectileMaterial: StandardMaterial;
+  private readonly samProjectileTexture: Texture;
+  private readonly samProjectileSpriteMaterial: StandardMaterial;
+  private readonly samMissileTrailMaterial: StandardMaterial;
   private readonly fighterProjectileMaterial: StandardMaterial;
   private readonly airDefenseMaterial: StandardMaterial;
   private readonly airDefenseCoreMaterial: StandardMaterial;
+  private readonly pointDefenseMaterial: StandardMaterial;
+  private readonly pointDefenseCoreMaterial: StandardMaterial;
   private readonly groundSwarmMaterial: StandardMaterial;
   private readonly groundSwarmCoreMaterial: StandardMaterial;
   private readonly projectileMeshes = new Map<string, Mesh>();
   private readonly projectileLaunchPositions = new Map<string, Vector3>();
+  private readonly missileTrailParticles = new Map<string, MissileTrailParticle[]>();
+  private readonly missileTrailLastPositions = new Map<string, Vector3>();
   private readonly groundSwarmVisuals = new Map<string, GroundSwarmVisual>();
   private readonly consumedGroundSwarmImpactIds = new Set<string>();
   private readonly groundSwarmImpactEffects: GroundSwarmImpactVisual[] = [];
@@ -174,24 +197,44 @@ export class BattleCombatVfx {
     this.beamFunnelMaterial.alphaMode = Engine.ALPHA_ADD;
     this.beamFunnelMaterial.disableDepthWrite = true;
     this.beamRingMaterial = this.material('battle-abduction-beam-target', new Color3(0.4, 1, 0.85), new Color3(0.18, 1, 0.82));
-    this.samProjectileMaterial = this.material('battle-sam-projectile', new Color3(1, 0.28, 0.06), new Color3(1, 0.08, 0.01));
+    this.samProjectileTexture = new Texture(SAM_MISSILE_SPRITE_URL, scene, true, true, Texture.NEAREST_SAMPLINGMODE);
+    this.samProjectileTexture.hasAlpha = true;
+    this.samProjectileTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
+    this.samProjectileTexture.wrapV = Texture.CLAMP_ADDRESSMODE;
+    this.samProjectileSpriteMaterial = new StandardMaterial('battle-sam-projectile-sprite', scene);
+    this.samProjectileSpriteMaterial.diffuseColor = Color3.White();
+    this.samProjectileSpriteMaterial.emissiveColor = Color3.White();
+    this.samProjectileSpriteMaterial.disableLighting = true;
+    this.samProjectileSpriteMaterial.backFaceCulling = false;
+    this.samProjectileSpriteMaterial.useAlphaFromDiffuseTexture = true;
+    this.samProjectileSpriteMaterial.transparencyMode = Engine.ALPHA_COMBINE;
+    this.samProjectileSpriteMaterial.diffuseTexture = this.samProjectileTexture;
+    this.samProjectileSpriteMaterial.emissiveTexture = this.samProjectileTexture;
+    this.samMissileTrailMaterial = this.material('battle-sam-missile-trail', new Color3(0.68, 0.73, 0.8), new Color3(0.28, 0.32, 0.38));
+    this.samMissileTrailMaterial.alpha = 0.34;
+    this.samMissileTrailMaterial.alphaMode = Engine.ALPHA_COMBINE;
+    this.samMissileTrailMaterial.disableDepthWrite = true;
     this.fighterProjectileMaterial = this.material('battle-fighter-projectile', new Color3(0.22, 0.78, 1), new Color3(0.08, 0.72, 1));
     this.airDefenseMaterial = this.material('battle-air-defense-laser', new Color3(1, 0.24, 0.08), new Color3(1, 0.08, 0.01));
     this.airDefenseMaterial.alpha = 0.42;
     this.airDefenseMaterial.alphaMode = Engine.ALPHA_ADD;
     this.airDefenseCoreMaterial = this.material('battle-air-defense-laser-core', new Color3(1, 0.92, 0.64), new Color3(1, 0.4, 0.04));
+    this.pointDefenseMaterial = this.material('battle-point-defense-laser', new Color3(1, 0.72, 0.08), new Color3(1, 0.3, 0.01));
+    this.pointDefenseMaterial.alpha = 0.46;
+    this.pointDefenseMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.pointDefenseCoreMaterial = this.material('battle-point-defense-laser-core', new Color3(1, 0.98, 0.58), new Color3(1, 0.62, 0.04));
     this.groundSwarmMaterial = this.material('battle-ground-swarm', new Color3(0.92, 0.72, 0.24), new Color3(1, 0.36, 0.03));
     this.groundSwarmCoreMaterial = this.material('battle-ground-swarm-core', new Color3(1, 0.96, 0.68), new Color3(1, 0.72, 0.08));
 
   }
 
-  triggerMothershipHit(kind: DamageKind, normal = new Vector3(0.72, -0.18, -1)): void {
+  triggerMothershipHit(kind: DamageKind, normal = new Vector3(0.72, -0.18, -1), source: 'sam' | 'fighter' = 'fighter'): void {
     if (this.disposed) return;
     while (this.damageEffects.length >= MAX_DAMAGE_EFFECTS) this.disposeDamageEffect(this.damageEffects.shift()!);
     const direction = normal.normalize();
     const localImpact = new Vector3(direction.x * 11.7, direction.y * 3.4, direction.z * 11.7);
     this.damageEffects.push(kind === 'SHIELD'
-      ? this.createShieldEffect(direction, localImpact)
+      ? this.createShieldEffect(direction, localImpact, source === 'sam')
       : this.createHullEffect(`hit-${this.damageId.value++}`, direction, localImpact));
   }
 
@@ -256,7 +299,7 @@ export class BattleCombatVfx {
     for (const hit of state.mothershipHits) {
       if (this.consumedHitIds.has(hit.id)) continue;
       this.consumedHitIds.add(hit.id);
-      this.triggerMothershipHit(hit.kind, new Vector3(hit.direction.x, hit.direction.y, hit.direction.z));
+      this.triggerMothershipHit(hit.kind, new Vector3(hit.direction.x, hit.direction.y, hit.direction.z), hit.source);
     }
     const retainedHits = new Set(state.mothershipHits.map((hit) => hit.id));
     for (const id of this.consumedHitIds) if (!retainedHits.has(id)) this.consumedHitIds.delete(id);
@@ -265,6 +308,10 @@ export class BattleCombatVfx {
     if (state.lastAirDefenseShot && state.lastAirDefenseShot.id !== this.consumedAirDefenseId) {
       this.consumedAirDefenseId = state.lastAirDefenseShot.id;
       this.triggerAirDefenseShot(state.lastAirDefenseShot.origin, state.lastAirDefenseShot.target, state.lastAirDefenseShot.targetAltitude);
+    }
+    if (state.lastPointDefenseShot && state.lastPointDefenseShot.id !== this.consumedPointDefenseId) {
+      this.consumedPointDefenseId = state.lastPointDefenseShot.id;
+      this.triggerPointDefenseShot(state.lastPointDefenseShot.origin, state.lastPointDefenseShot.target, state.lastPointDefenseShot.targetAltitude);
     }
     const target = state.absorbableTargets.find((item) => item.id === state.activeBeamTargetId);
     this.setAbsorption(Boolean(state.activeAbility === 'beam' && target), target ? new Vector3(target.center.x, -4.2, target.center.z) : undefined);
@@ -307,6 +354,7 @@ export class BattleCombatVfx {
     this.updateDamageEffects(dt);
     this.updateAbilityEffects(dt);
     this.updateAirDefenseEffects(dt);
+    this.updateMissileTrails(dt);
     this.updateGroundSwarmImpacts(dt);
     this.updateAbsorption(elapsed);
   }
@@ -319,6 +367,9 @@ export class BattleCombatVfx {
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
     this.projectileLaunchPositions.clear();
+    this.missileTrailParticles.forEach((particles) => particles.forEach((particle) => particle.mesh.dispose()));
+    this.missileTrailParticles.clear();
+    this.missileTrailLastPositions.clear();
     this.groundSwarmVisuals.forEach((visual) => {
       visual.trail.stop();
       visual.trail.dispose();
@@ -329,10 +380,12 @@ export class BattleCombatVfx {
     this.consumedGroundSwarmImpactIds.clear();
     this.consumedHitIds.clear();
     this.consumedAirDefenseId = null;
+    this.consumedPointDefenseId = null;
     this.airDefenseEffects.splice(0).forEach((effect) => {
       effect.beam.dispose();
       effect.core.dispose();
       effect.impact.dispose();
+      effect.explosion?.dispose(false, true);
     });
     if (this.absorption) {
       this.absorption.beam.dispose();
@@ -340,11 +393,12 @@ export class BattleCombatVfx {
       this.absorption.funnel.dispose();
       this.absorption.ring.dispose();
     }
-    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
+    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
+    this.samProjectileTexture.dispose();
     [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture].forEach((texture) => texture.dispose());
   }
 
-  private createShieldEffect(normal: Vector3, localImpact: Vector3): DamageEffect {
+  private createShieldEffect(normal: Vector3, localImpact: Vector3, includeExplosion: boolean): DamageEffect {
     const center = this.shipPosition();
     const impact = center.add(localImpact);
     const bubble = MeshBuilder.CreateSphere('battle-shield-impact-shell', { diameter: 2, segments: 20 }, this.scene);
@@ -359,8 +413,13 @@ export class BattleCombatVfx {
     const sprite = this.flipbook('battle-shield-impact-sprite', this.shieldImpactTexture, 1, 1, 0, new Color3(0.18, 0.88, 1), 'ADDITIVE');
     sprite.position = impact.add(normal.scale(0.16));
     sprite.scaling.setAll(2.2);
-    this.setRenderingGroup([bubble, core, ring, secondRing, sprite]);
-    return { kind: 'SHIELD', elapsed: 0, duration: SHIELD_DURATION, normal, localImpact, bubble, core, ring, secondRing, sprite, debris: [] };
+    const explosionSprite = includeExplosion ? this.flipbook('battle-sam-shield-impact-explosion', this.explosionTexture, 5, 5, 0, Color3.White(), 'ALPHA') : undefined;
+    if (explosionSprite) {
+      explosionSprite.position = impact.add(normal.scale(0.65));
+      explosionSprite.scaling.setAll(3.2);
+    }
+    this.setRenderingGroup([bubble, core, ring, secondRing, sprite, ...(explosionSprite ? [explosionSprite] : [])]);
+    return { kind: 'SHIELD', elapsed: 0, duration: SHIELD_DURATION, normal, localImpact, bubble, core, ring, secondRing, sprite, explosionSprite, debris: [] };
   }
 
   private createHullEffect(id: string, normal: Vector3, localImpact: Vector3): DamageEffect {
@@ -427,6 +486,12 @@ export class BattleCombatVfx {
         effect.sprite.position = impact.add(effect.normal.scale(0.16));
         effect.sprite.scaling.setAll(1.5 + progress * 4.2);
         effect.sprite.visibility = pulse * (1 - progress * 0.32);
+        if (effect.explosionSprite) {
+          setFrame(effect.explosionSprite, 5, 5, effect.elapsed, 30);
+          effect.explosionSprite.position = impact.add(effect.normal.scale(0.65));
+          effect.explosionSprite.scaling.setAll(0.72 + Math.sin(Math.min(1, effect.elapsed / 0.55) * Math.PI / 2) * 2.8);
+          effect.explosionSprite.visibility = Math.max(0, 1 - Math.max(0, progress - 0.72) / 0.28);
+        }
       } else {
         setFrame(effect.sprite, 5, 5, effect.elapsed, 20);
         setFrame(effect.smokeSprite!, 8, 8, Math.max(0, effect.elapsed - 0.12), 42);
@@ -498,25 +563,47 @@ export class BattleCombatVfx {
   }
 
   private triggerAirDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number): void {
+    this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial);
+  }
+
+  private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number): void {
+    this.triggerDefenseLaserShot('battle-point-defense-laser', origin, target, targetAltitude, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, true);
+  }
+
+  private triggerDefenseLaserShot(
+    name: string,
+    origin: { x: number; z: number },
+    target: { x: number; z: number },
+    targetAltitude: number,
+    beamMaterial: StandardMaterial,
+    coreMaterial: StandardMaterial,
+    withExplosion = false,
+  ): void {
     while (this.airDefenseEffects.length >= MAX_AIR_DEFENSE_EFFECTS) {
       const expired = this.airDefenseEffects.shift()!;
       expired.beam.dispose();
       expired.core.dispose();
       expired.impact.dispose();
+      expired.explosion?.dispose(false, true);
     }
     const start = new Vector3(origin.x, this.shipPosition().y + 1.4, origin.z * 0.12);
     const end = new Vector3(target.x, 8 + (targetAltitude - 33) * 0.22, target.z * 0.12);
-    const beam = MeshBuilder.CreateCylinder('battle-air-defense-laser', { diameter: 0.72, height: 1, tessellation: 12 }, this.scene);
-    beam.material = this.airDefenseMaterial;
-    const core = MeshBuilder.CreateCylinder('battle-air-defense-laser-core', { diameter: 0.2, height: 1, tessellation: 10 }, this.scene);
-    core.material = this.airDefenseCoreMaterial;
-    const impact = MeshBuilder.CreateSphere('battle-air-defense-laser-impact', { diameter: 1.3, segments: 12 }, this.scene);
-    impact.material = this.airDefenseCoreMaterial;
+    const beam = MeshBuilder.CreateCylinder(name, { diameter: 0.72, height: 1, tessellation: 12 }, this.scene);
+    beam.material = beamMaterial;
+    const core = MeshBuilder.CreateCylinder(`${name}-core`, { diameter: 0.2, height: 1, tessellation: 10 }, this.scene);
+    core.material = coreMaterial;
+    const impact = MeshBuilder.CreateSphere(`${name}-impact`, { diameter: 1.3, segments: 12 }, this.scene);
+    impact.material = coreMaterial;
+    const explosion = withExplosion ? this.flipbook(`${name}-explosion`, this.explosionTexture, 5, 5, 0, Color3.White(), 'ALPHA') : undefined;
+    if (explosion) {
+      explosion.position = end.clone();
+      explosion.scaling.setAll(2.6);
+    }
     alignCylinder(beam, start, end);
     alignCylinder(core, start, end);
     impact.position = end;
-    [beam, core, impact].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
-    this.airDefenseEffects.push({ beam, core, impact, elapsed: 0, duration: 0.24, origin: start, target: end });
+    [beam, core, impact, ...(explosion ? [explosion] : [])].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
+    this.airDefenseEffects.push({ beam, core, impact, explosion, elapsed: 0, duration: 0.24, explosionDuration: withExplosion ? 0.72 : undefined, origin: start, target: end });
   }
 
   private updateAirDefenseEffects(dt: number): void {
@@ -528,13 +615,20 @@ export class BattleCombatVfx {
       effect.core.visibility = fade;
       effect.impact.visibility = fade;
       effect.impact.scaling.setAll(0.6 + (1 - fade) * 1.4);
+      if (effect.explosion) {
+        const explosionProgress = Math.min(1, effect.elapsed / (effect.explosionDuration ?? effect.duration));
+        setFrame(effect.explosion, 5, 5, effect.elapsed, 30);
+        effect.explosion.visibility = Math.max(0, 1 - explosionProgress);
+        effect.explosion.scaling.setAll(0.72 + Math.sin(Math.min(1, effect.elapsed / 0.55) * Math.PI / 2) * 2.8);
+      }
     }
     for (let index = this.airDefenseEffects.length - 1; index >= 0; index -= 1) {
       const effect = this.airDefenseEffects[index];
-      if (effect.elapsed < effect.duration) continue;
+      if (effect.elapsed < Math.max(effect.duration, effect.explosionDuration ?? 0)) continue;
       effect.beam.dispose();
       effect.core.dispose();
       effect.impact.dispose();
+      effect.explosion?.dispose(false, true);
       this.airDefenseEffects.splice(index, 1);
     }
   }
@@ -647,8 +741,12 @@ export class BattleCombatVfx {
       activeIds.add(missile.id);
       let mesh = this.projectileMeshes.get(missile.id);
       if (!mesh) {
-        mesh = MeshBuilder.CreateSphere(`battle-projectile-${missile.id}`, { diameter: missile.source === 'sam' ? 0.72 : 0.42, segments: 8 }, this.scene);
-        mesh.material = missile.source === 'sam' ? this.samProjectileMaterial : this.fighterProjectileMaterial;
+        const isSam = missile.source === 'sam';
+        mesh = isSam
+          ? MeshBuilder.CreatePlane(`battle-projectile-${missile.id}`, { size: 1.05, sideOrientation: Mesh.DOUBLESIDE }, this.scene)
+          : MeshBuilder.CreateSphere(`battle-projectile-${missile.id}`, { diameter: 0.42, segments: 8 }, this.scene);
+        mesh.material = isSam ? this.samProjectileSpriteMaterial : this.fighterProjectileMaterial;
+        if (isSam) mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
         mesh.renderingGroupId = 3;
         mesh.isPickable = false;
         this.projectileMeshes.set(missile.id, mesh);
@@ -675,6 +773,9 @@ export class BattleCombatVfx {
         const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
         const targetPosition = new Vector3(missile.target.x, 8 + (missile.targetY - 33) * 0.22, missile.target.z * 0.12);
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
+        const currentPosition = new Vector3(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
+        const homingDirection = targetPosition.subtract(currentPosition);
+        if (homingDirection.lengthSquared() > 0.0001) mesh.rotation.z = Math.atan2(homingDirection.y, homingDirection.x) - SAM_MISSILE_ART_ANGLE;
       } else {
         mesh.position.set(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
       }
@@ -749,6 +850,7 @@ export class BattleCombatVfx {
     effect.secondRing.dispose();
     effect.smoke?.dispose();
     effect.smokeSprite?.dispose(false, true);
+    effect.explosionSprite?.dispose(false, true);
     effect.sprite.dispose(false, true);
     effect.debris.forEach((piece) => piece.mesh.dispose());
   }
