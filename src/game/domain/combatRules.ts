@@ -798,11 +798,8 @@ function tickWaves(state: CombatState): void {
 }
 
 function tickSamSites(state: CombatState, dt: number): void {
-  if (state.missiles.length >= 16) return;
   for (const facility of state.facilities) {
     if (facility.kind !== 'SAM' || facility.destroyed || facility.disabledUntil > state.elapsedSeconds) continue;
-    const distanceToShip = distance(facility.position, state.mothership.position);
-    if (distanceToShip > 45) continue;
     const cooldown = Math.max(1.5, (BALANCE.defense.missileInterval - state.localAlert / 45) / (state.defenseMultiplier * state.enemyPressureMultiplier));
     state.facilityCooldowns[facility.id] = Math.max(0, (state.facilityCooldowns[facility.id] ?? 0) - dt);
     if (state.facilityCooldowns[facility.id] > 0) continue;

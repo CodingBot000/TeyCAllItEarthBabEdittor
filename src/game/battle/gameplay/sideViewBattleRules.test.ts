@@ -154,6 +154,33 @@ describe('side-view battle gameplay', () => {
     expect(missile?.launchY).toBe(3.5);
   });
 
+  it('allows active SAMs to fire beyond the ship range and missile-count threshold', () => {
+    const campaign = createNewCampaign(7413);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const sam = combatState.facilities.find((facility) => facility.kind === 'SAM')!;
+    sam.position = { x: 90, z: 0 };
+    combatState.facilityCooldowns[sam.id] = 0;
+    combatState.missiles = Array.from({ length: 16 }, (_, index) => ({
+      id: `filler-${index}`,
+      source: 'fighter' as const,
+      sourceId: `fighter-${index}`,
+      launchPosition: { x: 0, z: 0 },
+      launchY: 24,
+      position: { x: 0, z: 0 },
+      y: 24,
+      target: { x: 0, z: 0 },
+      targetY: 33,
+      speed: 1,
+      damage: 1,
+      age: 0,
+    }));
+
+    tickCombat(combatState, 0.01);
+
+    expect(combatState.missiles.some((missile) => missile.source === 'sam' && missile.sourceId === sam.id)).toBe(true);
+  });
+
   it('builds the side-view encounter from the 2D biome catalog instead of 3D preset geometry', () => {
     const campaign = createNewCampaign(7411);
     const sourceCity = CITIES.find((candidate) => candidate.id === 'seoul')!;
