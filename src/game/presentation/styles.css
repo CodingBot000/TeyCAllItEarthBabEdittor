@@ -20,6 +20,29 @@
 .battle-canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; touch-action: none; }
 .battle-scene-label { position: absolute; left: 18px; top: 16px; z-index: 2; display: grid; gap: 4px; padding: 8px 10px; border-left: 2px solid rgba(168, 244, 227, .85); background: rgba(4, 16, 23, .46); color: rgba(208, 242, 236, .68); font: 8px 'Space Mono', monospace; letter-spacing: .12em; pointer-events: none; }
 .battle-scene-label strong { color: #ecfffa; font-size: 12px; letter-spacing: .08em; }
+.battle-background-debug { position: absolute; top: 56px; right: 14px; z-index: 7; display: grid; gap: 8px; width: min(286px, calc(100% - 28px)); max-height: calc(100% - 70px); overflow: auto; padding: 10px; border: 1px solid rgba(125, 231, 212, .48); background: rgba(4, 16, 23, .9); box-shadow: 0 16px 42px rgba(0, 0, 0, .42); backdrop-filter: blur(8px); color: #c9efea; font: 7px 'Space Mono', monospace; letter-spacing: .04em; scrollbar-width: thin; scrollbar-color: rgba(125, 231, 212, .45) transparent; }
+.battle-background-debug-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(168, 244, 227, .2); }
+.battle-background-debug-header > div { display: grid; gap: 3px; }
+.battle-background-debug-header span, .battle-background-debug-output-title > span { color: #71959d; font-size: 6px; letter-spacing: .11em; }
+.battle-background-debug-header strong { color: #e9fffa; font-size: 9px; letter-spacing: .08em; }
+.battle-background-debug-header button, .battle-background-debug-output-title button { padding: 4px 6px; border: 1px solid rgba(125, 231, 212, .35); background: rgba(125, 231, 212, .08); color: #7de7d4; font: 6px 'Space Mono', monospace; }
+.battle-background-debug-header button:hover, .battle-background-debug-output-title button:hover { border-color: #7de7d4; background: rgba(125, 231, 212, .18); }
+.battle-background-debug-hint { margin: 0; color: #8aa8ad; font-size: 6px; line-height: 1.35; }
+.battle-background-debug-list { display: grid; gap: 6px; }
+.battle-background-debug-row { display: grid; gap: 4px; padding: 6px 0; border-bottom: 1px solid rgba(127, 201, 207, .12); }
+.battle-background-debug-row:last-child { border-bottom: 0; }
+.battle-background-debug-row-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #b8d8d7; }
+.battle-background-debug-row-title b { color: #f4b85a; font-weight: 700; }
+.battle-background-debug-row-title output { color: #7de7d4; font-size: 8px; }
+.battle-background-debug-controls { display: grid; grid-template-columns: 22px minmax(0, 1fr) 22px; align-items: center; gap: 5px; }
+.battle-background-debug-controls button { display: grid; width: 22px; height: 20px; place-items: center; padding: 0; border: 1px solid rgba(125, 231, 212, .3); background: rgba(8, 38, 46, .84); color: #c9efea; font: 8px 'Space Mono', monospace; line-height: 1; }
+.battle-background-debug-controls button:hover:not(:disabled) { border-color: #7de7d4; background: rgba(125, 231, 212, .18); }
+.battle-background-debug-controls input { width: 100%; height: 12px; accent-color: #7de7d4; cursor: ew-resize; }
+.battle-background-debug-output { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid rgba(168, 244, 227, .2); }
+.battle-background-debug-output-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.battle-background-debug-output textarea { width: 100%; min-height: 104px; resize: vertical; padding: 6px; border: 1px solid rgba(125, 231, 212, .22); outline: 0; background: rgba(0, 10, 15, .74); color: #e0fffa; font: 7px/1.45 'Space Mono', monospace; }
+.battle-background-debug-output textarea:focus { border-color: #7de7d4; }
+.battle-background-debug-output small { color: #71959d; font: 6px/1.35 'Space Mono', monospace; }
 .battle-exit-button { position: absolute; right: 18px; top: 16px; z-index: 3; padding: 9px 12px; border: 1px solid rgba(168, 244, 227, .35); background: rgba(4, 16, 23, .58); color: #c9efea; font: 8px 'Space Mono', monospace; letter-spacing: .08em; cursor: pointer; }
 .battle-exit-button:hover { border-color: #a8f4e3; color: #fff; background: rgba(10, 45, 55, .78); }
 .battle-scene-state { position: absolute; left: 50%; top: 50%; z-index: 4; padding: 12px 16px; transform: translate(-50%, -50%); color: #c9efea; background: rgba(4, 16, 23, .82); border: 1px solid rgba(168, 244, 227, .35); font: 9px 'Space Mono', monospace; letter-spacing: .1em; }
@@ -56,7 +79,7 @@
 @media (max-width: 1000px) { .battle-action-bar { left: auto; right: 18px; transform: none; } }
 @media (hover: hover) and (pointer: fine) { .battle-movement-controls { display: none; } }
 @media (hover: none), (pointer: coarse) { .battle-target-hud { bottom: 92px; } }
-@media (max-width: 640px) { .battle-scene-label { left: 10px; top: 10px; }.battle-exit-button { right: 10px; top: 10px; }.battle-status-hud { left: 10px; top: 54px; width: 150px; padding: 7px; }.battle-status-readouts { display: none; }.battle-survival-hud { top: 10px; max-width: 42vw; padding: 6px 8px; gap: 6px; font-size: 5px; }.battle-survival-hud strong { font-size: 8px; }.battle-target-hud { left: 10px; bottom: 92px; width: 150px; padding: 6px 7px; }.battle-action-bar { left: auto; right: 10px; bottom: 24px; max-width: calc(100% - 180px); flex-wrap: wrap; justify-content: flex-end; transform: none; }.battle-action-button { min-width: 0; padding: 5px 6px; font-size: 7px; }.battle-action-button span, .battle-action-button small { display: none; }.battle-movement-controls { left: 10px; bottom: 24px; gap: 6px; }.battle-movement-controls button { width: 48px; height: 48px; }.battle-action-message { bottom: 72px; font-size: 5px; }.battle-control-hint { bottom: 7px; font-size: 5px; }.battle-screen { min-height: 0; } }
+@media (max-width: 640px) { .battle-scene-label { left: 10px; top: 10px; }.battle-exit-button { right: 10px; top: 10px; }.battle-background-debug { top: 46px; right: 8px; width: min(244px, calc(100% - 16px)); padding: 8px; }.battle-status-hud { left: 10px; top: 54px; width: 150px; padding: 7px; }.battle-status-readouts { display: none; }.battle-survival-hud { top: 10px; max-width: 42vw; padding: 6px 8px; gap: 6px; font-size: 5px; }.battle-survival-hud strong { font-size: 8px; }.battle-target-hud { left: 10px; bottom: 92px; width: 150px; padding: 6px 7px; }.battle-action-bar { left: auto; right: 10px; bottom: 24px; max-width: calc(100% - 180px); flex-wrap: wrap; justify-content: flex-end; transform: none; }.battle-action-button { min-width: 0; padding: 5px 6px; font-size: 7px; }.battle-action-button span, .battle-action-button small { display: none; }.battle-movement-controls { left: 10px; bottom: 24px; gap: 6px; }.battle-movement-controls button { width: 48px; height: 48px; }.battle-action-message { bottom: 72px; font-size: 5px; }.battle-control-hint { bottom: 7px; font-size: 5px; }.battle-screen { min-height: 0; } }
 
 /* M6 cohort command surface. */
 .tactical-cohort-panel {

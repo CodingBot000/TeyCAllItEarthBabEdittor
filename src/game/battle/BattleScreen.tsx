@@ -8,7 +8,7 @@ import { getBattleDebugOptions } from './gameplay/BattleDebug';
 import { createSideViewBattleSession } from './gameplay/sideViewBattleRules';
 import { getBattleMapDefinition, loadBattleMapDefinition } from './maps/battleMapCatalog';
 import { TACTICAL_PRESETS } from '../data/tacticalPresets';
-import type { BattleRuntime, BattleRuntimeSnapshot } from './runtime/createBattleRuntime';
+import { BATTLE_BACKGROUND_LAYERS, type BattleBackgroundLayerKey, type BattleRuntime, type BattleRuntimeSnapshot } from './runtime/createBattleRuntime';
 import { useI18n } from '../i18n/I18nProvider';
 
 interface BattleScreenProps {
@@ -16,6 +16,12 @@ interface BattleScreenProps {
   request: BattleLaunchRequest;
   onComplete: (state: CombatState) => void;
 }
+
+type BackgroundLayerYValues = Record<BattleBackgroundLayerKey, number>;
+
+const INITIAL_BACKGROUND_LAYER_Y = Object.fromEntries(
+  BATTLE_BACKGROUND_LAYERS.map((layer) => [layer.key, layer.y]),
+) as BackgroundLayerYValues;
 
 export function BattleScreen({ campaign, request, onComplete }: BattleScreenProps) {
   const { formatNumber, language, t } = useI18n();
@@ -26,6 +32,8 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const [snapshot, setSnapshot] = useState<BattleRuntimeSnapshot | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [abortConfirmationOpen, setAbortConfirmationOpen] = useState(false);
+  const [backgroundLayerY, setBackgroundLayerY] = useState<BackgroundLayerYValues>(() => ({ ...INITIAL_BACKGROUND_LAYER_Y }));
+  const [backgroundCopyStatus, setBackgroundCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const fallbackMap = getBattleMapDefinition(request.mapId);
   const [loadedMap, setLoadedMap] = useState<typeof fallbackMap | null>(null);
   const map = loadedMap?.id === fallbackMap.id ? loadedMap : fallbackMap;
@@ -142,6 +150,31 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     if (!result.ok) setActionMessage(result.reason ?? t('battle.commandUnavailable'));
     setAbortConfirmationOpen(false);
   };
+  const setBackgroundLayerPosition = (key: BattleBackgroundLayerKey, value: number) => {
+    const nextValue = Math.max(-80, Math.min(80, Math.round(value * 100) / 100));
+    setBackgroundLayerY((previous) => ({ ...previous, [key]: nextValue }));
+    runtimeRef.current?.setBackgroundLayerY(key, nextValue);
+    setBackgroundCopyStatus('idle');
+  };
+  const adjustBackgroundLayer = (key: BattleBackgroundLayerKey, delta: number) => {
+    setBackgroundLayerPosition(key, backgroundLayerY[key] + delta);
+  };
+  const resetBackgroundLayers = () => {
+    setBackgroundLayerY({ ...INITIAL_BACKGROUND_LAYER_Y });
+    for (const layer of BATTLE_BACKGROUND_LAYERS) runtimeRef.current?.setBackgroundLayerY(layer.key, layer.y);
+    setBackgroundCopyStatus('idle');
+  };
+  const backgroundLayerOutput = BATTLE_BACKGROUND_LAYERS
+    .map((layer, index) => `${String(index + 1).padStart(2, '0')} ${layer.key}: y=${backgroundLayerY[layer.key].toFixed(2)}`)
+    .join('\n');
+  const copyBackgroundLayerOutput = async () => {
+    try {
+      await navigator.clipboard.writeText(backgroundLayerOutput);
+      setBackgroundCopyStatus('copied');
+    } catch {
+      setBackgroundCopyStatus('failed');
+    }
+  };
 
   return (
     <main className="battle-screen" data-map-id={map.id} data-battle-phase={phase}>
@@ -150,6 +183,46 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
         <span>BATTLE SCENE</span>
         <strong>{map.displayName.toUpperCase()}</strong>
       </div>
+      {debugOptions.directBattle ? <aside className="battle-background-debug" data-testid="battle-background-debug">
+        <div className="battle-background-debug-header">
+          <div>
+            <span>DEBUG TOOL</span>
+            <strong>BACKGROUND ALIGNMENT</strong>
+          </div>
+          <button type="button" disabled={phase !== 'ready'} onClick={resetBackgroundLayers} aria-label="Reset background layer positions">RESET</button>
+        </div>
+        <p className="battle-background-debug-hint">Y WORLD UNITS · ▲ UP / ▼ DOWN · DRAG FOR FINE ADJUSTMENT</p>
+        <div className="battle-background-debug-list">
+          {BATTLE_BACKGROUND_LAYERS.map((layer, index) => {
+            const value = backgroundLayerY[layer.key];
+            return <div className="battle-background-debug-row" data-layer-key={layer.key} key={layer.key}>
+              <div className="battle-background-debug-row-title">
+                <span><b>L{String(index + 1).padStart(2, '0')}</b> {layer.key.toUpperCase()}</span>
+                <output>Y {value.toFixed(2)}</output>
+              </div>
+              <div className="battle-background-debug-controls">
+                <button type="button" disabled={phase !== 'ready'} onClick={() => adjustBackgroundLayer(layer.key, 0.25)} aria-label={`Move ${layer.key} up`}>▲</button>
+                <input
+                  type="range"
+                  min="-80"
+                  max="80"
+                  step="0.25"
+                  value={value}
+                  disabled={phase !== 'ready'}
+                  onChange={(event) => setBackgroundLayerPosition(layer.key, Number(event.target.value))}
+                  aria-label={`${layer.key} Y position`}
+                />
+                <button type="button" disabled={phase !== 'ready'} onClick={() => adjustBackgroundLayer(layer.key, -0.25)} aria-label={`Move ${layer.key} down`}>▼</button>
+              </div>
+            </div>;
+          })}
+        </div>
+        <div className="battle-background-debug-output">
+          <div className="battle-background-debug-output-title"><span>FINAL VALUES TO SEND</span><button type="button" disabled={phase !== 'ready'} onClick={copyBackgroundLayerOutput}>{backgroundCopyStatus === 'copied' ? 'COPIED' : 'COPY'}</button></div>
+          <textarea readOnly value={backgroundLayerOutput} rows={BATTLE_BACKGROUND_LAYERS.length} aria-label="Final background layer positions" />
+          {backgroundCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Send the layer number and Y value, for example: 03 far y=9.25</small>}
+        </div>
+      </aside> : null}
       <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
       {snapshot ? <section className="battle-status-hud" aria-label={t('battle.status')}>
         <BattleStat label={t('debrief.hull')} value={snapshot.ship.hull} maximum={snapshot.ship.maxHull} tone="hull" />

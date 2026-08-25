@@ -40,6 +40,8 @@ export interface BattleRuntime {
   scene: Scene;
   camera: UniversalCamera;
   mothershipGameplayRoot: TransformNode;
+  getBackgroundLayerY(key: BattleBackgroundLayerKey): number;
+  setBackgroundLayerY(key: BattleBackgroundLayerKey, y: number): void;
   triggerAbility(ability: Extract<AbilityId, 'emp' | 'plasma' | 'overdrive'>): CommandResult;
   toggleAbsorption(): CommandResult;
   beginExtraction(): CommandResult;
@@ -123,9 +125,11 @@ export interface BattleRuntimeSnapshot {
   visuals: BattleEntityVisualSnapshot;
 }
 
-interface BackgroundLayer {
+export type BattleBackgroundLayerKey = keyof BattleMapDefinition['backgrounds'];
+
+export interface BattleBackgroundLayer {
   name: string;
-  key: keyof BattleMapDefinition['backgrounds'];
+  key: BattleBackgroundLayerKey;
   z: number;
   y: number;
   parallax: number;
@@ -140,7 +144,7 @@ interface MothershipCinematic {
   direction: number;
 }
 
-const BACKGROUND_LAYERS: BackgroundLayer[] = [
+export const BATTLE_BACKGROUND_LAYERS: BattleBackgroundLayer[] = [
   { name: 'SkyRoot', key: 'sky', z: 30, y: 4, parallax: 0, renderingGroupId: 0 },
   { name: 'CloudRoot', key: 'clouds', z: 27, y: 4, parallax: 0, renderingGroupId: 0 },
   { name: 'CityFarRoot', key: 'far', z: 22, y: 9, parallax: 0.15, renderingGroupId: 0 },
@@ -190,7 +194,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     fallbackLight.groundColor = new Color3(0.1, 0.16, 0.19);
   }
 
-  const backgroundPlanes = BACKGROUND_LAYERS.map((layer) => ({ layer, root: getOrCreateNode(scene, layer.name), plane: scene.getMeshByName(`${layer.name}Plane`) }));
+  const backgroundPlanes = BATTLE_BACKGROUND_LAYERS.map((layer) => ({ layer, root: getOrCreateNode(scene, layer.name), plane: scene.getMeshByName(`${layer.name}Plane`) }));
+  const backgroundLayerY = new Map<BattleBackgroundLayerKey, number>(BATTLE_BACKGROUND_LAYERS.map((layer) => [layer.key, layer.y]));
   applyEditorBackgroundMaterials(backgroundPlanes, map, scene);
   const mothershipGameplayRoot = getOrCreateNode(scene, 'MothershipGameplayRoot');
   const fighterPoolRoot = getOrCreateNode(scene, 'FighterPoolRoot');
@@ -211,6 +216,21 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   let cameraX = mothershipGameplayRoot.position.x;
   camera.position.x = cameraX;
   camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
+  const applyBackgroundLayerPositions = () => {
+    for (const { layer, root } of backgroundPlanes) {
+      root.position.x = cameraX * (1 - layer.parallax);
+      root.position.y = (backgroundLayerY.get(layer.key) ?? layer.y) + getGroundLayerUiLift(layer, camera, engine);
+    }
+  };
+  const getBackgroundLayerY = (key: BattleBackgroundLayerKey): number => {
+    const definition = BATTLE_BACKGROUND_LAYERS.find((layer) => layer.key === key);
+    return backgroundLayerY.get(key) ?? definition?.y ?? 0;
+  };
+  const setBackgroundLayerY = (key: BattleBackgroundLayerKey, y: number): void => {
+    backgroundLayerY.set(key, clampBackgroundLayerY(y));
+    applyBackgroundLayerPositions();
+  };
+  applyBackgroundLayerPositions();
   const pressedKeys = new Set<string>();
   const movementInputs: Record<'keyboard' | 'pointer', -1 | 0 | 1> = { keyboard: 0, pointer: 0 };
   const combatState = options.combatState;
@@ -489,10 +509,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
     camera.position.x = cameraX;
     camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
-    for (const { layer, root } of backgroundPlanes) {
-      root.position.x = cameraX * (1 - layer.parallax);
-      root.position.y = layer.y + getGroundLayerUiLift(layer, camera, engine);
-    }
+    applyBackgroundLayerPositions();
     cloudTextureOffset = (cloudTextureOffset + deltaSeconds * CLOUD_DRIFT_SPEED) % 1;
     for (const { layer, plane } of backgroundPlanes) {
       if (layer.key !== 'clouds' || !(plane?.material instanceof StandardMaterial)) continue;
@@ -529,6 +546,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     scene,
     camera,
     mothershipGameplayRoot,
+    getBackgroundLayerY,
+    setBackgroundLayerY,
     triggerAbility: triggerCombatAbility,
     toggleAbsorption: triggerBeam,
     beginExtraction,
@@ -637,7 +656,7 @@ function getOrCreateNode(scene: Scene, name: string): TransformNode {
 }
 
 function applyEditorBackgroundMaterials(
-  layers: Array<{ layer: BackgroundLayer; root: TransformNode; plane: AbstractMesh | null }>,
+  layers: Array<{ layer: BattleBackgroundLayer; root: TransformNode; plane: AbstractMesh | null }>,
   map: BattleMapDefinition,
   scene: Scene,
 ): void {
@@ -658,11 +677,16 @@ function getBackgroundTextureRepeat(key: keyof BattleMapDefinition['backgrounds'
   return key === 'sky' || key === 'clouds' ? 1 : BACKGROUND_REPEAT;
 }
 
-function getGroundLayerUiLift(layer: BackgroundLayer, camera: UniversalCamera, engine: Engine): number {
+function getGroundLayerUiLift(layer: BattleBackgroundLayer, camera: UniversalCamera, engine: Engine): number {
   if (layer.key !== 'near' && layer.key !== 'ground') return 0;
   const distance = Math.abs(layer.z - camera.position.z);
   const visibleHeight = 2 * distance * Math.tan(camera.fov / 2);
   return GROUND_LAYER_UI_LIFT_PIXELS * visibleHeight / Math.max(1, engine.getRenderHeight());
+}
+
+function clampBackgroundLayerY(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(Scalar.Clamp(value, -80, 80) * 100) / 100;
 }
 
 function setGameplayRenderingGroup(...roots: TransformNode[]): void {
