@@ -29,6 +29,8 @@ const environmentRoot = childNode('EnvironmentRoot', sceneRootNode);
 const BACKGROUND_WORLD_WIDTH = 360;
 const BACKGROUND_TILE_WIDTH = 120;
 const BACKGROUND_REPEAT = BACKGROUND_WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
+const NEAR_LAYER_SCALE = 0.7;
+const NEAR_LAYER_PLANE_HEIGHT = 60;
 const FIGHTER_SPRITE_URL = 'assets/battlescene/shared/units/fighter-8way.webp';
 const FIGHTER_ATLAS_COLUMNS = 4;
 const FIGHTER_ATLAS_ROWS = 2;
@@ -60,13 +62,17 @@ for (let index = 0; index < layers.length; index += 1) {
   const root = childNode(name, environmentRoot);
   root.position.set(0, y, z);
   const planeWidth = BACKGROUND_PLANE_WIDTHS[name] ?? BACKGROUND_WORLD_WIDTH;
-  const textureUScale = name === 'SkyRoot' || name === 'CloudRoot' ? 1 : BACKGROUND_REPEAT * (planeWidth / BACKGROUND_WORLD_WIDTH);
+  const textureScaleX = name === 'GroundRoot' ? planeWidth / BACKGROUND_WORLD_WIDTH : name === 'CityNearRoot' ? 1 / NEAR_LAYER_SCALE : 1;
+  const textureUScale = name === 'SkyRoot' || name === 'CloudRoot' ? 1 : BACKGROUND_REPEAT * textureScaleX;
   const plane = MeshBuilder.CreatePlane(name + 'Plane', {
     width: planeWidth,
     height: BACKGROUND_PLANE_HEIGHTS[name],
     sideOrientation: Mesh.DOUBLESIDE,
   }, scene);
   plane.parent = root;
+  plane.scaling.y = name === 'CityNearRoot' ? NEAR_LAYER_SCALE : 1;
+  plane.position.y = name === 'CityNearRoot' ? -(NEAR_LAYER_PLANE_HEIGHT * (1 - NEAR_LAYER_SCALE)) / 2 : 0;
+  plane.alphaIndex = name === 'GroundRoot' ? 1 : 0;
   plane.renderingGroupId = name === 'SkyRoot' || name === 'CityFarRoot' ? 0 : name === 'CityMiddleRoot' ? 1 : name === 'ForegroundRoot' ? 3 : 2;
   // Keep the editor preview directly adjustable. Runtime disables picking after
   // loading this scene so background planes cannot intercept gameplay input.

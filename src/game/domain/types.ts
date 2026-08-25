@@ -570,6 +570,13 @@ export interface EnemyState {
   orbitDirection: -1 | 1;
   orbitRadius: number;
   orbitPhase: number;
+  orbitAngularSpeed: number;
+  orbitEccentricity: number;
+  orbitVerticalAmplitude: number;
+  orbitDepthAmplitude: number;
+  orbitWobblePhase: number;
+  attackRunPhase: number;
+  attackRunStrength: number;
   health: number;
   attackCooldown: number;
   disabledUntil: number;
@@ -641,6 +648,7 @@ export interface GroundSwarmImpactEvent {
 
 export interface CombatState {
   cityId: string;
+  seed: number;
   elapsedSeconds: number;
   battleMode: BattleMode;
   survivalUnlockSeconds: number;
@@ -692,6 +700,7 @@ export interface CombatState {
   cooldowns: Record<AbilityId, number>;
   disabledUntil: Record<string, number>;
   facilityCooldowns: Record<string, number>;
+  facilityBurstRemaining: Record<string, number>;
   nextEntityId: number;
   lastAirDefenseAt: number;
   lastPointDefenseAt: number;

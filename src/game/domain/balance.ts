@@ -1,3 +1,5 @@
+const MOTHERSHIP_VISUAL_SCALE = 1.5;
+
 export const BALANCE = {
   tacticalMap: {
     // The ground mesh spans -80..80. Keep the mothership inside this
@@ -7,6 +9,7 @@ export const BALANCE = {
     playableHalfExtent: 74,
   },
   mothership: {
+    visualScale: MOTHERSHIP_VISUAL_SCALE,
     maxHull: 1200,
     maxShield: 800,
     maxEnergy: 1000,
@@ -19,11 +22,15 @@ export const BALANCE = {
     deceleration: 5,
     arrivalRadius: 0.75,
     baseAltitude: 33,
-    // Matches the scaled saucer mesh and its visible shield-impact shell.
-    hullHitRadius: 11.95,
-    hullHitHalfHeight: 2.5,
-    shieldHitRadius: 12.15,
-    shieldHitHalfHeight: 3.75,
+    // Base hit volumes are scaled with the runtime saucer model.
+    // Keep projectile contact close to the visible saucer body. These are
+    // gameplay volumes, not the former oversized guidance bubble.
+    hullHitRadius: 6.3 * MOTHERSHIP_VISUAL_SCALE,
+    hullHitHalfHeight: 1.4 * MOTHERSHIP_VISUAL_SCALE,
+    shieldHitRadius: 7.1 * MOTHERSHIP_VISUAL_SCALE,
+    shieldHitHalfHeight: 1.9 * MOTHERSHIP_VISUAL_SCALE,
+    shieldVisualRadius: 12.15 * MOTHERSHIP_VISUAL_SCALE,
+    shieldVisualHalfHeight: 3.75 * MOTHERSHIP_VISUAL_SCALE,
   },
   beam: {
     range: 22,
@@ -69,13 +76,22 @@ export const BALANCE = {
     fighterHealth: 50,
     fighterDamage: 24,
     fighterInterval: 5.5,
-    fighterAltitude: 24,
+    fighterAltitude: 33,
     fighterCruiseSpeed: 11.5,
     fighterMaxSpeed: 16,
     fighterAcceleration: 18,
     fighterOrbitRadius: 19,
     fighterOrbitAngularSpeed: 0.5,
-    fighterAttackRunDepth: 5.5,
+    fighterOrbitAngularSpeedMin: 0.32,
+    fighterOrbitAngularSpeedMax: 0.68,
+    fighterOrbitEccentricityMin: 0.06,
+    fighterOrbitEccentricityMax: 0.2,
+    fighterOrbitVerticalAmplitudeMin: 8,
+    fighterOrbitVerticalAmplitudeMax: 16,
+    fighterOrbitDepthAmplitudeMin: 4,
+    fighterOrbitDepthAmplitudeMax: 10,
+    fighterAttackRunDepth: 3.8,
+    fighterAttackRunAltitudeLift: 5.5,
     fighterAttackRange: 28,
     fighterMinAttackRange: 9,
     fighterMinSquadSize: 4,
@@ -90,12 +106,12 @@ export const BALANCE = {
   },
   groundSwarm: {
     initialDelay: 2.5,
-    interval: 4.2,
+    interval: 8.4,
     projectilesPerBurst: 4,
     damagePerProjectile: 18,
-    travelSpeed: 24,
-    minimumDuration: 0.7,
-    maximumDuration: 2.8,
+    travelSpeed: 8.4,
+    minimumDuration: 2,
+    maximumDuration: 8,
     maximumActiveProjectiles: 20,
   },
   repair: {

@@ -60,10 +60,10 @@ function profileFacilities(sourceFacilities: TacticalPreset['facilities'], profi
   }).map((facility) => ({ ...facility, position: { x: facility.position.x, z: 0 } }));
 }
 
-export function tickSideViewBattle(state: CombatState, profile: BattleGameplayProfile, dt: number): void {
+export function tickSideViewBattle(state: CombatState, profile: BattleGameplayProfile, dt: number, unitInvincibilityEnabled = false): void {
   if (state.battleMode !== 'SIDE_VIEW' || state.result !== 'ACTIVE') return;
   discoverNearbySideViewTargets(state, profile);
-  tickGroundSwarm(state, profile, dt);
+  tickGroundSwarm(state, profile, dt, unitInvincibilityEnabled);
   tickSideViewCohortAi(state);
   if (state.extractionStatus === 'LOCKED' && state.elapsedSeconds >= state.survivalUnlockSeconds) {
     state.extractionStatus = 'AVAILABLE';

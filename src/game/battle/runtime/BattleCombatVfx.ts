@@ -1,17 +1,22 @@
 import {
   Color3,
   Engine,
+  Effect,
+  Matrix,
   Mesh,
   MeshBuilder,
+  PostProcess,
   Quaternion,
   StandardMaterial,
   Texture,
   TrailMesh,
   TransformNode,
+  Vector2,
   Vector3,
 } from '@babylonjs/core';
+import { BALANCE } from '../../domain/balance';
 import type { CombatState } from '../../domain/types';
-import { GROUND_ATTACK_TARGET_Y } from './battleVisualCoordinates';
+import { GROUND_ABSORPTION_TARGET_Y, GROUND_ATTACK_TARGET_Y } from './battleVisualCoordinates';
 
 type HeavyAbility = 'emp' | 'plasma';
 type DamageKind = 'SHIELD' | 'HULL';
@@ -29,6 +34,7 @@ interface DamageEffect {
   normal: Vector3;
   localImpact: Vector3;
   bubble?: Mesh;
+  shieldPatch?: Mesh;
   core: Mesh;
   ring: Mesh;
   secondRing: Mesh;
@@ -91,8 +97,18 @@ interface AirDefenseVisual {
 }
 
 interface GroundSwarmVisual {
-  mesh: Mesh;
+  members: GroundSwarmMember[];
   trail: TrailMesh;
+}
+
+interface GroundSwarmMember {
+  mesh: Mesh;
+  phase: number;
+  angularSpeed: number;
+  radiusX: number;
+  radiusY: number;
+  radiusZ: number;
+  baseScale: number;
 }
 
 interface GroundSwarmImpactVisual {
@@ -100,6 +116,19 @@ interface GroundSwarmImpactVisual {
   ring: Mesh;
   elapsed: number;
   duration: number;
+}
+
+interface SearchBeamVisual {
+  beam: Mesh;
+  groundRing: Mesh;
+  source: Mesh;
+  targetOffsetX: number;
+  targetOffsetZ: number;
+  motionRadius: number;
+  motionSpeed: number;
+  motionPhase: number;
+  holdDuration: number;
+  elapsed: number;
 }
 
 interface MissileTrailParticle {
@@ -110,10 +139,19 @@ interface MissileTrailParticle {
   drift: Vector3;
 }
 
-type GroundAttackSpawnResolver = (sourceId: string) => Vector3 | null;
+interface MissileJetVisual {
+  glow: Mesh;
+  core: Mesh;
+}
+
+type ProjectileVisualOriginResolver = (source: 'sam' | 'fighter', sourceId: string) => Vector3 | null;
 
 const SHIELD_DURATION = 1.05;
+const SHOW_SHIELD_BUBBLE = false;
 const HULL_DURATION = 1.8;
+const HULL_SHAKE_DURATION = 0.32;
+const HULL_SHAKE_OFFSET = 0.11;
+const HULL_SHAKE_ROTATION = 0.0225;
 const MAX_DAMAGE_EFFECTS = 6;
 const MAX_ABILITY_EFFECTS = 8;
 const MAX_AIR_DEFENSE_EFFECTS = 3;
@@ -124,10 +162,61 @@ const BEAM_RANGE = 22;
 const ABSORPTION_ROD_COUNT = 28;
 const ABSORPTION_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const SAM_MISSILE_SPRITE_URL = '/assets/runtime/sprites/sam-missile-white-jet-web.png';
-const SAM_MISSILE_ART_ANGLE = Math.PI / 4;
-const SAM_MISSILE_TRAIL_MAX_PARTICLES = 8;
-const SAM_MISSILE_TRAIL_SPAWN_DISTANCE = 0.28;
-const SAM_MISSILE_TRAIL_LIFETIME = 0.46;
+const SAM_MISSILE_SPRITE_SCALE = 1.95;
+const SAM_MISSILE_TRAIL_MAX_PARTICLES = 9;
+const SAM_MISSILE_TRAIL_SPAWN_DISTANCE = 0.16;
+const SAM_MISSILE_TRAIL_LIFETIME = 0.95;
+const SEARCH_BEAM_SOURCE_DIAMETER = 1.2;
+const SEARCH_BEAM_GROUND_DIAMETER = 4.16;
+const SEARCH_MOTION_PATTERN_COUNT = 50;
+const GROUND_SWARM_MIN_VISUAL_MEMBERS = 7;
+const GROUND_SWARM_MAX_VISUAL_MEMBERS = 11;
+const GROUND_SWARM_ORBIT_HORIZONTAL_MIN_RADIUS = 0.55;
+const GROUND_SWARM_ORBIT_HORIZONTAL_MAX_RADIUS = 1.2;
+const GROUND_SWARM_ORBIT_VERTICAL_MIN_RADIUS = 0.1;
+const GROUND_SWARM_ORBIT_VERTICAL_MAX_RADIUS = 0.3;
+const GROUND_SWARM_ORBIT_DEPTH_MIN_RADIUS = 0.22;
+const GROUND_SWARM_ORBIT_DEPTH_MAX_RADIUS = 0.62;
+const scaleMothershipEffect = (value: number): number => value * BALANCE.mothership.visualScale;
+
+Effect.ShadersStore.battleOverdriveDistortionFragmentShader = `
+precision highp float;
+
+varying vec2 vUV;
+uniform sampler2D textureSampler;
+uniform vec2 screenSize;
+uniform vec2 distortionCenter;
+uniform float distortionRadius;
+uniform float distortionInnerRadius;
+uniform float distortionStrength;
+uniform float intensity;
+uniform float time;
+
+void main(void) {
+  vec2 centered = vUV - distortionCenter;
+  float aspect = screenSize.x / max(screenSize.y, 1.0);
+  vec2 corrected = vec2(centered.x * aspect, centered.y);
+  float distanceFromCenter = length(corrected);
+  vec2 direction = corrected / max(distanceFromCenter, 0.0001);
+  float outerFade = 1.0 - smoothstep(distortionRadius - 0.055, distortionRadius, distanceFromCenter);
+  float innerFade = smoothstep(distortionInnerRadius, distortionInnerRadius + 0.08, distanceFromCenter);
+  float ring = outerFade * innerFade;
+  float ripple = 0.5 + 0.5 * sin(time * 7.5 - distanceFromCenter * 58.0);
+  float animatedStrength = distortionStrength * intensity * ring * (0.82 + ripple * 0.18);
+  vec2 uvOffset = vec2(direction.x / aspect, direction.y) * animatedStrength;
+  vec2 warpedUv = clamp(vUV - uvOffset, 0.001, 0.999);
+  vec2 fringe = vec2(direction.x / aspect, direction.y) * animatedStrength * 0.38;
+
+  vec3 original = texture2D(textureSampler, vUV).rgb;
+  vec3 warped = vec3(
+    texture2D(textureSampler, clamp(warpedUv + fringe, 0.001, 0.999)).r,
+    texture2D(textureSampler, warpedUv).g,
+    texture2D(textureSampler, clamp(warpedUv - fringe, 0.001, 0.999)).b
+  );
+  vec3 lensTint = vec3(0.22, 0.72, 1.0) * ring * intensity * (0.045 + ripple * 0.035);
+  gl_FragColor = vec4(mix(original, warped, ring * intensity), 1.0) + vec4(lensTint, 0.0);
+}
+`;
 
 export class BattleCombatVfx {
   private readonly shieldImpactTexture: Texture;
@@ -157,28 +246,65 @@ export class BattleCombatVfx {
   private readonly samProjectileTexture: Texture;
   private readonly samProjectileSpriteMaterial: StandardMaterial;
   private readonly samMissileTrailMaterial: StandardMaterial;
+  private readonly samMissileJetGlowMaterial: StandardMaterial;
+  private readonly samMissileJetCoreMaterial: StandardMaterial;
+  private readonly collisionHullOverlay: Mesh;
+  private readonly collisionShieldOverlay: Mesh;
+  private readonly collisionHullOverlayMaterial: StandardMaterial;
+  private readonly collisionShieldOverlayMaterial: StandardMaterial;
+  private readonly overdriveDistortion: PostProcess;
+  private collisionHullOverlayScale = 1;
+  private collisionShieldOverlayScale = 1;
   private readonly fighterProjectileMaterial: StandardMaterial;
   private readonly airDefenseMaterial: StandardMaterial;
   private readonly airDefenseCoreMaterial: StandardMaterial;
   private readonly pointDefenseMaterial: StandardMaterial;
   private readonly pointDefenseCoreMaterial: StandardMaterial;
+  private readonly searchBeamMaterial: StandardMaterial;
+  private readonly searchGroundRingMaterial: StandardMaterial;
   private readonly groundSwarmMaterial: StandardMaterial;
   private readonly groundSwarmCoreMaterial: StandardMaterial;
   private readonly projectileMeshes = new Map<string, Mesh>();
+  private readonly projectileVisualPositions = new Map<string, Vector3>();
   private readonly projectileLaunchPositions = new Map<string, Vector3>();
   private readonly missileTrailParticles = new Map<string, MissileTrailParticle[]>();
   private readonly missileTrailLastPositions = new Map<string, Vector3>();
+  private readonly missileJetVisuals = new Map<string, MissileJetVisual>();
   private readonly groundSwarmVisuals = new Map<string, GroundSwarmVisual>();
   private readonly consumedGroundSwarmImpactIds = new Set<string>();
   private readonly groundSwarmImpactEffects: GroundSwarmImpactVisual[] = [];
+  private readonly searchSourceMeshes: Mesh[];
+  private readonly mothershipVisualRoot: TransformNode | null;
+  private readonly mothershipVisualBasePosition: Vector3 | null;
+  private readonly mothershipVisualBaseRotation: Vector3 | null;
+  private readonly searchBeamVisuals: SearchBeamVisual[] = [];
+  private readonly searchMotionPatterns = Array.from({ length: SEARCH_MOTION_PATTERN_COUNT }, () => ({
+    radius: 1.4 + Math.random() * 3.6,
+    speed: 0.34 + Math.random() * 0.5,
+  }));
+  private searchNextBurstIn = 1.2;
+  private searchMotionPatternIndex = 0;
   private absorption: AbsorptionVisual | null = null;
+  private hullShakeElapsed = HULL_SHAKE_DURATION;
+  private hullShakePhase = 0;
+  private overdriveDistortionIntensity = 0;
+  private overdriveDistortionTime = 0;
   private disposed = false;
 
   constructor(
     private readonly scene: import('@babylonjs/core').Scene,
     private readonly mothershipRoot: TransformNode,
-    private readonly groundAttackSpawnResolver?: GroundAttackSpawnResolver,
+    private readonly projectileVisualOriginResolver?: ProjectileVisualOriginResolver,
+    mothershipVisualRoot?: TransformNode,
+    private readonly camera?: import('@babylonjs/core').Camera,
   ) {
+    this.mothershipVisualRoot = mothershipVisualRoot ?? null;
+    this.mothershipVisualBasePosition = mothershipVisualRoot?.position.clone() ?? null;
+    this.mothershipVisualBaseRotation = mothershipVisualRoot?.rotation.clone() ?? null;
+    this.searchSourceMeshes = mothershipVisualRoot?.getChildMeshes(false).filter((mesh): mesh is Mesh => (
+      mesh instanceof Mesh
+      && (mesh.name === 'mothership-reactor-glow' || mesh.name.startsWith('mothership-underside-emitter-'))
+    )).sort((left, right) => left.name.localeCompare(right.name)) ?? [];
     this.shieldImpactTexture = new Texture('/assets/runtime/vfx/shield-impact.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.vfxTexture = new Texture('/assets/runtime/vfx/vfx-atlas.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.explosionTexture = new Texture('/assets/runtime/vfx/mothership-explosion-5x5.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
@@ -221,10 +347,30 @@ export class BattleCombatVfx {
     this.samProjectileSpriteMaterial.transparencyMode = Engine.ALPHA_COMBINE;
     this.samProjectileSpriteMaterial.diffuseTexture = this.samProjectileTexture;
     this.samProjectileSpriteMaterial.emissiveTexture = this.samProjectileTexture;
-    this.samMissileTrailMaterial = this.material('battle-sam-missile-trail', new Color3(0.68, 0.73, 0.8), new Color3(0.28, 0.32, 0.38));
-    this.samMissileTrailMaterial.alpha = 0.34;
+    this.samMissileTrailMaterial = this.material('battle-sam-missile-trail', new Color3(0.78, 0.82, 0.88), new Color3(0.38, 0.42, 0.48));
+    this.samMissileTrailMaterial.alpha = 0.52;
     this.samMissileTrailMaterial.alphaMode = Engine.ALPHA_COMBINE;
     this.samMissileTrailMaterial.disableDepthWrite = true;
+    this.samMissileJetGlowMaterial = this.material('battle-sam-missile-jet-glow', new Color3(1, 0.04, 0.01), new Color3(1, 0.12, 0.02));
+    this.samMissileJetGlowMaterial.alpha = 0.46;
+    this.samMissileJetGlowMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.samMissileJetGlowMaterial.disableDepthWrite = true;
+    this.samMissileJetCoreMaterial = this.material('battle-sam-missile-jet-core', new Color3(1, 0.32, 0.04), new Color3(1, 0.55, 0.08));
+    this.samMissileJetCoreMaterial.alpha = 0.78;
+    this.samMissileJetCoreMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.samMissileJetCoreMaterial.disableDepthWrite = true;
+    this.collisionHullOverlayMaterial = this.material('battle-debug-hull-hitbox', new Color3(1, 0.12, 0.08), new Color3(1, 0.04, 0.01));
+    this.collisionHullOverlayMaterial.alpha = 0.3;
+    this.collisionHullOverlayMaterial.wireframe = true;
+    this.collisionHullOverlayMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.collisionHullOverlayMaterial.disableDepthWrite = true;
+    this.collisionShieldOverlayMaterial = this.material('battle-debug-shield-hitbox', new Color3(0.12, 0.85, 1), new Color3(0.08, 0.65, 1));
+    this.collisionShieldOverlayMaterial.alpha = 0.28;
+    this.collisionShieldOverlayMaterial.wireframe = true;
+    this.collisionShieldOverlayMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.collisionShieldOverlayMaterial.disableDepthWrite = true;
+    this.collisionHullOverlay = this.createCollisionOverlay('battle-debug-mothership-hull-hitbox', this.collisionHullOverlayMaterial);
+    this.collisionShieldOverlay = this.createCollisionOverlay('battle-debug-mothership-shield-hitbox', this.collisionShieldOverlayMaterial);
     this.fighterProjectileMaterial = this.material('battle-fighter-projectile', new Color3(0.22, 0.78, 1), new Color3(0.08, 0.72, 1));
     this.airDefenseMaterial = this.material('battle-air-defense-laser', new Color3(1, 0.24, 0.08), new Color3(1, 0.08, 0.01));
     this.airDefenseMaterial.alpha = 0.42;
@@ -234,8 +380,37 @@ export class BattleCombatVfx {
     this.pointDefenseMaterial.alpha = 0.46;
     this.pointDefenseMaterial.alphaMode = Engine.ALPHA_ADD;
     this.pointDefenseCoreMaterial = this.material('battle-point-defense-laser-core', new Color3(1, 0.98, 0.58), new Color3(1, 0.62, 0.04));
+    this.searchBeamMaterial = this.material('battle-search-beam', new Color3(0.22, 0.78, 1), new Color3(0.12, 0.9, 1));
+    this.searchBeamMaterial.alpha = 0.16;
+    this.searchBeamMaterial.alphaMode = Engine.ALPHA_ADD;
+    this.searchGroundRingMaterial = this.material('battle-search-ground-ring', new Color3(0.38, 1, 0.86), new Color3(0.16, 1, 0.82));
+    this.searchGroundRingMaterial.alpha = 0.34;
+    this.searchGroundRingMaterial.alphaMode = Engine.ALPHA_ADD;
     this.groundSwarmMaterial = this.material('battle-ground-swarm', new Color3(0.92, 0.72, 0.24), new Color3(1, 0.36, 0.03));
     this.groundSwarmCoreMaterial = this.material('battle-ground-swarm-core', new Color3(1, 0.96, 0.68), new Color3(1, 0.72, 0.08));
+
+    this.overdriveDistortion = new PostProcess('battle-overdrive-distortion', 'battleOverdriveDistortion', {
+      camera: this.camera ?? this.scene.activeCamera,
+      samplingMode: Texture.BILINEAR_SAMPLINGMODE,
+      uniforms: ['screenSize', 'distortionCenter', 'distortionRadius', 'distortionInnerRadius', 'distortionStrength', 'intensity', 'time'],
+    });
+    this.overdriveDistortion.autoClear = false;
+    this.overdriveDistortion.onApply = (effect) => {
+      const engine = this.scene.getEngine();
+      const width = Math.max(1, this.overdriveDistortion.width || engine.getRenderWidth());
+      const height = Math.max(1, this.overdriveDistortion.height || engine.getRenderHeight());
+      const activeCamera = this.camera ?? this.scene.activeCamera;
+      const projected = activeCamera
+        ? Vector3.Project(this.shipPosition(), Matrix.Identity(), activeCamera.getTransformationMatrix(), activeCamera.viewport.toGlobal(width, height))
+        : new Vector3(width * 0.5, height * 0.5, 0);
+      effect.setVector2('screenSize', new Vector2(width, height));
+      effect.setVector2('distortionCenter', new Vector2(projected.x / width, 1 - projected.y / height));
+      effect.setFloat('distortionRadius', 0.34);
+      effect.setFloat('distortionInnerRadius', 0.105);
+      effect.setFloat('distortionStrength', 0.028);
+      effect.setFloat('intensity', this.overdriveDistortionIntensity);
+      effect.setFloat('time', this.overdriveDistortionTime);
+    };
 
   }
 
@@ -243,7 +418,10 @@ export class BattleCombatVfx {
     if (this.disposed) return;
     while (this.damageEffects.length >= MAX_DAMAGE_EFFECTS) this.disposeDamageEffect(this.damageEffects.shift()!);
     const direction = normal.normalize();
-    const localImpact = new Vector3(direction.x * 11.7, direction.y * 3.4, direction.z * 11.7);
+    const horizontalImpactRadius = kind === 'SHIELD' ? BALANCE.mothership.shieldHitRadius : BALANCE.mothership.hullHitRadius;
+    const verticalImpactRadius = kind === 'SHIELD' ? BALANCE.mothership.shieldHitHalfHeight : BALANCE.mothership.hullHitHalfHeight;
+    const localImpact = new Vector3(direction.x * horizontalImpactRadius, direction.y * verticalImpactRadius, direction.z * horizontalImpactRadius);
+    if (kind === 'HULL') this.startHullShake();
     this.damageEffects.push(kind === 'SHIELD'
       ? this.createShieldEffect(direction, localImpact, source === 'sam')
       : this.createHullEffect(`hit-${this.damageId.value++}`, direction, localImpact));
@@ -254,7 +432,7 @@ export class BattleCombatVfx {
     while (this.abilityEffects.length >= MAX_ABILITY_EFFECTS) this.abilityEffects.shift()?.root.dispose();
     const root = new TransformNode(`battle-${kind}-${this.abilityId.value++}`, this.scene);
     const ship = this.shipPosition();
-    const start = ship.add(new Vector3(0, -0.7, -0.5));
+    const start = ship.add(new Vector3(0, -scaleMothershipEffect(0.7), -scaleMothershipEffect(0.5)));
     const targetPoint = target.clone();
     const sourceMaterial = kind === 'plasma' ? this.plasmaMaterial : this.empMaterial;
     const tracerFrames = kind === 'plasma' ? [5, 6, 11] : [12, 5, 3];
@@ -284,7 +462,7 @@ export class BattleCombatVfx {
     smoke.parent = root;
     smoke.position = targetPoint.add(new Vector3(0, 0.68, 0));
     smoke.scaling.setAll(1.4);
-    const fallbackTracer = MeshBuilder.CreateCylinder(`${root.name}-fallback-tracer`, { diameter: kind === 'plasma' ? 0.9 : 0.6, height: 1, tessellation: 12 }, this.scene);
+    const fallbackTracer = MeshBuilder.CreateCylinder(`${root.name}-fallback-tracer`, { diameter: scaleMothershipEffect(kind === 'plasma' ? 0.9 : 0.6), height: 1, tessellation: 12 }, this.scene);
     fallbackTracer.parent = root;
     fallbackTracer.material = sourceMaterial;
     alignCylinder(fallbackTracer, start, targetPoint);
@@ -307,6 +485,11 @@ export class BattleCombatVfx {
 
   syncCombatState(state: Readonly<CombatState>): void {
     if (this.disposed) return;
+    const overdriveRemaining = Math.max(0, state.mothership.overdriveSeconds);
+    const overdriveElapsed = BALANCE.overdrive.duration - overdriveRemaining;
+    const fadeIn = Math.min(1, overdriveElapsed / 0.22);
+    const fadeOut = Math.min(1, overdriveRemaining / 0.35);
+    this.overdriveDistortionIntensity = fadeIn * fadeOut;
     for (const hit of state.mothershipHits) {
       if (this.consumedHitIds.has(hit.id)) continue;
       this.consumedHitIds.add(hit.id);
@@ -315,6 +498,7 @@ export class BattleCombatVfx {
     const retainedHits = new Set(state.mothershipHits.map((hit) => hit.id));
     for (const id of this.consumedHitIds) if (!retainedHits.has(id)) this.consumedHitIds.delete(id);
     this.syncProjectiles(state);
+    this.syncCollisionOverlay(state);
     this.syncGroundSwarm(state);
     if (state.lastAirDefenseShot && state.lastAirDefenseShot.id !== this.consumedAirDefenseId) {
       this.consumedAirDefenseId = state.lastAirDefenseShot.id;
@@ -322,19 +506,24 @@ export class BattleCombatVfx {
     }
     if (state.lastPointDefenseShot && state.lastPointDefenseShot.id !== this.consumedPointDefenseId) {
       this.consumedPointDefenseId = state.lastPointDefenseShot.id;
-      this.triggerPointDefenseShot(state.lastPointDefenseShot.origin, state.lastPointDefenseShot.target, state.lastPointDefenseShot.targetAltitude);
+      this.triggerPointDefenseShot(
+        state.lastPointDefenseShot.origin,
+        state.lastPointDefenseShot.target,
+        state.lastPointDefenseShot.targetAltitude,
+        this.projectileVisualPositions.get(state.lastPointDefenseShot.targetId),
+      );
     }
     const target = state.absorbableTargets.find((item) => item.id === state.activeBeamTargetId);
-    this.setAbsorption(Boolean(state.activeAbility === 'beam' && target), target ? new Vector3(target.center.x, -4.2, target.center.z) : undefined);
+    this.setAbsorption(Boolean(state.activeAbility === 'beam' && target), target ? new Vector3(target.center.x, GROUND_ABSORPTION_TARGET_Y, target.center.z) : undefined);
   }
 
-  toggleAbsorption(target = new Vector3(0, -4.2, 0)): boolean {
+  toggleAbsorption(target = new Vector3(0, GROUND_ABSORPTION_TARGET_Y, 0)): boolean {
     const next = !this.absorption;
     this.setAbsorption(next, target);
     return next;
   }
 
-  setAbsorption(active: boolean, target = new Vector3(0, -4.2, 0)): void {
+  setAbsorption(active: boolean, target = new Vector3(0, GROUND_ABSORPTION_TARGET_Y, 0)): void {
     if (!active) {
       if (!this.absorption) return;
       this.absorption.beam.dispose();
@@ -376,13 +565,56 @@ export class BattleCombatVfx {
     this.absorption = { beam, core, funnel, ring, rods, target: target.clone() };
   }
 
+  private createCollisionOverlay(name: string, material: StandardMaterial): Mesh {
+    const overlay = MeshBuilder.CreateSphere(name, { diameter: 2, segments: 24 }, this.scene);
+    overlay.material = material;
+    overlay.renderingGroupId = 3;
+    overlay.isPickable = false;
+    return overlay;
+  }
+
+  private syncCollisionOverlay(state: Readonly<CombatState>): void {
+    const center = this.shipPosition();
+    const projectileRadius = BALANCE.defense.samProjectileRadius;
+    this.collisionHullOverlay.position.copyFrom(center);
+    this.collisionHullOverlay.scaling.set(
+      BALANCE.mothership.hullHitRadius + projectileRadius,
+      BALANCE.mothership.hullHitHalfHeight + projectileRadius,
+      BALANCE.mothership.hullHitRadius + projectileRadius,
+    );
+    this.collisionHullOverlay.scaling.scaleInPlace(this.collisionHullOverlayScale);
+    this.collisionHullOverlay.visibility = state.mothership.shield > 0 ? 0.18 : 0.62;
+    this.collisionShieldOverlay.position.copyFrom(center);
+    this.collisionShieldOverlay.scaling.set(
+      BALANCE.mothership.shieldHitRadius + projectileRadius,
+      BALANCE.mothership.shieldHitHalfHeight + projectileRadius,
+      BALANCE.mothership.shieldHitRadius + projectileRadius,
+    );
+    this.collisionShieldOverlay.scaling.scaleInPlace(this.collisionShieldOverlayScale);
+    this.collisionShieldOverlay.visibility = state.mothership.shield > 0 ? 0.7 : 0.08;
+  }
+
+  setCollisionOverlayScale(kind: 'hull' | 'shield', scale: number): void {
+    const value = Math.max(0.25, Math.min(3, scale));
+    if (kind === 'hull') this.collisionHullOverlayScale = value;
+    else this.collisionShieldOverlayScale = value;
+  }
+
+  resetCollisionOverlayScale(): void {
+    this.collisionHullOverlayScale = 1;
+    this.collisionShieldOverlayScale = 1;
+  }
+
   update(dt: number, elapsed: number): void {
     if (this.disposed) return;
+    this.overdriveDistortionTime += Math.max(0, dt);
+    this.updateHullShake(dt);
     this.updateDamageEffects(dt);
     this.updateAbilityEffects(dt);
     this.updateAirDefenseEffects(dt);
     this.updateMissileTrails(dt);
     this.updateGroundSwarmImpacts(dt);
+    this.updateSearchBeams(dt);
     this.updateAbsorption(elapsed);
   }
 
@@ -393,17 +625,21 @@ export class BattleCombatVfx {
     this.abilityEffects.splice(0).forEach((effect) => effect.root.dispose());
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
+    this.projectileVisualPositions.clear();
     this.projectileLaunchPositions.clear();
     this.missileTrailParticles.forEach((particles) => particles.forEach((particle) => particle.mesh.dispose()));
     this.missileTrailParticles.clear();
     this.missileTrailLastPositions.clear();
+    this.missileJetVisuals.forEach((visual) => { visual.glow.dispose(); visual.core.dispose(); });
+    this.missileJetVisuals.clear();
     this.groundSwarmVisuals.forEach((visual) => {
       visual.trail.stop();
       visual.trail.dispose();
-      visual.mesh.dispose();
+      visual.members.forEach((member) => member.mesh.dispose());
     });
     this.groundSwarmVisuals.clear();
     this.groundSwarmImpactEffects.splice(0).forEach((effect) => { effect.flash.dispose(); effect.ring.dispose(); });
+    this.searchBeamVisuals.splice(0).forEach((effect) => this.disposeSearchBeam(effect));
     this.consumedGroundSwarmImpactIds.clear();
     this.consumedHitIds.clear();
     this.consumedAirDefenseId = null;
@@ -421,8 +657,11 @@ export class BattleCombatVfx {
       this.absorption.ring.dispose();
       this.absorption.rods.forEach((rod) => { rod.body.dispose(); rod.core.dispose(); });
     }
-    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
+    this.overdriveDistortion.dispose();
+    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.samMissileJetGlowMaterial, this.samMissileJetCoreMaterial, this.collisionHullOverlayMaterial, this.collisionShieldOverlayMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.searchBeamMaterial, this.searchGroundRingMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
     this.samProjectileTexture.dispose();
+    this.collisionHullOverlay.dispose();
+    this.collisionShieldOverlay.dispose();
     [this.shieldImpactTexture, this.vfxTexture, this.explosionTexture, this.smokeTexture].forEach((texture) => texture.dispose());
   }
 
@@ -431,41 +670,85 @@ export class BattleCombatVfx {
     const impact = center.add(localImpact);
     const bubble = MeshBuilder.CreateSphere('battle-shield-impact-shell', { diameter: 2, segments: 20 }, this.scene);
     bubble.position = center;
-    bubble.scaling = new Vector3(12.15, 3.75, 12.15);
+    bubble.scaling = new Vector3(BALANCE.mothership.shieldVisualRadius, BALANCE.mothership.shieldVisualHalfHeight, BALANCE.mothership.shieldVisualRadius);
     bubble.material = this.shieldBubbleMaterial;
-    const core = MeshBuilder.CreateSphere('battle-shield-impact-core', { diameter: 1.25, segments: 12 }, this.scene);
+    bubble.visibility = SHOW_SHIELD_BUBBLE ? 1 : 0;
+    const shieldPatch = createShieldImpactPatch(
+      'battle-shield-impact-patch',
+      normal,
+      scaleMothershipEffect(3.4),
+      this.shieldRingMaterial,
+      this.scene,
+    );
+    shieldPatch.position = impact;
+    const core = MeshBuilder.CreateSphere('battle-shield-impact-core', { diameter: scaleMothershipEffect(1.25), segments: 12 }, this.scene);
     core.position = impact;
     core.material = this.shieldCoreMaterial;
-    const ring = this.impactRing('battle-shield-impact-ring', impact, normal, 2.3, 0.16, this.shieldRingMaterial);
-    const secondRing = this.impactRing('battle-shield-impact-ring-secondary', impact.add(normal.scale(0.06)), normal, 1.45, 0.1, this.shieldCoreMaterial);
+    const ring = this.impactRing('battle-shield-impact-ring', impact, normal, scaleMothershipEffect(2.3), scaleMothershipEffect(0.16), this.shieldRingMaterial);
+    const secondRing = this.impactRing('battle-shield-impact-ring-secondary', impact.add(normal.scale(scaleMothershipEffect(0.06))), normal, scaleMothershipEffect(1.45), scaleMothershipEffect(0.1), this.shieldCoreMaterial);
     const sprite = this.flipbook('battle-shield-impact-sprite', this.shieldImpactTexture, 1, 1, 0, new Color3(0.18, 0.88, 1), 'ADDITIVE');
-    sprite.position = impact.add(normal.scale(0.16));
-    sprite.scaling.setAll(2.2);
+    sprite.position = impact.add(normal.scale(scaleMothershipEffect(0.16)));
+    sprite.scaling.setAll(scaleMothershipEffect(2.2));
     const explosionSprite = includeExplosion ? this.flipbook('battle-sam-shield-impact-explosion', this.explosionTexture, 5, 5, 0, Color3.White(), 'ALPHA') : undefined;
     if (explosionSprite) {
-      explosionSprite.position = impact.add(normal.scale(0.65));
-      explosionSprite.scaling.setAll(3.2);
+      explosionSprite.position = impact.add(normal.scale(scaleMothershipEffect(0.65)));
+      explosionSprite.scaling.setAll(scaleMothershipEffect(3.2));
     }
-    this.setRenderingGroup([bubble, core, ring, secondRing, sprite, ...(explosionSprite ? [explosionSprite] : [])]);
-    return { kind: 'SHIELD', elapsed: 0, duration: SHIELD_DURATION, normal, localImpact, bubble, core, ring, secondRing, sprite, explosionSprite, debris: [] };
+    this.setRenderingGroup([bubble, shieldPatch, core, ring, secondRing, sprite, ...(explosionSprite ? [explosionSprite] : [])]);
+    return { kind: 'SHIELD', elapsed: 0, duration: SHIELD_DURATION, normal, localImpact, bubble, shieldPatch, core, ring, secondRing, sprite, explosionSprite, debris: [] };
+  }
+
+  private startHullShake(): void {
+    this.hullShakeElapsed = 0;
+    this.hullShakePhase = (this.hullShakePhase + Math.PI * 0.73) % (Math.PI * 2);
+  }
+
+  private updateHullShake(dt: number): void {
+    const root = this.mothershipVisualRoot;
+    const basePosition = this.mothershipVisualBasePosition;
+    const baseRotation = this.mothershipVisualBaseRotation;
+    if (!root || !basePosition || !baseRotation) return;
+
+    if (this.hullShakeElapsed >= HULL_SHAKE_DURATION) {
+      root.position.copyFrom(basePosition);
+      root.rotation.copyFrom(baseRotation);
+      return;
+    }
+
+    this.hullShakeElapsed = Math.min(HULL_SHAKE_DURATION, this.hullShakeElapsed + Math.max(0, dt));
+    const progress = this.hullShakeElapsed / HULL_SHAKE_DURATION;
+    const envelope = Math.sin(progress * Math.PI);
+    const oscillation = Math.sin(progress * Math.PI * 5 + this.hullShakePhase);
+    const secondaryOscillation = Math.cos(progress * Math.PI * 4.2 + this.hullShakePhase * 0.7);
+    const offset = HULL_SHAKE_OFFSET * envelope;
+    root.position.set(
+      basePosition.x + oscillation * offset,
+      basePosition.y + secondaryOscillation * offset * 0.34,
+      basePosition.z + oscillation * offset * 0.16,
+    );
+    root.rotation.set(
+      baseRotation.x + secondaryOscillation * HULL_SHAKE_ROTATION * envelope * 0.5,
+      baseRotation.y + oscillation * HULL_SHAKE_ROTATION * envelope * 0.35,
+      baseRotation.z + oscillation * HULL_SHAKE_ROTATION * envelope,
+    );
   }
 
   private createHullEffect(id: string, normal: Vector3, localImpact: Vector3): DamageEffect {
     const impact = this.shipPosition().add(localImpact.scale(1.04));
-    const core = MeshBuilder.CreateSphere('battle-hull-impact-explosion', { diameter: 1.5, segments: 14 }, this.scene);
+    const core = MeshBuilder.CreateSphere('battle-hull-impact-explosion', { diameter: scaleMothershipEffect(1.5), segments: 14 }, this.scene);
     core.position = impact;
     core.material = this.hullFlashMaterial;
-    const smoke = MeshBuilder.CreateSphere('battle-hull-impact-smoke', { diameter: 1.8, segments: 10 }, this.scene);
-    smoke.position = impact.add(normal.scale(0.3));
+    const smoke = MeshBuilder.CreateSphere('battle-hull-impact-smoke', { diameter: scaleMothershipEffect(1.8), segments: 10 }, this.scene);
+    smoke.position = impact.add(normal.scale(scaleMothershipEffect(0.3)));
     smoke.material = this.hullSmokeMaterial;
-    const ring = this.impactRing('battle-hull-impact-ring', impact, normal, 2.1, 0.22, this.hullFlashMaterial);
-    const secondRing = this.impactRing('battle-hull-impact-ring-secondary', impact.add(normal.scale(0.12)), normal, 1.2, 0.12, this.hullDebrisMaterial);
+    const ring = this.impactRing('battle-hull-impact-ring', impact, normal, scaleMothershipEffect(2.1), scaleMothershipEffect(0.22), this.hullFlashMaterial);
+    const secondRing = this.impactRing('battle-hull-impact-ring-secondary', impact.add(normal.scale(scaleMothershipEffect(0.12))), normal, scaleMothershipEffect(1.2), scaleMothershipEffect(0.12), this.hullDebrisMaterial);
     const sprite = this.flipbook('battle-hull-impact-flipbook', this.explosionTexture, 5, 5, 0, Color3.White(), 'ALPHA');
-    sprite.position = impact.add(normal.scale(0.65));
-    sprite.scaling.setAll(3.2);
+    sprite.position = impact.add(normal.scale(scaleMothershipEffect(0.65)));
+    sprite.scaling.setAll(scaleMothershipEffect(3.2));
     const smokeSprite = this.flipbook('battle-hull-impact-smoke-flipbook', this.smokeTexture, 8, 8, 0, new Color3(0.52, 0.54, 0.56), 'ALPHA');
-    smokeSprite.position = impact.add(normal.scale(0.9)).add(Vector3.Up().scale(0.25));
-    smokeSprite.scaling.setAll(1.1);
+    smokeSprite.position = impact.add(normal.scale(scaleMothershipEffect(0.9))).add(Vector3.Up().scale(scaleMothershipEffect(0.25)));
+    smokeSprite.scaling.setAll(scaleMothershipEffect(1.1));
     const debris = this.createDebris(id, impact, normal);
     this.setRenderingGroup([core, smoke, ring, secondRing, sprite, smokeSprite, ...debris.map((piece) => piece.mesh)]);
     return { kind: 'HULL', elapsed: 0, duration: HULL_DURATION, normal, localImpact, core, ring, secondRing, smoke, smokeSprite, sprite, debris };
@@ -479,14 +762,14 @@ export class BattleCombatVfx {
       const a = seededUnit(seed + index * 17);
       const b = seededUnit(seed + index * 31 + 7);
       const c = seededUnit(seed + index * 47 + 13);
-      const size = 0.28 + a * 0.4;
+      const size = scaleMothershipEffect(0.28 + a * 0.4);
       const mesh = MeshBuilder.CreateBox(`battle-hull-debris-${index}`, { width: size * 1.7, height: size * 0.65, depth: size }, this.scene);
-      mesh.position = impact.add(tangent.scale((a - 0.5) * 1.6)).add(bitangent.scale((b - 0.5) * 1.6)).add(normal.scale(c * 0.45));
+      mesh.position = impact.add(tangent.scale(scaleMothershipEffect((a - 0.5) * 1.6))).add(bitangent.scale(scaleMothershipEffect((b - 0.5) * 1.6))).add(normal.scale(scaleMothershipEffect(c * 0.45)));
       mesh.rotation = new Vector3(a * Math.PI, b * Math.PI, c * Math.PI);
       mesh.material = this.hullDebrisMaterial;
       return {
         mesh,
-        velocity: normal.scale(3.8 + c * 5.2).add(tangent.scale((a - 0.5) * 11)).add(bitangent.scale((b - 0.35) * 8)).add(Vector3.Up().scale(2.2 + b * 5.6)),
+        velocity: normal.scale(scaleMothershipEffect(3.8 + c * 5.2)).add(tangent.scale(scaleMothershipEffect((a - 0.5) * 11))).add(bitangent.scale(scaleMothershipEffect((b - 0.35) * 8))).add(Vector3.Up().scale(scaleMothershipEffect(2.2 + b * 5.6))),
         rotationVelocity: new Vector3((b - 0.5) * 9, (c - 0.5) * 11, (a - 0.5) * 10),
       };
     });
@@ -500,42 +783,45 @@ export class BattleCombatVfx {
       const impact = this.shipPosition().add(effect.localImpact.scale(effect.kind === 'HULL' ? 1.04 : 1));
       if (effect.kind === 'SHIELD') {
         effect.bubble!.position = this.shipPosition();
-        effect.bubble!.scaling = new Vector3(12.15 + pulse * 0.45, 3.75 + pulse * 0.2, 12.15 + pulse * 0.45);
-        effect.bubble!.visibility = pulse * 0.9;
+        effect.bubble!.scaling = new Vector3(BALANCE.mothership.shieldVisualRadius + pulse * scaleMothershipEffect(0.45), BALANCE.mothership.shieldVisualHalfHeight + pulse * scaleMothershipEffect(0.2), BALANCE.mothership.shieldVisualRadius + pulse * scaleMothershipEffect(0.45));
+        effect.bubble!.visibility = SHOW_SHIELD_BUBBLE ? pulse * 0.9 : 0;
+        effect.shieldPatch!.position = impact;
+        effect.shieldPatch!.scaling.setAll(0.76 + pulse * 0.38);
+        effect.shieldPatch!.visibility = pulse * 0.94;
         effect.core.position = impact;
-        effect.core.scaling.setAll(0.45 + pulse * 1.4);
+        effect.core.scaling.setAll(scaleMothershipEffect(0.45 + pulse * 1.4));
         effect.core.visibility = 1 - progress;
         effect.ring.position = impact;
-        effect.secondRing.position = impact.add(effect.normal.scale(0.06));
-        effect.ring.scaling.setAll(0.55 + progress * 3.3);
-        effect.secondRing.scaling.setAll(0.45 + progress * 2.4);
+        effect.secondRing.position = impact.add(effect.normal.scale(scaleMothershipEffect(0.06)));
+        effect.ring.scaling.setAll(scaleMothershipEffect(0.55 + progress * 3.3));
+        effect.secondRing.scaling.setAll(scaleMothershipEffect(0.45 + progress * 2.4));
         effect.ring.visibility = Math.max(0, 1 - progress);
         effect.secondRing.visibility = Math.max(0, 1 - progress * 1.15);
-        effect.sprite.position = impact.add(effect.normal.scale(0.16));
-        effect.sprite.scaling.setAll(1.5 + progress * 4.2);
+        effect.sprite.position = impact.add(effect.normal.scale(scaleMothershipEffect(0.16)));
+        effect.sprite.scaling.setAll(scaleMothershipEffect(1.5 + progress * 4.2));
         effect.sprite.visibility = pulse * (1 - progress * 0.32);
         if (effect.explosionSprite) {
           setFrame(effect.explosionSprite, 5, 5, effect.elapsed, 30);
-          effect.explosionSprite.position = impact.add(effect.normal.scale(0.65));
-          effect.explosionSprite.scaling.setAll(0.72 + Math.sin(Math.min(1, effect.elapsed / 0.55) * Math.PI / 2) * 2.8);
+          effect.explosionSprite.position = impact.add(effect.normal.scale(scaleMothershipEffect(0.65)));
+          effect.explosionSprite.scaling.setAll(scaleMothershipEffect(0.72 + Math.sin(Math.min(1, effect.elapsed / 0.55) * Math.PI / 2) * 2.8));
           effect.explosionSprite.visibility = Math.max(0, 1 - Math.max(0, progress - 0.72) / 0.28);
         }
       } else {
         setFrame(effect.sprite, 5, 5, effect.elapsed, 20);
         setFrame(effect.smokeSprite!, 8, 8, Math.max(0, effect.elapsed - 0.12), 42);
         effect.core.position = impact;
-        effect.core.scaling.setAll(0.7 + Math.sin(Math.min(1, progress * 2) * Math.PI / 2) * 3.1);
+        effect.core.scaling.setAll(scaleMothershipEffect(0.7 + Math.sin(Math.min(1, progress * 2) * Math.PI / 2) * 3.1));
         effect.core.visibility = Math.max(0, 1 - progress * 1.55);
-        effect.smoke!.position.y += dt * 1.2;
-        effect.smoke!.scaling.setAll(0.8 + progress * 2.5);
+        effect.smoke!.position.y += dt * scaleMothershipEffect(1.2);
+        effect.smoke!.scaling.setAll(scaleMothershipEffect(0.8 + progress * 2.5));
         effect.smoke!.visibility = Math.max(0, 0.9 - progress * 0.82);
-        effect.smokeSprite!.position = impact.add(effect.normal.scale(0.9)).add(Vector3.Up().scale(0.25 + progress * 1.35));
-        effect.smokeSprite!.scaling.setAll(1.1 + progress * 2.7);
+        effect.smokeSprite!.position = impact.add(effect.normal.scale(scaleMothershipEffect(0.9))).add(Vector3.Up().scale(scaleMothershipEffect(0.25 + progress * 1.35)));
+        effect.smokeSprite!.scaling.setAll(scaleMothershipEffect(1.1 + progress * 2.7));
         effect.smokeSprite!.visibility = Math.max(0, 0.82 - progress * 0.72);
         effect.ring.position = impact;
-        effect.secondRing.position = impact.add(effect.normal.scale(0.12));
-        effect.ring.scaling.setAll(0.65 + progress * 4.8);
-        effect.secondRing.scaling.setAll(0.5 + progress * 3.1);
+        effect.secondRing.position = impact.add(effect.normal.scale(scaleMothershipEffect(0.12)));
+        effect.ring.scaling.setAll(scaleMothershipEffect(0.65 + progress * 4.8));
+        effect.secondRing.scaling.setAll(scaleMothershipEffect(0.5 + progress * 3.1));
         effect.ring.visibility = Math.max(0, 1 - progress * 1.35);
         effect.secondRing.visibility = Math.max(0, 1 - progress * 1.55);
         for (const piece of effect.debris) {
@@ -594,8 +880,8 @@ export class BattleCombatVfx {
     this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial);
   }
 
-  private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number): void {
-    this.triggerDefenseLaserShot('battle-point-defense-laser', origin, target, targetAltitude, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, true);
+  private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, visualTarget?: Vector3): void {
+    this.triggerDefenseLaserShot('battle-point-defense-laser', origin, target, targetAltitude, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, true, visualTarget);
   }
 
   private triggerDefenseLaserShot(
@@ -606,6 +892,7 @@ export class BattleCombatVfx {
     beamMaterial: StandardMaterial,
     coreMaterial: StandardMaterial,
     withExplosion = false,
+    visualTarget?: Vector3,
   ): void {
     while (this.airDefenseEffects.length >= MAX_AIR_DEFENSE_EFFECTS) {
       const expired = this.airDefenseEffects.shift()!;
@@ -614,8 +901,8 @@ export class BattleCombatVfx {
       expired.impact.dispose();
       expired.explosion?.dispose(false, true);
     }
-    const start = new Vector3(origin.x, this.shipPosition().y + 1.4, origin.z * 0.12);
-    const end = new Vector3(target.x, 8 + (targetAltitude - 33) * 0.22, target.z * 0.12);
+    const start = new Vector3(origin.x, this.shipPosition().y + scaleMothershipEffect(1.4), origin.z * 0.12);
+    const end = visualTarget?.clone() ?? new Vector3(target.x, 8 + (targetAltitude - 33) * 0.22, target.z * 0.12);
     const beam = MeshBuilder.CreateCylinder(name, { diameter: 0.72, height: 1, tessellation: 12 }, this.scene);
     beam.material = beamMaterial;
     const core = MeshBuilder.CreateCylinder(`${name}-core`, { diameter: 0.2, height: 1, tessellation: 10 }, this.scene);
@@ -631,7 +918,7 @@ export class BattleCombatVfx {
     alignCylinder(core, start, end);
     impact.position = end;
     [beam, core, impact, ...(explosion ? [explosion] : [])].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
-    this.airDefenseEffects.push({ beam, core, impact, explosion, elapsed: 0, duration: 0.24, explosionDuration: withExplosion ? 0.72 : undefined, origin: start, target: end });
+    this.airDefenseEffects.push({ beam, core, impact, explosion, elapsed: 0, duration: withExplosion ? 0.42 : 0.24, explosionDuration: withExplosion ? 0.72 : undefined, origin: start, target: end });
   }
 
   private updateAirDefenseEffects(dt: number): void {
@@ -659,6 +946,75 @@ export class BattleCombatVfx {
       effect.explosion?.dispose(false, true);
       this.airDefenseEffects.splice(index, 1);
     }
+  }
+
+  private updateSearchBeams(dt: number): void {
+    if (this.searchSourceMeshes.length === 0) return;
+    if (this.searchBeamVisuals.length === 0) {
+      this.searchNextBurstIn -= dt;
+      if (this.searchNextBurstIn <= 0) this.startSearchBurst();
+    }
+    for (let index = this.searchBeamVisuals.length - 1; index >= 0; index -= 1) {
+      const effect = this.searchBeamVisuals[index];
+      effect.elapsed += dt;
+      const fadeIn = Math.min(1, effect.elapsed);
+      const fadeOut = Math.min(1, Math.max(0, 2 + effect.holdDuration - effect.elapsed));
+      const opacity = Math.min(fadeIn, fadeOut);
+      const source = effect.source.getAbsolutePosition();
+      const movementPhase = effect.motionPhase + effect.elapsed * effect.motionSpeed;
+      const target = new Vector3(
+        this.shipPosition().x + effect.targetOffsetX + Math.cos(movementPhase) * effect.motionRadius,
+        GROUND_ABSORPTION_TARGET_Y,
+        effect.targetOffsetZ + Math.sin(movementPhase * 0.83) * effect.motionRadius * 0.35,
+      );
+      alignCylinder(effect.beam, source, target);
+      effect.groundRing.position.copyFrom(target);
+      effect.beam.visibility = opacity;
+      effect.groundRing.visibility = opacity;
+      if (effect.elapsed < 2 + effect.holdDuration) continue;
+      this.disposeSearchBeam(effect);
+      this.searchBeamVisuals.splice(index, 1);
+    }
+    if (this.searchBeamVisuals.length === 0 && this.searchNextBurstIn <= 0) {
+      this.searchNextBurstIn = 1.5 + Math.random() * 2.5;
+    }
+  }
+
+  private startSearchBurst(): void {
+    const sources = this.searchSourceMeshes.slice();
+    for (let index = sources.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [sources[index], sources[swapIndex]] = [sources[swapIndex], sources[index]];
+    }
+    const count = Math.min(sources.length, 1 + Math.floor(Math.random() * 4));
+    const shipX = this.shipPosition().x;
+    for (const source of sources.slice(0, count)) {
+      const sourcePosition = source.getAbsolutePosition();
+      const motionPattern = this.searchMotionPatterns[this.searchMotionPatternIndex];
+      this.searchMotionPatternIndex = (this.searchMotionPatternIndex + 1) % this.searchMotionPatterns.length;
+      const beam = MeshBuilder.CreateCylinder('battle-search-beam', { diameterTop: SEARCH_BEAM_GROUND_DIAMETER, diameterBottom: SEARCH_BEAM_SOURCE_DIAMETER, height: 1, tessellation: 32 }, this.scene);
+      const groundRing = MeshBuilder.CreateTorus('battle-search-ground-ring', { diameter: SEARCH_BEAM_GROUND_DIAMETER, thickness: 0.12, tessellation: 40 }, this.scene);
+      beam.material = this.searchBeamMaterial;
+      groundRing.material = this.searchGroundRingMaterial;
+      [beam, groundRing].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
+      this.searchBeamVisuals.push({
+        beam,
+        groundRing,
+        source,
+        targetOffsetX: sourcePosition.x - shipX + (Math.random() - 0.5) * 8,
+        targetOffsetZ: sourcePosition.z,
+        motionRadius: motionPattern.radius,
+        motionSpeed: motionPattern.speed,
+        motionPhase: Math.random() * Math.PI * 2,
+        holdDuration: 2 + Math.random() * 2,
+        elapsed: 0,
+      });
+    }
+  }
+
+  private disposeSearchBeam(effect: SearchBeamVisual): void {
+    effect.beam.dispose();
+    effect.groundRing.dispose();
   }
 
   private updateAbsorption(elapsed: number): void {
@@ -696,36 +1052,60 @@ export class BattleCombatVfx {
       activeIds.add(projectile.id);
       let visual = this.groundSwarmVisuals.get(projectile.id);
       if (!visual) {
-        const mesh = MeshBuilder.CreateSphere(`battle-${projectile.id}`, { diameter: 0.58, segments: 10 }, this.scene);
-        mesh.material = this.groundSwarmCoreMaterial;
-        mesh.renderingGroupId = 3;
-        mesh.isPickable = false;
-        const trail = new TrailMesh(`battle-${projectile.id}-trail`, mesh, this.scene, 0.12, 22, true);
+        const seed = hashString(projectile.id);
+        const memberCount = GROUND_SWARM_MIN_VISUAL_MEMBERS
+          + Math.floor(seededUnit(seed) * (GROUND_SWARM_MAX_VISUAL_MEMBERS - GROUND_SWARM_MIN_VISUAL_MEMBERS + 1));
+        const members = Array.from({ length: memberCount }, (_, index) => {
+          const memberSeed = seed + index * 37;
+          const mesh = MeshBuilder.CreateSphere(`battle-${projectile.id}-member-${index}`, { diameter: 0.34, segments: 8 }, this.scene);
+          mesh.material = this.groundSwarmCoreMaterial;
+          mesh.renderingGroupId = 3;
+          mesh.isPickable = false;
+          return {
+            mesh,
+            phase: seededUnit(memberSeed + 11) * Math.PI * 2,
+            angularSpeed: 3.6 + seededUnit(memberSeed + 17) * 2.3,
+            radiusX: GROUND_SWARM_ORBIT_HORIZONTAL_MIN_RADIUS + seededUnit(memberSeed + 23) * (GROUND_SWARM_ORBIT_HORIZONTAL_MAX_RADIUS - GROUND_SWARM_ORBIT_HORIZONTAL_MIN_RADIUS),
+            radiusY: GROUND_SWARM_ORBIT_VERTICAL_MIN_RADIUS + seededUnit(memberSeed + 29) * (GROUND_SWARM_ORBIT_VERTICAL_MAX_RADIUS - GROUND_SWARM_ORBIT_VERTICAL_MIN_RADIUS),
+            radiusZ: GROUND_SWARM_ORBIT_DEPTH_MIN_RADIUS + seededUnit(memberSeed + 31) * (GROUND_SWARM_ORBIT_DEPTH_MAX_RADIUS - GROUND_SWARM_ORBIT_DEPTH_MIN_RADIUS),
+            baseScale: 0.78 + seededUnit(memberSeed + 41) * 0.34,
+          } satisfies GroundSwarmMember;
+        });
+        const trail = new TrailMesh(`battle-${projectile.id}-trail`, members[0].mesh, this.scene, 0.12, 22, true);
         trail.material = this.groundSwarmMaterial;
         trail.renderingGroupId = 3;
         trail.isPickable = false;
         trail.start();
-        visual = { mesh, trail };
+        visual = { members, trail };
         this.groundSwarmVisuals.set(projectile.id, visual);
       }
       const progress = Math.max(0, Math.min(1, projectile.progress));
       const eased = progress * progress * (3 - 2 * progress);
       const direction = projectile.targetX >= projectile.startX ? 1 : -1;
       const weave = Math.sin(progress * Math.PI * 4 + projectile.weavePhase) * (1 - progress) * 1.1;
-      visual.mesh.position.set(
+      const center = new Vector3(
         projectile.startX + (projectile.targetX - projectile.startX) * eased + weave * direction,
         12.8 + (GROUND_ATTACK_TARGET_Y - 12.8) * progress + Math.sin(progress * Math.PI) * projectile.arcHeight,
         1.2 + Math.sin(progress * Math.PI * 3 + projectile.weavePhase) * (1 - progress) * 1.35,
       );
-      visual.mesh.scaling.setAll(0.72 + Math.sin(progress * Math.PI) * 0.36);
-      visual.mesh.visibility = projectile.progress >= 0 ? 1 : 0;
-      visual.trail.visibility = visual.mesh.visibility * 0.7;
+      const visible = projectile.progress >= 0 ? 1 : 0;
+      for (const member of visual.members) {
+        const spiralAngle = state.elapsedSeconds * member.angularSpeed + member.phase + progress * Math.PI * 4.2;
+        const spiralRadius = 0.78 + progress * 0.22;
+        member.mesh.position.copyFrom(center);
+        member.mesh.position.x += Math.cos(spiralAngle) * member.radiusX * spiralRadius;
+        member.mesh.position.y += Math.sin(spiralAngle) * member.radiusY * spiralRadius;
+        member.mesh.position.z += Math.sin(spiralAngle * 0.96 + member.phase) * member.radiusZ * spiralRadius;
+        member.mesh.scaling.setAll(member.baseScale * (0.9 + Math.sin(spiralAngle * 1.8) * 0.1));
+        member.mesh.visibility = visible;
+      }
+      visual.trail.visibility = visible * 0.7;
     }
     for (const [id, visual] of this.groundSwarmVisuals) {
       if (activeIds.has(id)) continue;
       visual.trail.stop();
       visual.trail.dispose();
-      visual.mesh.dispose();
+      visual.members.forEach((member) => member.mesh.dispose());
       this.groundSwarmVisuals.delete(id);
     }
 
@@ -782,23 +1162,26 @@ export class BattleCombatVfx {
       if (!mesh) {
         const isSam = missile.source === 'sam';
         mesh = isSam
-          ? MeshBuilder.CreatePlane(`battle-projectile-${missile.id}`, { size: 1.05, sideOrientation: Mesh.DOUBLESIDE }, this.scene)
+          ? MeshBuilder.CreatePlane(`battle-projectile-${missile.id}`, { size: 1.05 * SAM_MISSILE_SPRITE_SCALE, sideOrientation: Mesh.DOUBLESIDE }, this.scene)
           : MeshBuilder.CreateSphere(`battle-projectile-${missile.id}`, { diameter: 0.42, segments: 8 }, this.scene);
         mesh.material = isSam ? this.samProjectileSpriteMaterial : this.fighterProjectileMaterial;
-        if (isSam) mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
+        // The side-view plane already faces the camera. Keep it fixed so the
+        // homing Z rotation below controls the missile nose direction.
+        if (isSam) mesh.billboardMode = Mesh.BILLBOARDMODE_NONE;
         mesh.renderingGroupId = 3;
         mesh.isPickable = false;
         this.projectileMeshes.set(missile.id, mesh);
+        if (isSam) this.createMissileJetVisual(missile.id);
       }
-      if (missile.source === 'sam' && !this.projectileLaunchPositions.has(missile.id)) {
-        this.projectileLaunchPositions.set(missile.id, this.groundAttackSpawnResolver?.(missile.sourceId) ?? new Vector3(
+      if (!this.projectileLaunchPositions.has(missile.id)) {
+        this.projectileLaunchPositions.set(missile.id, this.projectileVisualOriginResolver?.(missile.source, missile.sourceId) ?? new Vector3(
           missile.launchPosition.x,
           8 + (missile.launchY - 33) * 0.22,
           missile.launchPosition.z * 0.12,
         ));
       }
       const launchPosition = this.projectileLaunchPositions.get(missile.id);
-      if (missile.source === 'sam' && launchPosition) {
+      if (launchPosition && missile.source === 'sam') {
         const launchDistance = Math.max(0.001, Math.hypot(
           missile.launchPosition.x - missile.target.x,
           missile.launchY - missile.targetY,
@@ -815,21 +1198,73 @@ export class BattleCombatVfx {
         const currentPosition = new Vector3(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
         const homingDirection = targetPosition.subtract(currentPosition);
         if (homingDirection.lengthSquared() > 0.0001) {
-          mesh.rotation.z = Math.atan2(homingDirection.y, homingDirection.x) - SAM_MISSILE_ART_ANGLE;
+          mesh.rotation.z = Math.atan2(homingDirection.y, homingDirection.x);
           this.spawnMissileTrail(missile.id, mesh.position, homingDirection);
+          const jet = this.missileJetVisuals.get(missile.id);
+          if (jet) {
+            const direction = homingDirection.normalize();
+            const jetPosition = mesh.position.subtract(direction.scale(0.78));
+            jetPosition.z -= 0.06;
+            const jetAngle = Math.atan2(direction.y, direction.x) - Math.PI / 2;
+            const pulse = 0.92 + Math.sin(missile.age * 42) * 0.08;
+            jet.glow.position.copyFrom(jetPosition);
+            jet.glow.rotation.z = jetAngle;
+            jet.glow.scaling.set(0.42 * pulse, 0.68 * pulse, 1);
+            jet.glow.visibility = mesh.visibility;
+            jet.core.position.copyFrom(jetPosition);
+            jet.core.rotation.z = jetAngle;
+            jet.core.scaling.set(0.2 * pulse, 0.38 * pulse, 1);
+            jet.core.visibility = mesh.visibility;
+          }
         }
+      } else if (launchPosition && missile.source === 'fighter') {
+        const launchDistance = Math.max(0.001, Math.hypot(
+          missile.launchPosition.x - missile.target.x,
+          missile.launchY - missile.targetY,
+          missile.launchPosition.z - missile.target.z,
+        ));
+        const remainingDistance = Math.hypot(
+          missile.position.x - missile.target.x,
+          missile.y - missile.targetY,
+          missile.position.z - missile.target.z,
+        );
+        const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
+        const targetPosition = new Vector3(missile.target.x, 16.5 + (missile.targetY - 33) * 0.22, missile.target.z * 0.12);
+        mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
       } else {
-        mesh.position.set(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
+        mesh.position.set(missile.position.x, 16.5 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
       }
+      this.projectileVisualPositions.set(missile.id, mesh.position.clone());
       mesh.visibility = Math.max(0, 1 - Math.max(0, missile.age - 6) / 2);
     }
     for (const [id, mesh] of this.projectileMeshes) {
       if (activeIds.has(id)) continue;
       mesh.dispose();
       this.projectileMeshes.delete(id);
+      this.projectileVisualPositions.delete(id);
       this.projectileLaunchPositions.delete(id);
       this.disposeMissileTrail(id);
+      this.disposeMissileJetVisual(id);
     }
+  }
+
+  private createMissileJetVisual(id: string): void {
+    const glow = MeshBuilder.CreateDisc(`battle-${id}-jet-glow`, { radius: 1, tessellation: 16, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+    glow.material = this.samMissileJetGlowMaterial;
+    glow.renderingGroupId = 3;
+    glow.isPickable = false;
+    const core = MeshBuilder.CreateDisc(`battle-${id}-jet-core`, { radius: 1, tessellation: 16, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+    core.material = this.samMissileJetCoreMaterial;
+    core.renderingGroupId = 3;
+    core.isPickable = false;
+    this.missileJetVisuals.set(id, { glow, core });
+  }
+
+  private disposeMissileJetVisual(id: string): void {
+    const visual = this.missileJetVisuals.get(id);
+    visual?.glow.dispose();
+    visual?.core.dispose();
+    this.missileJetVisuals.delete(id);
   }
 
   private spawnMissileTrail(id: string, position: Vector3, direction: Vector3): void {
@@ -837,21 +1272,21 @@ export class BattleCombatVfx {
     if (lastPosition && Vector3.DistanceSquared(lastPosition, position) < SAM_MISSILE_TRAIL_SPAWN_DISTANCE ** 2) return;
     const particles = this.missileTrailParticles.get(id) ?? [];
     const normalizedDirection = direction.normalize();
-    const tailPosition = position.subtract(normalizedDirection.scale(0.48));
+    const tailPosition = position.subtract(normalizedDirection.scale(0.62));
     const particle = MeshBuilder.CreateDisc(`battle-${id}-smoke-${particles.length}`, { radius: 1, tessellation: 12, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
     particle.material = this.samMissileTrailMaterial;
     particle.billboardMode = Mesh.BILLBOARDMODE_ALL;
     particle.position = tailPosition;
     particle.position.z -= 0.03;
-    particle.scaling.setAll(0.08 + (particles.length % 3) * 0.018);
+    particle.scaling.setAll(0.14 + (particles.length % 3) * 0.028);
     particle.renderingGroupId = 3;
     particle.isPickable = false;
     particles.push({
       mesh: particle,
       age: 0,
-      lifetime: SAM_MISSILE_TRAIL_LIFETIME + (particles.length % 3) * 0.04,
-      baseScale: 0.08 + (particles.length % 3) * 0.018,
-      drift: new Vector3(-normalizedDirection.y, normalizedDirection.x, 0).scale((particles.length % 3 - 1) * 0.08),
+      lifetime: SAM_MISSILE_TRAIL_LIFETIME + (particles.length % 3) * 0.08,
+      baseScale: 0.14 + (particles.length % 3) * 0.028,
+      drift: new Vector3(-normalizedDirection.y, normalizedDirection.x, 0).scale((particles.length % 3 - 1) * 0.14),
     });
     while (particles.length > SAM_MISSILE_TRAIL_MAX_PARTICLES) particles.shift()?.mesh.dispose();
     this.missileTrailParticles.set(id, particles);
@@ -866,7 +1301,7 @@ export class BattleCombatVfx {
         const progress = Math.min(1, particle.age / particle.lifetime);
         particle.mesh.position.addInPlace(particle.drift.scale(dt));
         particle.mesh.scaling.setAll(particle.baseScale * (1 + progress * 1.2));
-        particle.mesh.visibility = (1 - progress) * 0.72;
+        particle.mesh.visibility = (1 - progress) * 0.9;
         if (progress >= 1) {
           particle.mesh.dispose();
           particles.splice(index, 1);
@@ -932,12 +1367,13 @@ export class BattleCombatVfx {
 
   private alignSpriteTracer(mesh: Mesh, start: Vector3, end: Vector3): void {
     mesh.position = start.add(end).scale(0.5);
-    mesh.scaling.x = 0.9;
+    mesh.scaling.x = scaleMothershipEffect(0.9);
     mesh.scaling.y = end.subtract(start).length();
   }
 
   private disposeDamageEffect(effect: DamageEffect): void {
     effect.bubble?.dispose();
+    effect.shieldPatch?.dispose();
     effect.core.dispose();
     effect.ring.dispose();
     effect.secondRing.dispose();
@@ -969,6 +1405,38 @@ function setAtlasFrame(mesh: Mesh | Texture, columns: number, rows: number, fram
 function frameForProgress(frames: number[], progress: number): number {
   const index = Math.min(frames.length - 1, Math.floor(Math.max(0, progress) * frames.length));
   return frames[Math.max(0, index)] ?? 0;
+}
+
+function createShieldImpactPatch(name: string, normal: Vector3, radius: number, material: StandardMaterial, scene: import('@babylonjs/core').Scene): Mesh {
+  let tangent = Vector3.Cross(Vector3.Up(), normal);
+  if (tangent.lengthSquared() < 0.001) tangent = Vector3.Cross(Vector3.Right(), normal);
+  tangent.normalize();
+  const bitangent = Vector3.Cross(normal, tangent).normalize();
+  const lines: Vector3[][] = [];
+  const ringSegments = 28;
+  const patchPoint = (distance: number, angle: number): Vector3 => tangent.scale(Math.cos(angle) * distance)
+    .add(bitangent.scale(Math.sin(angle) * distance))
+    .add(normal.scale((distance * distance) / Math.max(0.001, radius * 2)));
+
+  for (let ringIndex = 1; ringIndex <= 4; ringIndex += 1) {
+    const ringRadius = radius * ringIndex / 4;
+    const ring: Vector3[] = [];
+    for (let segment = 0; segment <= ringSegments; segment += 1) {
+      ring.push(patchPoint(ringRadius, segment / ringSegments * Math.PI * 2));
+    }
+    lines.push(ring);
+  }
+  for (let spoke = 0; spoke < 12; spoke += 1) {
+    const angle = spoke / 12 * Math.PI * 2;
+    lines.push([normal.scale(0.04), patchPoint(radius, angle)]);
+  }
+
+  const patch = MeshBuilder.CreateLineSystem(name, { lines }, scene);
+  patch.material = material;
+  patch.renderingGroupId = 3;
+  patch.isPickable = false;
+  patch.visibility = 0;
+  return patch;
 }
 
 function alignCylinder(mesh: Mesh, start: Vector3, end: Vector3): void {

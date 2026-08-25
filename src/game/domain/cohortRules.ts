@@ -105,7 +105,7 @@ export function commandCohortRetreat(state: CombatState, cohortId: string): Comm
   return { ok: true };
 }
 
-export function tickCohorts(state: CombatState, dt: number): void {
+export function tickCohorts(state: CombatState, dt: number, unitInvincibilityEnabled = false): void {
   const step = Math.min(dt, 0.25);
   for (const cohort of state.deployedCohorts) {
     if (!cohort.deployed || cohort.strength <= 0 || !cohort.recoverable) continue;
@@ -115,7 +115,7 @@ export function tickCohorts(state: CombatState, dt: number): void {
       moveCohort(cohort, target, step, state.modifiers.cohortMoveSpeedMultiplier);
     }
     if (cohort.order === 'ASSAULT' && cohort.targetEntityId && distance(cohort.position, cohort.targetPosition ?? cohort.position) <= BALANCE.cohort.assaultRange) {
-      applyCohortAssault(state, cohort, cohort.targetEntityId, step);
+      applyCohortAssault(state, cohort, cohort.targetEntityId, step, unitInvincibilityEnabled);
     } else if (cohort.order === 'SECURE' && cohort.targetPosition && distance(cohort.position, cohort.targetPosition) <= BALANCE.cohort.assaultRange) {
       cohort.cohesion = clamp(cohort.cohesion + step * 0.35, 0, 100);
     }
@@ -128,7 +128,7 @@ export function tickCohorts(state: CombatState, dt: number): void {
     }
     cohort.cohesion = clamp(cohort.cohesion + step * 0.18, 0, 100);
   }
-  tickGroundDefenders(state, step);
+  tickGroundDefenders(state, step, unitInvincibilityEnabled);
 }
 
 export function updateControlNodes(state: CombatState, dt: number): void {
@@ -211,7 +211,8 @@ function moveCohort(cohort: DeployedCohortState, target: Vec2, dt: number, speed
   cohort.position.z += dz / remaining * travel;
 }
 
-function applyCohortAssault(state: CombatState, cohort: DeployedCohortState, targetId: string, dt: number): void {
+function applyCohortAssault(state: CombatState, cohort: DeployedCohortState, targetId: string, dt: number, unitInvincibilityEnabled: boolean): void {
+  if (unitInvincibilityEnabled) return;
   const damage = BALANCE.cohort.assaultDamagePerSecond * state.modifiers.cohortAssaultDamageMultiplier * (cohort.strength / 100) * (cohort.cohesion / 100) * dt;
   const defender = state.groundDefenders.find((item) => item.id === targetId);
   if (defender) {
@@ -227,7 +228,7 @@ function applyCohortAssault(state: CombatState, cohort: DeployedCohortState, tar
   }
 }
 
-function tickGroundDefenders(state: CombatState, dt: number): void {
+function tickGroundDefenders(state: CombatState, dt: number, unitInvincibilityEnabled: boolean): void {
   for (const defender of state.groundDefenders) {
     if (defender.health <= 0 || defender.disabledUntil > state.elapsedSeconds) continue;
     const target = state.deployedCohorts
@@ -235,11 +236,13 @@ function tickGroundDefenders(state: CombatState, dt: number): void {
       .sort((a, b) => distance(a.position, defender.position) - distance(b.position, defender.position))[0];
     if (!target || distance(target.position, defender.position) > defender.attackRange) continue;
     const incomingDamage = defender.attackDamagePerSecond * state.modifiers.cohortLossMultiplier * dt;
-    target.strength = Math.max(0, target.strength - incomingDamage);
-    target.cohesion = clamp(target.cohesion - incomingDamage * 0.18, 0, 100);
-    if (target.strength <= 0) {
-      target.recoverable = false;
-      target.order = 'IDLE';
+    if (!unitInvincibilityEnabled) {
+      target.strength = Math.max(0, target.strength - incomingDamage);
+      target.cohesion = clamp(target.cohesion - incomingDamage * 0.18, 0, 100);
+      if (target.strength <= 0) {
+        target.recoverable = false;
+        target.order = 'IDLE';
+      }
     }
   }
 }

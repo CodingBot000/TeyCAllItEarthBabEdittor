@@ -3,7 +3,7 @@
  * their combat effects. Keep these values together so gameplay VFX does not
  * drift away from the sprite when the ground layout is tuned.
  */
-export const GROUND_ENTITY_ROOT_Y = -14.5;
+export const GROUND_ENTITY_ROOT_Y = -18.5;
 export const GROUND_SAM_BODY_LOCAL_Y = 2;
 export const GROUND_SAM_BODY_HEIGHT = 8;
 // The SAM sprite's launcher tip is the authoritative visual launch socket.
@@ -23,3 +23,6 @@ export const GROUND_SAM_HEALTH_BAR_LOCAL_Y = GROUND_SAM_BODY_LOCAL_Y
 // Projectiles intentionally finish at the weapon's visual center so they
 // visibly penetrate the target instead of exploding above it.
 export const GROUND_ATTACK_TARGET_Y = GROUND_ENTITY_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y;
+// The abduction beam should terminate on the same ground-world anchor as the
+// other ground interactions instead of stopping in the city layers above it.
+export const GROUND_ABSORPTION_TARGET_Y = GROUND_ATTACK_TARGET_Y;

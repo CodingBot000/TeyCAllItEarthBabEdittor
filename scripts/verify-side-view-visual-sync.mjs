@@ -28,8 +28,13 @@ try {
   if (enemyIds.length === 0 || JSON.stringify(enemyIds) !== JSON.stringify(visualFighterIds)) throw new Error(`Enemy/fighter visual IDs diverged: ${JSON.stringify({ enemyIds, visualFighterIds })}`);
   for (const enemy of state.enemies) {
     const fighter = state.visuals.fighters.find((candidate) => candidate.id === enemy.id);
-    if (!fighter || Math.abs(fighter.x - enemy.x) > 0.01 || Math.abs(fighter.z - enemy.z * 0.12) > 0.01) throw new Error(`Fighter ${enemy.id} position diverged.`);
+    const expectedVisualZ = fighter?.depthClamped ? 0.78 : enemy.z * 0.12;
+    if (!fighter || Math.abs(fighter.x - enemy.x) > 0.01 || Math.abs(fighter.z - expectedVisualZ) > 0.01) throw new Error(`Fighter ${enemy.id} position diverged.`);
+    if (fighter.depthClamped && fighter.z > 0.79) throw new Error(`Fighter ${enemy.id} exceeded the side-view hidden depth budget.`);
   }
+  if (!state.visuals.fighters.some((fighter) => fighter.trailVisible)) throw new Error('No fighter jet trail is visible after the formation wave spawned.');
+  if (!state.visuals.fighters.some((fighter) => Math.abs(fighter.bank) > 0.01)) throw new Error('Formation fighters never produced a visible bank value.');
+  if (state.visuals.fighters.some((fighter) => fighter.smokePuffCount > 10)) throw new Error('Fighter smoke puff budget exceeded.');
   const groundEntityIds = state.groundEntities.map((entity) => `${entity.kind}:${entity.id}`).sort();
   const groundVisualIds = state.visuals.ground.map((visual) => `${visual.kind}:${visual.id}`).sort();
   if (JSON.stringify(groundEntityIds) !== JSON.stringify(groundVisualIds)) throw new Error(`Ground visual IDs diverged: ${JSON.stringify({ groundEntityIds, groundVisualIds })}`);

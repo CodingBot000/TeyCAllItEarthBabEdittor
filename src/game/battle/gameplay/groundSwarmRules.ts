@@ -4,10 +4,10 @@ import type { BattleGameplayProfile } from './BattleGameplayProfile';
 
 type GroundTarget = GroundDefenderState | CombatFacilityState;
 
-export function tickGroundSwarm(state: CombatState, profile: BattleGameplayProfile, dt: number): void {
+export function tickGroundSwarm(state: CombatState, profile: BattleGameplayProfile, dt: number, unitInvincibilityEnabled = false): void {
   if (state.battleMode !== 'SIDE_VIEW' || state.result !== 'ACTIVE') return;
   state.groundSwarmImpacts = state.groundSwarmImpacts.filter((impact) => state.elapsedSeconds - impact.occurredAt <= 1.2);
-  updateProjectiles(state, dt);
+  updateProjectiles(state, dt, unitInvincibilityEnabled);
   if (state.elapsedSeconds < BALANCE.groundSwarm.initialDelay) return;
   if (state.elapsedSeconds - state.lastGroundSwarmAt < BALANCE.groundSwarm.interval) return;
   if (state.groundSwarmProjectiles.length >= BALANCE.groundSwarm.maximumActiveProjectiles) return;
@@ -47,7 +47,7 @@ function spawnGroundSwarmBurst(state: CombatState, target: GroundTarget, profile
   }
 }
 
-function updateProjectiles(state: CombatState, dt: number): void {
+function updateProjectiles(state: CombatState, dt: number, unitInvincibilityEnabled: boolean): void {
   const survivors: GroundSwarmProjectileState[] = [];
   for (const projectile of state.groundSwarmProjectiles) {
     const target = findGroundTarget(state, projectile.targetId);
@@ -58,10 +58,12 @@ function updateProjectiles(state: CombatState, dt: number): void {
       survivors.push(projectile);
       continue;
     }
-    target.health = Math.max(0, target.health - projectile.damage);
-    if ('destroyed' in target && target.health <= 0 && !target.destroyed) {
-      target.destroyed = true;
-      state.destroyedInfrastructure += 1;
+    if (!unitInvincibilityEnabled) {
+      target.health = Math.max(0, target.health - projectile.damage);
+      if ('destroyed' in target && target.health <= 0 && !target.destroyed) {
+        target.destroyed = true;
+        state.destroyedInfrastructure += 1;
+      }
     }
     state.groundSwarmImpacts.push({
       id: `ground-swarm-impact-${projectile.id}`,

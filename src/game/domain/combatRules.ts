@@ -23,6 +23,11 @@ export function getBeamHeatState(heat: number): BeamHeatState {
 const distance = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+export interface CombatTickOptions {
+  unitInvincibilityEnabled?: boolean;
+  disablePointDefense?: boolean;
+}
+
 export const EMPTY_MISSION_CARGO: MissionCargo = {
   captives: 0,
   biomass: 0,
@@ -96,6 +101,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
   });
   const state: CombatState = {
     cityId: city.id,
+    seed: campaign.seed,
     elapsedSeconds: 0,
     battleMode: 'LEGACY_TACTICAL',
     survivalUnlockSeconds: 0,
@@ -158,6 +164,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     cooldowns: { beam: 0, scan: 0, plasma: 0, emp: 0, overdrive: 0 },
     disabledUntil: {},
     facilityCooldowns: Object.fromEntries(facilities.map((facility) => [facility.id, 1 + (facility.position.x + 80) % 2])),
+    facilityBurstRemaining: Object.fromEntries(facilities.map((facility) => [facility.id, 0])),
     nextEntityId: 1,
     lastAirDefenseAt: -Infinity,
     lastPointDefenseAt: -Infinity,
@@ -494,7 +501,7 @@ export function scanTargets(state: CombatState): { ok: boolean; reason?: string;
   return { ok: true, discovered };
 }
 
-export function activateAbility(state: CombatState, ability: AbilityId, target?: Vec2): { ok: boolean; reason?: string; discovered?: number } {
+export function activateAbility(state: CombatState, ability: AbilityId, target?: Vec2, options: CombatTickOptions = {}): { ok: boolean; reason?: string; discovered?: number } {
   if (ability === 'scan') return scanTargets(state);
   if (ability === 'overdrive') {
     const check = abilityCheck(state, ability);
@@ -522,7 +529,7 @@ export function activateAbility(state: CombatState, ability: AbilityId, target?:
     state.overchargeCells -= heavyAbilityCellCost(ability);
     state.cooldowns.plasma = BALANCE.plasma.cooldown;
     state.plasmaUses += 1;
-    applyPlasma(state, target);
+    applyPlasma(state, target, options.unitInvincibilityEnabled === true);
   } else {
     state.mothership.energy -= BALANCE.emp.energy;
     state.overchargeCells -= heavyAbilityCellCost(ability);
@@ -533,21 +540,23 @@ export function activateAbility(state: CombatState, ability: AbilityId, target?:
   return { ok: true };
 }
 
-function applyPlasma(state: CombatState, target: Vec2): void {
-  for (const facility of state.facilities) {
-    if (!facility.destroyed && distance(facility.position, target) <= BALANCE.plasma.radius) {
-      facility.health = Math.max(0, facility.health - BALANCE.plasma.facilityDamage * state.modifiers.plasmaDamageMultiplier);
-      if (facility.health === 0) {
-        facility.destroyed = true;
-        state.destroyedInfrastructure += 1;
+function applyPlasma(state: CombatState, target: Vec2, unitInvincibilityEnabled: boolean): void {
+  if (!unitInvincibilityEnabled) {
+    for (const facility of state.facilities) {
+      if (!facility.destroyed && distance(facility.position, target) <= BALANCE.plasma.radius) {
+        facility.health = Math.max(0, facility.health - BALANCE.plasma.facilityDamage * state.modifiers.plasmaDamageMultiplier);
+        if (facility.health === 0) {
+          facility.destroyed = true;
+          state.destroyedInfrastructure += 1;
+        }
       }
     }
-  }
-  for (const enemy of state.enemies) {
-    if (distance(enemy.position, target) <= BALANCE.plasma.radius) enemy.health = 0;
-  }
-  for (const defender of state.groundDefenders) {
-    if (defender.health > 0 && distance(defender.position, target) <= BALANCE.plasma.radius) defender.health = Math.max(0, defender.health - BALANCE.plasma.facilityDamage * state.modifiers.plasmaDamageMultiplier);
+    for (const enemy of state.enemies) {
+      if (distance(enemy.position, target) <= BALANCE.plasma.radius) enemy.health = 0;
+    }
+    for (const defender of state.groundDefenders) {
+      if (defender.health > 0 && distance(defender.position, target) <= BALANCE.plasma.radius) defender.health = Math.max(0, defender.health - BALANCE.plasma.facilityDamage * state.modifiers.plasmaDamageMultiplier);
+    }
   }
   const collateral = damageAbsorbablesInRadius(state, target, BALANCE.plasma.radius, BALANCE.plasma.collateralRatio);
   state.collateralPopulationLoss += collateral;
@@ -608,7 +617,7 @@ function refreshTargetStatus(state: CombatState, target: AbsorbableTargetState):
   else target.status = disabled ? 'AVAILABLE' : 'LOCKED';
 }
 
-export function tickCombat(state: CombatState, dt: number): void {
+export function tickCombat(state: CombatState, dt: number, options: CombatTickOptions = {}): void {
   if (state.result !== 'ACTIVE') return;
   const step = Math.min(dt, 0.25);
   state.elapsedSeconds += step;
@@ -629,11 +638,11 @@ export function tickCombat(state: CombatState, dt: number): void {
   tickSamSites(state, step);
   tickMissiles(state, step);
   tickEnemies(state, step);
-  tickAirDefenseLaser(state);
-  tickCohorts(state, step);
+  tickAirDefenseLaser(state, options.unitInvincibilityEnabled === true);
+  tickCohorts(state, step, options.unitInvincibilityEnabled === true);
   updateControlNodes(state, step);
   state.occupationReady = occupationRequirements(state).occupationReady;
-  runPointDefense(state);
+  if (!options.disablePointDefense) runPointDefense(state);
   updateObjectives(state);
   if (state.mothership.hull <= 0) {
     state.result = 'FAILED';
@@ -802,19 +811,36 @@ function tickSamSites(state: CombatState, dt: number): void {
   for (const facility of state.facilities) {
     if (facility.kind !== 'SAM' || facility.destroyed || facility.disabledUntil > state.elapsedSeconds) continue;
     const cooldown = Math.max(1.5, (BALANCE.defense.missileInterval - state.localAlert / 45) / (state.defenseMultiplier * state.enemyPressureMultiplier));
-    state.facilityCooldowns[facility.id] = Math.max(0, (state.facilityCooldowns[facility.id] ?? 0) - dt);
+    const remainingBurst = state.facilityBurstRemaining[facility.id] ?? 0;
+    const nextCooldown = Math.max(0, (state.facilityCooldowns[facility.id] ?? 0) - dt);
+    state.facilityCooldowns[facility.id] = nextCooldown <= 0.000001 ? 0 : nextCooldown;
     if (state.facilityCooldowns[facility.id] > 0) continue;
-    state.facilityCooldowns[facility.id] = cooldown;
     spawnHostileProjectile(state, 'sam', facility.id, facility.position, 3.5, BALANCE.defense.missileSpeed * state.defenseMultiplier, (BALANCE.defense.missileDamage + state.localAlert * 0.25) * state.defenseMultiplier);
+    if (remainingBurst > 0) {
+      state.facilityBurstRemaining[facility.id] = 0;
+      state.facilityCooldowns[facility.id] = cooldown;
+    } else {
+      state.facilityBurstRemaining[facility.id] = 1;
+      state.facilityCooldowns[facility.id] = 0.3;
+    }
   }
 }
 
 function spawnFighter(state: CombatState, index: number, squadId: number): void {
   const orbitDirection: -1 | 1 = (squadId / 20) % 2 === 0 ? -1 : 1;
-  const angularSpeed = fighterOrbitAngularSpeed(state);
-  const spawnAngle = state.elapsedSeconds * 0.19 + squadId * 0.071;
-  const orbitPhase = spawnAngle - state.elapsedSeconds * angularSpeed * orbitDirection;
-  const orbitRadius = BALANCE.defense.fighterOrbitRadius + ((squadId / 20) % 2) * 2;
+  const squadRadius = BALANCE.defense.fighterOrbitRadius + randomRange(state.seed, squadId, -2.4, 2.4, 0);
+  const squadAngularSpeed = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitAngularSpeedMin, BALANCE.defense.fighterOrbitAngularSpeedMax, 1);
+  const angularSpeed = clamp(squadAngularSpeed + randomRange(state.seed, squadId, -0.045, 0.045, index + 2), BALANCE.defense.fighterOrbitAngularSpeedMin, BALANCE.defense.fighterOrbitAngularSpeedMax);
+  const phaseOffset = index * 0.45 + randomRange(state.seed, squadId, -0.12, 0.12, index + 4);
+  const orbitPhase = squadId * 0.071 + phaseOffset - state.elapsedSeconds * angularSpeed * orbitDirection;
+  const spawnAngle = orbitPhase + state.elapsedSeconds * angularSpeed * orbitDirection;
+  const orbitRadius = squadRadius + randomRange(state.seed, squadId, -1.4, 1.4, index + 6);
+  const orbitEccentricity = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitEccentricityMin, BALANCE.defense.fighterOrbitEccentricityMax, index + 8);
+  const orbitVerticalAmplitude = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitVerticalAmplitudeMin, BALANCE.defense.fighterOrbitVerticalAmplitudeMax, index + 10);
+  const orbitDepthAmplitude = randomRange(state.seed, squadId, BALANCE.defense.fighterOrbitDepthAmplitudeMin, BALANCE.defense.fighterOrbitDepthAmplitudeMax, index + 12);
+  const orbitWobblePhase = randomRange(state.seed, squadId, 0, Math.PI * 2, index + 14);
+  const attackRunPhase = randomRange(state.seed, squadId, 0, Math.PI * 2, index + 16);
+  const attackRunStrength = randomRange(state.seed, squadId, 0.82, 1.12, index + 18);
   const formation = fighterFormationOffset(index);
   const radial = { x: Math.cos(spawnAngle), z: Math.sin(spawnAngle) };
   const tangent = { x: -Math.sin(spawnAngle) * orbitDirection, z: Math.cos(spawnAngle) * orbitDirection };
@@ -829,10 +855,10 @@ function spawnFighter(state: CombatState, index: number, squadId: number): void 
     kind: 'fighter',
     position: {
       x: state.mothership.position.x + radial.x * spawnRadius + tangent.x * formation.trailing,
-      z: state.mothership.position.z + radial.z * spawnRadius + tangent.z * formation.trailing,
+      z: state.mothership.position.z + radial.z * spawnRadius + tangent.z * formation.trailing + Math.sin(spawnAngle + orbitWobblePhase) * orbitDepthAmplitude,
     },
     velocity,
-    altitude: BALANCE.defense.fighterAltitude + formation.altitude,
+    altitude: BALANCE.mothership.baseAltitude + formation.altitude + Math.sin(spawnAngle + orbitWobblePhase) * orbitVerticalAmplitude,
     heading: Math.atan2(velocity.x, velocity.z),
     bank: 0,
     squadId,
@@ -840,6 +866,13 @@ function spawnFighter(state: CombatState, index: number, squadId: number): void 
     orbitDirection,
     orbitRadius,
     orbitPhase,
+    orbitAngularSpeed: angularSpeed,
+    orbitEccentricity,
+    orbitVerticalAmplitude,
+    orbitDepthAmplitude,
+    orbitWobblePhase,
+    attackRunPhase,
+    attackRunStrength,
     health: BALANCE.defense.fighterHealth * state.defenseMultiplier,
     attackCooldown: 1.8 + index * 0.32,
     disabledUntil: 0,
@@ -868,7 +901,7 @@ function tickEnemies(state: CombatState, dt: number): void {
   state.enemies = state.enemies.filter((enemy) => enemy.health > 0);
 }
 
-function tickAirDefenseLaser(state: CombatState): void {
+function tickAirDefenseLaser(state: CombatState, unitInvincibilityEnabled = false): void {
   const interval = BALANCE.defense.airDefenseLaser.interval * state.modifiers.airDefenseLaserIntervalMultiplier;
   if (state.elapsedSeconds - state.lastAirDefenseAt < interval) return;
 
@@ -886,7 +919,7 @@ function tickAirDefenseLaser(state: CombatState): void {
   state.lastAirDefenseAt = state.elapsedSeconds;
   const origin = { ...state.mothership.position };
   const target = { ...nearest.position };
-  nearest.health = Math.max(0, nearest.health - BALANCE.defense.airDefenseLaser.damage);
+  if (!unitInvincibilityEnabled) nearest.health = Math.max(0, nearest.health - BALANCE.defense.airDefenseLaser.damage);
   state.lastAirDefenseShot = {
     id: `air-defense-laser-${state.nextEntityId++}`,
     targetId: nearest.id,
@@ -896,21 +929,22 @@ function tickAirDefenseLaser(state: CombatState): void {
     damage: BALANCE.defense.airDefenseLaser.damage,
     occurredAt: state.elapsedSeconds,
   };
-  state.enemies = state.enemies.filter((enemy) => enemy.health > 0);
+  if (!unitInvincibilityEnabled) state.enemies = state.enemies.filter((enemy) => enemy.health > 0);
 }
 
 function flyFighterFormation(state: CombatState, enemy: EnemyState, dt: number): void {
-  const angularSpeed = fighterOrbitAngularSpeed(state);
+  const angularSpeed = enemy.orbitAngularSpeed || fighterOrbitAngularSpeed(state);
   const angle = enemy.orbitPhase + state.elapsedSeconds * angularSpeed * enemy.orbitDirection;
-  const cycle = (state.elapsedSeconds + enemy.squadId * 0.13) % 8;
-  const attackRun = (1 - Math.cos((cycle / 8) * Math.PI * 2)) * 0.5;
+  const attackCycle = enemy.attackRunPhase + state.elapsedSeconds * angularSpeed * 0.72;
+  const attackRun = clamp((1 - Math.cos(attackCycle)) * 0.5 * enemy.attackRunStrength, 0, 1.15);
   const formation = fighterFormationOffset(enemy.formationSlot);
-  const desiredRadius = enemy.orbitRadius - attackRun * BALANCE.defense.fighterAttackRunDepth + formation.radial;
+  const eccentricRadius = enemy.orbitRadius * (1 + enemy.orbitEccentricity * Math.cos(angle + enemy.orbitWobblePhase));
+  const desiredRadius = eccentricRadius - attackRun * BALANCE.defense.fighterAttackRunDepth * enemy.attackRunStrength + formation.radial;
   const radial = { x: Math.cos(angle), z: Math.sin(angle) };
   const tangent = { x: -Math.sin(angle) * enemy.orbitDirection, z: Math.cos(angle) * enemy.orbitDirection };
   const desiredPosition = {
     x: state.mothership.position.x + radial.x * desiredRadius + tangent.x * formation.trailing,
-    z: state.mothership.position.z + radial.z * desiredRadius + tangent.z * formation.trailing,
+    z: state.mothership.position.z + radial.z * desiredRadius + tangent.z * formation.trailing + Math.sin(angle + enemy.orbitWobblePhase) * enemy.orbitDepthAmplitude,
   };
   const orbitVelocity = angularSpeed * Math.max(10, desiredRadius);
   let desiredVelocity = {
@@ -940,7 +974,10 @@ function flyFighterFormation(state: CombatState, enemy: EnemyState, dt: number):
   const targetBank = clamp(turnRate / 1.8, -1, 1);
   enemy.bank += (targetBank - enemy.bank) * Math.min(1, dt * 5);
 
-  const targetAltitude = BALANCE.defense.fighterAltitude + formation.altitude + attackRun * 2.4 + Math.sin(angle * 2 + enemy.formationSlot) * 0.7;
+  const targetAltitude = BALANCE.mothership.baseAltitude
+    + formation.altitude
+    + Math.sin(angle + enemy.orbitWobblePhase) * enemy.orbitVerticalAmplitude
+    + attackRun * BALANCE.defense.fighterAttackRunAltitudeLift;
   enemy.altitude += clamp(targetAltitude - enemy.altitude, -7 * dt, 7 * dt);
 }
 
@@ -957,10 +994,22 @@ function fighterFormationOffset(slot: number): { trailing: number; radial: numbe
   const row = Math.ceil(slot / 2);
   const side = slot % 2 === 1 ? -1 : 1;
   return {
-    trailing: -row * 4,
-    radial: side * (2.3 + row),
-    altitude: side * 0.7 + row * 0.22,
+    trailing: -row * 2.1,
+    radial: side * (1.4 + row * 0.7),
+    altitude: side * 1.2 + row * 0.35,
   };
+}
+
+function randomRange(seed: number, squadId: number, minimum: number, maximum: number, channel: number): number {
+  const sample = fighterRandom(seed, squadId, channel);
+  return minimum + (maximum - minimum) * sample;
+}
+
+function fighterRandom(seed: number, squadId: number, channel: number): number {
+  let value = (seed ^ Math.imul(squadId + 1, 0x45d9f3b) ^ Math.imul(channel + 1, 0x119de1f3)) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b) >>> 0;
+  return ((value ^ (value >>> 16)) >>> 0) / 0x1_0000_0000;
 }
 
 function wrapAngle(angle: number): number {

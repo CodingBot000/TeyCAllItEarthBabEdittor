@@ -139,6 +139,42 @@ describe('side-view battle gameplay', () => {
     expect(desert.combatState.enemies.length).toBeGreaterThan(coastal.combatState.enemies.length);
   });
 
+  it('creates deterministic fighter orbit variants with vertical separation around the mothership', () => {
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const first = createSideViewBattleSession(createNewCampaign(7420), city, createNewCampaign(7420).cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const secondCampaign = createNewCampaign(7420);
+    const second = createSideViewBattleSession(secondCampaign, city, secondCampaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    first.combatState.localAlert = 20;
+    second.combatState.localAlert = 20;
+
+    tickCombat(first.combatState, 1 / 60);
+    tickCombat(second.combatState, 1 / 60);
+
+    const firstOrbit = first.combatState.enemies.map((enemy) => ({
+      radius: enemy.orbitRadius,
+      speed: enemy.orbitAngularSpeed,
+      eccentricity: enemy.orbitEccentricity,
+      verticalAmplitude: enemy.orbitVerticalAmplitude,
+      depthAmplitude: enemy.orbitDepthAmplitude,
+      phase: enemy.orbitPhase,
+      altitude: enemy.altitude,
+    }));
+    const secondOrbit = second.combatState.enemies.map((enemy) => ({
+      radius: enemy.orbitRadius,
+      speed: enemy.orbitAngularSpeed,
+      eccentricity: enemy.orbitEccentricity,
+      verticalAmplitude: enemy.orbitVerticalAmplitude,
+      depthAmplitude: enemy.orbitDepthAmplitude,
+      phase: enemy.orbitPhase,
+      altitude: enemy.altitude,
+    }));
+
+    expect(firstOrbit).toEqual(secondOrbit);
+    expect(new Set(firstOrbit.map((enemy) => enemy.radius)).size).toBeGreaterThan(1);
+    expect(new Set(firstOrbit.map((enemy) => enemy.phase)).size).toBeGreaterThan(1);
+    expect(Math.max(...firstOrbit.map((enemy) => enemy.altitude)) - Math.min(...firstOrbit.map((enemy) => enemy.altitude))).toBeGreaterThan(0.5);
+  });
+
   it('pairs SAM missiles with the facility position at the moment of firing', () => {
     const campaign = createNewCampaign(7412);
     const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
@@ -152,6 +188,87 @@ describe('side-view battle gameplay', () => {
     const missile = combatState.missiles.find((candidate) => candidate.source === 'sam' && candidate.sourceId === sam.id);
     expect(missile?.launchPosition).toEqual(sam.position);
     expect(missile?.launchY).toBe(3.5);
+  });
+
+  it('fires two SAM missiles 0.3 seconds apart before restoring the normal cooldown', () => {
+    const campaign = createNewCampaign(7414);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const sam = combatState.facilities.find((facility) => facility.kind === 'SAM')!;
+    combatState.facilityCooldowns[sam.id] = 0;
+
+    tickCombat(combatState, 0.01);
+    expect(combatState.missiles.filter((missile) => missile.sourceId === sam.id)).toHaveLength(1);
+    tickCombat(combatState, 0.25);
+    tickCombat(combatState, 0.04);
+    expect(combatState.missiles.filter((missile) => missile.sourceId === sam.id)).toHaveLength(1);
+    tickCombat(combatState, 0.01);
+    expect(combatState.missiles.filter((missile) => missile.sourceId === sam.id)).toHaveLength(2);
+
+    const normalCooldown = combatState.facilityCooldowns[sam.id];
+    expect(normalCooldown).toBeGreaterThanOrEqual(1.5);
+    tickCombat(combatState, 0.25);
+    expect(combatState.missiles.filter((missile) => missile.sourceId === sam.id)).toHaveLength(2);
+    expect(combatState.facilityCooldowns[sam.id]).toBeCloseTo(normalCooldown - 0.25, 5);
+  });
+
+  it('does not register a missile hit until it reaches the visible mothership body', () => {
+    const campaign = createNewCampaign(7415);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    combatState.facilities.forEach((facility) => { facility.destroyed = true; });
+    combatState.mothership.shield = 0;
+
+    const missileAt = (x: number) => ({
+      id: `collision-test-${x}`,
+      source: 'fighter' as const,
+      sourceId: 'collision-test',
+      launchPosition: { x, z: combatState.mothership.position.z },
+      launchY: BALANCE.mothership.baseAltitude,
+      position: { x, z: combatState.mothership.position.z },
+      y: BALANCE.mothership.baseAltitude,
+      target: { ...combatState.mothership.position },
+      targetY: BALANCE.mothership.baseAltitude,
+      speed: 0,
+      damage: 100,
+      age: 0,
+    });
+
+    const hullBefore = combatState.mothership.hull;
+    combatState.missiles = [missileAt(combatState.mothership.position.x + 12)];
+    tickCombat(combatState, 0.01);
+    expect(combatState.mothership.hull).toBe(hullBefore);
+
+    combatState.missiles = [missileAt(combatState.mothership.position.x + 8)];
+    tickCombat(combatState, 0.01);
+    expect(combatState.mothership.hull).toBeLessThan(hullBefore);
+  });
+
+  it('can disable point defense without removing incoming missiles', () => {
+    const campaign = createNewCampaign(7416);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    combatState.facilities.forEach((facility) => { facility.destroyed = true; });
+    const x = combatState.mothership.position.x + 12;
+    combatState.missiles = [{
+      id: 'point-defense-debug-missile',
+      source: 'fighter',
+      sourceId: 'point-defense-debug',
+      launchPosition: { x, z: combatState.mothership.position.z },
+      launchY: BALANCE.mothership.baseAltitude,
+      position: { x, z: combatState.mothership.position.z },
+      y: BALANCE.mothership.baseAltitude,
+      target: { ...combatState.mothership.position },
+      targetY: BALANCE.mothership.baseAltitude,
+      speed: 0,
+      damage: 10,
+      age: 0,
+    }];
+
+    tickCombat(combatState, 0.01, { disablePointDefense: true });
+
+    expect(combatState.lastPointDefenseShot).toBeNull();
+    expect(combatState.missiles[0]?.age).toBeCloseTo(0.01, 5);
   });
 
   it('allows active SAMs to fire beyond the ship range and missile-count threshold', () => {
@@ -262,7 +379,7 @@ describe('side-view battle gameplay', () => {
     expect(combatState.groundSwarmProjectiles).toHaveLength(4);
     expect(new Set(combatState.groundSwarmProjectiles.map((projectile) => projectile.arcHeight)).size).toBeGreaterThan(1);
     let impactSeen = false;
-    for (let index = 0; index < 240; index += 1) {
+    for (let index = 0; index < Math.ceil(BALANCE.groundSwarm.maximumDuration * 60) + 30; index += 1) {
       combatState.elapsedSeconds += 1 / 60;
       tickGroundSwarm(combatState, profile, 1 / 60);
       impactSeen ||= combatState.groundSwarmImpacts.length > 0;

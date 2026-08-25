@@ -9,6 +9,7 @@ import { createSideViewBattleSession } from './gameplay/sideViewBattleRules';
 import { getBattleMapDefinition, loadBattleMapDefinition } from './maps/battleMapCatalog';
 import { TACTICAL_PRESETS } from '../data/tacticalPresets';
 import { BATTLE_BACKGROUND_LAYERS, type BattleBackgroundLayerKey, type BattleRuntime, type BattleRuntimeSnapshot } from './runtime/createBattleRuntime';
+import { GROUND_ENTITY_ROOT_Y } from './runtime/battleVisualCoordinates';
 import { useI18n } from '../i18n/I18nProvider';
 
 interface BattleScreenProps {
@@ -18,6 +19,10 @@ interface BattleScreenProps {
 }
 
 type BackgroundLayerYValues = Record<BattleBackgroundLayerKey, number>;
+type UnitPositionGroup = BattleRuntimeSnapshot['visuals']['ground'][number]['group'];
+type UnitPosition = { y: number };
+type UnitPositionValues = Record<string, UnitPosition>;
+type CollisionOverlayScales = { shield: number; hull: number };
 
 const INITIAL_BACKGROUND_LAYER_Y = Object.fromEntries(
   BATTLE_BACKGROUND_LAYERS.map((layer) => [layer.key, layer.y]),
@@ -31,11 +36,19 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<BattleRuntimeSnapshot | null>(null);
   const [invincibilityEnabled, setInvincibilityEnabled] = useState(true);
+  const [unitInvincibilityEnabled, setUnitInvincibilityEnabled] = useState(true);
+  const [pointDefenseDisabled, setPointDefenseDisabled] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [abortConfirmationOpen, setAbortConfirmationOpen] = useState(false);
   const [backgroundDebugOpen, setBackgroundDebugOpen] = useState(true);
   const [backgroundLayerY, setBackgroundLayerY] = useState<BackgroundLayerYValues>(() => ({ ...INITIAL_BACKGROUND_LAYER_Y }));
   const [backgroundCopyStatus, setBackgroundCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [unitPositions, setUnitPositions] = useState<UnitPositionValues>({});
+  const [unitPositionDefaults, setUnitPositionDefaults] = useState<UnitPositionValues>({});
+  const [unitCopyStatus, setUnitCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [collisionDebugOpen, setCollisionDebugOpen] = useState(false);
+  const [collisionOverlayScales, setCollisionOverlayScales] = useState<CollisionOverlayScales>({ shield: 1, hull: 1 });
+  const [collisionCopyStatus, setCollisionCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const fallbackMap = getBattleMapDefinition(request.mapId);
   const [loadedMap, setLoadedMap] = useState<typeof fallbackMap | null>(null);
   const map = loadedMap?.id === fallbackMap.id ? loadedMap : fallbackMap;
@@ -119,6 +132,25 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     };
   }, [combatState, debugOptions.controls, language, map, onComplete, session?.profile]);
 
+  useEffect(() => {
+    const groundUnits = snapshot?.visuals.ground;
+    if (!groundUnits?.length) return;
+    setUnitPositionDefaults((previous) => {
+      const next = { ...previous };
+      for (const unit of groundUnits) {
+        if (!next[unit.group]) next[unit.group] = { y: unit.y };
+      }
+      return next;
+    });
+    setUnitPositions((previous) => {
+      const next = { ...previous };
+      for (const unit of groundUnits) {
+        if (!next[unit.group]) next[unit.group] = { y: unit.y };
+      }
+      return next;
+    });
+  }, [snapshot?.visuals.ground]);
+
   const runCommand = (command: () => { ok: boolean; reason?: string }, successMessage: string) => {
     const result = command();
     setActionMessage(result.ok ? successMessage : result.reason ?? t('battle.commandUnavailable'));
@@ -158,6 +190,16 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     setInvincibilityEnabled(next);
     runtimeRef.current?.setInvincibilityEnabled(next);
   };
+  const toggleUnitInvincibility = () => {
+    const next = !unitInvincibilityEnabled;
+    setUnitInvincibilityEnabled(next);
+    runtimeRef.current?.setUnitInvincibilityEnabled(next);
+  };
+  const togglePointDefense = () => {
+    const next = !pointDefenseDisabled;
+    setPointDefenseDisabled(next);
+    runtimeRef.current?.setPointDefenseDisabled(next);
+  };
   const setBackgroundLayerPosition = (key: BattleBackgroundLayerKey, value: number) => {
     const nextValue = Math.max(-80, Math.min(80, Math.round(value * 100) / 100));
     setBackgroundLayerY((previous) => ({ ...previous, [key]: nextValue }));
@@ -181,6 +223,63 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
       setBackgroundCopyStatus('copied');
     } catch {
       setBackgroundCopyStatus('failed');
+    }
+  };
+  const setUnitPosition = (group: UnitPositionGroup, value: number) => {
+    const next = { y: Math.round(value * 100) / 100 };
+    setUnitPositions((previous) => ({ ...previous, [group]: next }));
+    runtimeRef.current?.setGroundUnitGroupPosition(group, next.y);
+    setUnitCopyStatus('idle');
+  };
+  const adjustUnitPosition = (group: UnitPositionGroup, delta: number) => {
+    const current = unitPositions[group] ?? unitPositionDefaults[group] ?? { y: GROUND_ENTITY_ROOT_Y };
+    setUnitPosition(group, current.y + delta);
+  };
+  const resetUnitPositions = () => {
+    runtimeRef.current?.resetGroundUnitPositions();
+    setUnitPositions({ ...unitPositionDefaults });
+    setUnitCopyStatus('idle');
+  };
+  const groundUnits = snapshot?.visuals.ground ?? [];
+  const groundUnitGroups = [...new Set(groundUnits.map((unit) => unit.group))].map((group) => ({
+    group,
+    count: groundUnits.filter((unit) => unit.group === group).length,
+  }));
+  const unitPositionOutput = groundUnitGroups
+    .map(({ group }, index) => {
+      const value = unitPositions[group] ?? unitPositionDefaults[group] ?? { y: GROUND_ENTITY_ROOT_Y };
+      return `${String(index + 1).padStart(2, '0')} ${group.toLowerCase()}: y=${value.y.toFixed(2)}`;
+    })
+    .join('\n');
+  const copyUnitPositionOutput = async () => {
+    try {
+      await navigator.clipboard.writeText(unitPositionOutput);
+      setUnitCopyStatus('copied');
+    } catch {
+      setUnitCopyStatus('failed');
+    }
+  };
+  const setCollisionOverlayScale = (kind: 'shield' | 'hull', value: number) => {
+    const nextValue = Math.max(0.25, Math.min(3, Math.round(value * 100) / 100));
+    setCollisionOverlayScales((previous) => ({ ...previous, [kind]: nextValue }));
+    runtimeRef.current?.setCollisionOverlayScale(kind, nextValue);
+    setCollisionCopyStatus('idle');
+  };
+  const adjustCollisionOverlayScale = (kind: 'shield' | 'hull', delta: number) => {
+    setCollisionOverlayScale(kind, collisionOverlayScales[kind] + delta);
+  };
+  const resetCollisionOverlayScales = () => {
+    runtimeRef.current?.resetCollisionOverlayScale();
+    setCollisionOverlayScales({ shield: 1, hull: 1 });
+    setCollisionCopyStatus('idle');
+  };
+  const collisionOverlayOutput = `shieldScale=${collisionOverlayScales.shield.toFixed(2)}\nhullScale=${collisionOverlayScales.hull.toFixed(2)}`;
+  const copyCollisionOverlayOutput = async () => {
+    try {
+      await navigator.clipboard.writeText(collisionOverlayOutput);
+      setCollisionCopyStatus('copied');
+    } catch {
+      setCollisionCopyStatus('failed');
     }
   };
 
@@ -233,10 +332,54 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           <textarea readOnly value={backgroundLayerOutput} rows={BATTLE_BACKGROUND_LAYERS.length} aria-label="Final background layer positions" />
           {backgroundCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Send the layer number and Y value, for example: 03 far y=9.25</small>}
         </div>
+        <div className="battle-background-debug-output battle-unit-position-debug">
+          <div className="battle-background-debug-output-title"><span>UNIT POSITION DEBUG</span><div className="battle-background-debug-header-actions"><button type="button" disabled={phase !== 'ready'} onClick={resetUnitPositions}>RESET</button><button type="button" disabled={phase !== 'ready' || !unitPositionOutput} onClick={copyUnitPositionOutput}>{unitCopyStatus === 'copied' ? 'COPIED' : 'COPY'}</button></div></div>
+          <p className="battle-background-debug-hint">Y WORLD UNITS · SAME UNIT TYPES MOVE TOGETHER</p>
+          <div className="battle-background-debug-list">
+            {groundUnitGroups.map(({ group, count }, index) => {
+              const value = unitPositions[group] ?? unitPositionDefaults[group] ?? { y: GROUND_ENTITY_ROOT_Y };
+              return <div className="battle-background-debug-row" data-unit-key={group} key={group}>
+                <div className="battle-background-debug-row-title"><span><b>U{String(index + 1).padStart(2, '0')}</b> {group} ×{count}</span><output>Y {value.y.toFixed(2)}</output></div>
+                <div className="battle-background-debug-controls"><button type="button" disabled={phase !== 'ready'} onClick={() => adjustUnitPosition(group, -0.25)} aria-label={`Move ${group} down`}>▼</button><input type="range" min="-30" max="10" step="0.25" value={value.y} disabled={phase !== 'ready'} onChange={(event) => setUnitPosition(group, Number(event.target.value))} aria-label={`${group} Y position`} /><button type="button" disabled={phase !== 'ready'} onClick={() => adjustUnitPosition(group, 0.25)} aria-label={`Move ${group} up`}>▲</button></div>
+              </div>;
+            })}
+          </div>
+          <div className="battle-background-debug-output-title"><span>UNIT VALUES TO SEND</span></div>
+          <textarea readOnly value={unitPositionOutput} rows={Math.max(3, groundUnits.length)} aria-label="Final unit positions" />
+          {unitCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Copy the X and Y values after aligning the unit sprites.</small>}
+        </div>
       </aside> : <button className="battle-background-debug-toggle" data-testid="battle-background-debug-toggle" type="button" onClick={() => setBackgroundDebugOpen(true)} aria-label="Open background alignment debug panel">BG DEBUG</button> : null}
+      {backgroundDebugEnabled ? collisionDebugOpen ? <aside className="battle-background-debug battle-collision-debug" data-testid="battle-collision-debug">
+        <div className="battle-background-debug-header">
+          <div><span>DEBUG TOOL</span><strong>COLLISION OVERLAY</strong></div>
+          <div className="battle-background-debug-header-actions"><button type="button" onClick={() => setCollisionDebugOpen(false)} aria-label="Close collision overlay debug panel">CLOSE</button><button type="button" disabled={phase !== 'ready'} onClick={resetCollisionOverlayScales} aria-label="Reset collision overlay scales">RESET</button></div>
+        </div>
+        <p className="battle-background-debug-hint">SHIELD / HULL SCALE · 1.00 IS THE CURRENT COLLISION AREA</p>
+        <div className="battle-background-debug-list">
+          {(['shield', 'hull'] as const).map((kind) => {
+            const label = kind === 'shield' ? 'SHIELD' : 'HULL';
+            const value = collisionOverlayScales[kind];
+            return <div className="battle-background-debug-row" data-collision-kind={kind} key={kind}>
+              <div className="battle-background-debug-row-title"><span><b>{label}</b> COLLISION AREA</span><output>{value.toFixed(2)}x</output></div>
+              <div className="battle-background-debug-controls"><button type="button" disabled={phase !== 'ready'} onClick={() => adjustCollisionOverlayScale(kind, -0.05)} aria-label={`Shrink ${label.toLowerCase()} collision area`}>−</button><input type="range" min="0.25" max="3" step="0.05" value={value} disabled={phase !== 'ready'} onChange={(event) => setCollisionOverlayScale(kind, Number(event.target.value))} aria-label={`${label} collision area scale`} /><button type="button" disabled={phase !== 'ready'} onClick={() => adjustCollisionOverlayScale(kind, 0.05)} aria-label={`Enlarge ${label.toLowerCase()} collision area`}>+</button></div>
+            </div>;
+          })}
+        </div>
+        <div className="battle-background-debug-output">
+          <div className="battle-background-debug-output-title"><span>COLLISION VALUES TO SEND</span><button type="button" disabled={phase !== 'ready'} onClick={copyCollisionOverlayOutput}>{collisionCopyStatus === 'copied' ? 'COPIED' : 'COPY'}</button></div>
+          <textarea readOnly value={collisionOverlayOutput} rows={2} aria-label="Final collision overlay scales" />
+          {collisionCopyStatus === 'failed' ? <small>Copy failed — select the values manually.</small> : <small>Copy these scale values after matching the visible mothership.</small>}
+        </div>
+      </aside> : <button className="battle-background-debug-toggle battle-collision-debug-toggle" data-testid="battle-collision-debug-toggle" type="button" onClick={() => { setBackgroundDebugOpen(false); setCollisionDebugOpen(true); }} aria-label="Open collision overlay debug panel">COLLISION DEBUG</button> : null}
       <div className="battle-top-right-actions">
+        <button className={`battle-point-defense-button ${pointDefenseDisabled ? 'is-on' : ''}`} data-testid="battle-point-defense-toggle" type="button" aria-pressed={pointDefenseDisabled} disabled={phase !== 'ready'} onClick={togglePointDefense}>
+          {pointDefenseDisabled ? '요격빔 차단 ON' : '요격빔 차단 OFF'}
+        </button>
         <button className={`battle-invincibility-button ${invincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-invincibility-toggle" type="button" aria-pressed={invincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleInvincibility}>
           {invincibilityEnabled ? t('battle.invincibilityOn') : t('battle.invincibilityOff')}
+        </button>
+        <button className={`battle-invincibility-button ${unitInvincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-unit-invincibility-toggle" type="button" aria-pressed={unitInvincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleUnitInvincibility}>
+          {unitInvincibilityEnabled ? t('battle.unitInvincibilityOn') : t('battle.unitInvincibilityOff')}
         </button>
         <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
       </div>
@@ -343,7 +486,6 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           <button className="danger" type="button" onClick={confirmAbort}>{t('battle.abortConfirm')}</button>
         </div>
       </section> : null}
-      <div className="battle-control-hint" aria-hidden="true">A / D or ← / → MOVE · B ABSORB · E EMP · P PLASMA · S OVERDRIVE · X EXTRACT · ESC PAUSE</div>
     </main>
   );
 }
