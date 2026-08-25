@@ -66,7 +66,16 @@ interface AbsorptionVisual {
   core: Mesh;
   funnel: Mesh;
   ring: Mesh;
+  rods: AbsorptionRod[];
   target: Vector3;
+}
+
+interface AbsorptionRod {
+  body: Mesh;
+  core: Mesh;
+  angle: number;
+  radius: number;
+  phase: number;
 }
 
 interface AirDefenseVisual {
@@ -112,6 +121,8 @@ const MAX_GROUND_SWARM_IMPACTS = 12;
 const ABILITY_DURATION = 1.8;
 const BEAM_RADIUS = 6.5;
 const BEAM_RANGE = 22;
+const ABSORPTION_ROD_COUNT = 28;
+const ABSORPTION_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const SAM_MISSILE_SPRITE_URL = '/assets/runtime/sprites/sam-missile-white-jet-web.png';
 const SAM_MISSILE_ART_ANGLE = Math.PI / 4;
 const SAM_MISSILE_TRAIL_MAX_PARTICLES = 8;
@@ -330,6 +341,7 @@ export class BattleCombatVfx {
       this.absorption.core.dispose();
       this.absorption.funnel.dispose();
       this.absorption.ring.dispose();
+      this.absorption.rods.forEach((rod) => { rod.body.dispose(); rod.core.dispose(); });
       this.absorption = null;
       return;
     }
@@ -345,8 +357,23 @@ export class BattleCombatVfx {
     funnel.material = this.beamFunnelMaterial;
     const ring = MeshBuilder.CreateTorus('battle-abduction-beam-target', { diameter: BEAM_RADIUS * 2.05, thickness: 0.24, tessellation: 40 }, this.scene);
     ring.material = this.beamRingMaterial;
-    [beam, core, funnel, ring].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
-    this.absorption = { beam, core, funnel, ring, target: target.clone() };
+    const rods = Array.from({ length: ABSORPTION_ROD_COUNT }, (_, index) => {
+      const inner = index < ABSORPTION_ROD_COUNT * 0.48;
+      const radius = inner
+        ? seededUnit(index + 31) * 2.25
+        : 2.35 + seededUnit(index + 67) * (BEAM_RADIUS - 2.35);
+      const angle = index * ABSORPTION_GOLDEN_ANGLE + seededUnit(index + 101) * 0.42;
+      const diameter = inner
+        ? 0.18 + seededUnit(index + 131) * 0.4
+        : 0.1 + seededUnit(index + 151) * 0.18;
+      const body = MeshBuilder.CreateCylinder(`battle-abduction-rod-${index}`, { diameter, height: 1, tessellation: 8 }, this.scene);
+      const rodCore = MeshBuilder.CreateCylinder(`battle-abduction-rod-core-${index}`, { diameter: diameter * 0.28, height: 1, tessellation: 6 }, this.scene);
+      body.material = this.beamMaterial;
+      rodCore.material = this.beamCoreMaterial;
+      return { body, core: rodCore, angle, radius, phase: seededUnit(index + 181) * Math.PI * 2 };
+    });
+    [beam, core, funnel, ring, ...rods.flatMap((rod) => [rod.body, rod.core])].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
+    this.absorption = { beam, core, funnel, ring, rods, target: target.clone() };
   }
 
   update(dt: number, elapsed: number): void {
@@ -392,6 +419,7 @@ export class BattleCombatVfx {
       this.absorption.core.dispose();
       this.absorption.funnel.dispose();
       this.absorption.ring.dispose();
+      this.absorption.rods.forEach((rod) => { rod.body.dispose(); rod.core.dispose(); });
     }
     [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
     this.samProjectileTexture.dispose();
@@ -649,6 +677,17 @@ export class BattleCombatVfx {
     absorption.funnel.visibility = progress;
     absorption.ring.position = target;
     absorption.ring.scaling.setAll(0.92 + Math.sin(elapsed * 7) * 0.08);
+    for (const rod of absorption.rods) {
+      const direction = new Vector3(Math.cos(rod.angle), 0, Math.sin(rod.angle));
+      const rodStart = beamStart.add(direction.scale(0.12 + rod.radius * 0.015));
+      const rodEnd = target.add(direction.scale(rod.radius));
+      alignCylinder(rod.body, rodStart, rodEnd);
+      alignCylinder(rod.core, rodStart, rodEnd);
+      const pulse = 0.88 + Math.sin(elapsed * 9 + rod.phase) * 0.12;
+      const centralDensity = 1 - Math.min(1, rod.radius / BEAM_RADIUS);
+      rod.body.visibility = (0.22 + centralDensity * 0.64) * pulse;
+      rod.core.visibility = (0.18 + centralDensity * 0.64) * pulse;
+    }
   }
 
   private syncGroundSwarm(state: Readonly<CombatState>): void {
@@ -775,7 +814,10 @@ export class BattleCombatVfx {
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
         const currentPosition = new Vector3(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
         const homingDirection = targetPosition.subtract(currentPosition);
-        if (homingDirection.lengthSquared() > 0.0001) mesh.rotation.z = Math.atan2(homingDirection.y, homingDirection.x) - SAM_MISSILE_ART_ANGLE;
+        if (homingDirection.lengthSquared() > 0.0001) {
+          mesh.rotation.z = Math.atan2(homingDirection.y, homingDirection.x) - SAM_MISSILE_ART_ANGLE;
+          this.spawnMissileTrail(missile.id, mesh.position, homingDirection);
+        }
       } else {
         mesh.position.set(missile.position.x, 8 + (missile.y - 33) * 0.22, missile.position.z * 0.12);
       }
@@ -786,7 +828,58 @@ export class BattleCombatVfx {
       mesh.dispose();
       this.projectileMeshes.delete(id);
       this.projectileLaunchPositions.delete(id);
+      this.disposeMissileTrail(id);
     }
+  }
+
+  private spawnMissileTrail(id: string, position: Vector3, direction: Vector3): void {
+    const lastPosition = this.missileTrailLastPositions.get(id);
+    if (lastPosition && Vector3.DistanceSquared(lastPosition, position) < SAM_MISSILE_TRAIL_SPAWN_DISTANCE ** 2) return;
+    const particles = this.missileTrailParticles.get(id) ?? [];
+    const normalizedDirection = direction.normalize();
+    const tailPosition = position.subtract(normalizedDirection.scale(0.48));
+    const particle = MeshBuilder.CreateDisc(`battle-${id}-smoke-${particles.length}`, { radius: 1, tessellation: 12, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+    particle.material = this.samMissileTrailMaterial;
+    particle.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    particle.position = tailPosition;
+    particle.position.z -= 0.03;
+    particle.scaling.setAll(0.08 + (particles.length % 3) * 0.018);
+    particle.renderingGroupId = 3;
+    particle.isPickable = false;
+    particles.push({
+      mesh: particle,
+      age: 0,
+      lifetime: SAM_MISSILE_TRAIL_LIFETIME + (particles.length % 3) * 0.04,
+      baseScale: 0.08 + (particles.length % 3) * 0.018,
+      drift: new Vector3(-normalizedDirection.y, normalizedDirection.x, 0).scale((particles.length % 3 - 1) * 0.08),
+    });
+    while (particles.length > SAM_MISSILE_TRAIL_MAX_PARTICLES) particles.shift()?.mesh.dispose();
+    this.missileTrailParticles.set(id, particles);
+    this.missileTrailLastPositions.set(id, position.clone());
+  }
+
+  private updateMissileTrails(dt: number): void {
+    for (const [id, particles] of this.missileTrailParticles) {
+      for (let index = particles.length - 1; index >= 0; index -= 1) {
+        const particle = particles[index];
+        particle.age += dt;
+        const progress = Math.min(1, particle.age / particle.lifetime);
+        particle.mesh.position.addInPlace(particle.drift.scale(dt));
+        particle.mesh.scaling.setAll(particle.baseScale * (1 + progress * 1.2));
+        particle.mesh.visibility = (1 - progress) * 0.72;
+        if (progress >= 1) {
+          particle.mesh.dispose();
+          particles.splice(index, 1);
+        }
+      }
+      if (particles.length === 0) this.missileTrailParticles.delete(id);
+    }
+  }
+
+  private disposeMissileTrail(id: string): void {
+    this.missileTrailParticles.get(id)?.forEach((particle) => particle.mesh.dispose());
+    this.missileTrailParticles.delete(id);
+    this.missileTrailLastPositions.delete(id);
   }
 
   private shipPosition(): Vector3 {
