@@ -12,10 +12,10 @@ export function battleMapIdForCity(city: CityDefinition): string {
   return 'city-day';
 }
 
-/** Stages start in daylight and alternate time of day after every battle. */
+/** Stages start at night and alternate time of day after every battle. */
 export function battleTimeOfDayForStage(stageNumber: number): BattleTimeOfDay {
   const normalizedStage = Number.isFinite(stageNumber) ? Math.max(1, Math.floor(stageNumber)) : 1;
-  return normalizedStage % 2 === 0 ? 'NIGHT' : 'DAY';
+  return normalizedStage % 2 === 1 ? 'NIGHT' : 'DAY';
 }
 
 export function battleMapIdForStage(city: CityDefinition, stageNumber: number): string {

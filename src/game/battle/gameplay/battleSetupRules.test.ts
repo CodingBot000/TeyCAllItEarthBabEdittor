@@ -17,15 +17,15 @@ describe('battle background map selection', () => {
   });
 
   it('alternates day and night from the first stage onward', () => {
-    expect([1, 2, 3, 4, 5, 6].map(battleTimeOfDayForStage)).toEqual(['DAY', 'NIGHT', 'DAY', 'NIGHT', 'DAY', 'NIGHT']);
-    expect(battleTimeOfDayForStage(0)).toBe('DAY');
-    expect(battleTimeOfDayForStage(Number.NaN)).toBe('DAY');
+    expect([1, 2, 3, 4, 5, 6].map(battleTimeOfDayForStage)).toEqual(['NIGHT', 'DAY', 'NIGHT', 'DAY', 'NIGHT', 'DAY']);
+    expect(battleTimeOfDayForStage(0)).toBe('NIGHT');
+    expect(battleTimeOfDayForStage(Number.NaN)).toBe('NIGHT');
   });
 
-  it('uses the city day map on odd stages and the night map on even stages', () => {
-    expect(battleMapIdForStage(CITY_BY_ID.shanghai, 1)).toBe('river-day');
-    expect(battleMapIdForStage(CITY_BY_ID.shanghai, 2)).toBe('city-night');
-    expect(battleMapIdForStage(CITY_BY_ID.shanghai, 3)).toBe('river-day');
+  it('uses the night map on odd stages and the city day map on even stages', () => {
+    expect(battleMapIdForStage(CITY_BY_ID.shanghai, 1)).toBe('city-night');
+    expect(battleMapIdForStage(CITY_BY_ID.shanghai, 2)).toBe('river-day');
+    expect(battleMapIdForStage(CITY_BY_ID.shanghai, 3)).toBe('city-night');
   });
 
   it('derives the planned battle map from the next campaign stage', () => {
@@ -34,7 +34,7 @@ describe('battle background map selection', () => {
     const secondCampaign = { ...createNewCampaign(901), completedBattles: 1 };
     const second = createPlannedBattleSetup(secondCampaign, city, 'mission-2');
 
-    expect(first.mapId).toBe('city-day');
-    expect(second.mapId).toBe('city-night');
+    expect(first.mapId).toBe('city-night');
+    expect(second.mapId).toBe('city-day');
   });
 });

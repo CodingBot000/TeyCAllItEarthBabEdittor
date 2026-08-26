@@ -152,7 +152,7 @@ describe('save repository v5 migration', () => {
     expect(migrated?.schemaVersion).toBe(5);
     expect(migrated?.cities.seoul.sideViewResources.pools.ORGANIC.remainingAmount).toBeLessThan(migrated!.cities.seoul.sideViewResources.pools.ORGANIC.initialAmount);
     expect(migrated?.cities.seoul.sideViewResources.migrationBackup['seoul:visit-1:cluster-03']).toEqual({ remainingAmount: 9_000, destroyedAmount: 400, discovered: true });
-    expect(migrated?.plannedMission?.battleSetup).toMatchObject({ missionId: 'mission-v4', mapId: 'city-day', gameplayProfileId: 'coastal-side-view-v1' });
+    expect(migrated?.plannedMission?.battleSetup).toMatchObject({ missionId: 'mission-v4', mapId: 'city-night', gameplayProfileId: 'coastal-side-view-v1' });
     expect(storage.getItem(`${SAVE_KEY}.preMigrationV4`)).toBe(raw);
   });
 
