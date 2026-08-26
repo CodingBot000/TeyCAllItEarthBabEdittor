@@ -206,8 +206,8 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     missiles: [],
     groundSwarmProjectiles: [],
     groundSwarmImpacts: [],
-    lastAirDefenseShot: null,
-    lastPointDefenseShot: null,
+    airDefenseShots: [],
+    pointDefenseShots: [],
     mothershipHits: [],
     objectives: [
       { id: 'harvest', label: `ABSORB ${BALANCE.objectives.absorbTarget.toLocaleString()} UNITS`, progress: 0, target: BALANCE.objectives.absorbTarget, complete: false },
@@ -222,6 +222,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     absorbedByKind: { ORGANIC: 0, POWER: 0, VEHICLE: 0, MACHINERY: 0, DATA: 0, RELIC: 0 },
     destroyedInfrastructure: 0,
     plasmaUses: 0,
+    empUses: 0,
     extractionStatus: 'AVAILABLE',
     result: 'ACTIVE',
     endReason: null,
@@ -609,6 +610,7 @@ export function activateAbility(state: CombatState, ability: AbilityId, target?:
     state.mothership.energy -= BALANCE.emp.energy;
     state.overchargeCells -= heavyAbilityCellCost(ability);
     state.cooldowns.emp = BALANCE.emp.cooldown;
+    state.empUses += 1;
     applyEmp(state, target);
   }
   state.activeAbility = null;
@@ -627,7 +629,9 @@ function applyPlasma(state: CombatState, target: Vec2, unitInvincibilityEnabled:
       }
     }
     for (const enemy of state.enemies) {
-      if (distance(enemy.position, target) <= BALANCE.plasma.radius) enemy.health = 0;
+      if (distance(enemy.position, target) <= BALANCE.plasma.radius) {
+        enemy.health = Math.max(0, enemy.health - BALANCE.plasma.fighterDamage * state.modifiers.plasmaDamageMultiplier);
+      }
     }
     for (const defender of state.groundDefenders) {
       if (defender.health > 0 && distance(defender.position, target) <= BALANCE.plasma.radius) defender.health = Math.max(0, defender.health - BALANCE.plasma.facilityDamage * state.modifiers.plasmaDamageMultiplier);
@@ -640,13 +644,25 @@ function applyPlasma(state: CombatState, target: Vec2, unitInvincibilityEnabled:
 }
 
 function applyEmp(state: CombatState, target: Vec2): void {
+  const disableDuration = BALANCE.emp.duration * state.modifiers.empDurationMultiplier;
   for (const facility of state.facilities) {
     if (!facility.destroyed && distance(facility.position, target) <= BALANCE.emp.radius) {
-      facility.disabledUntil = Math.max(facility.disabledUntil, state.elapsedSeconds + BALANCE.emp.duration * state.modifiers.empDurationMultiplier);
+      facility.disabledUntil = Math.max(facility.disabledUntil, state.elapsedSeconds + disableDuration);
     }
   }
   for (const defender of state.groundDefenders) {
-    if (defender.health > 0 && distance(defender.position, target) <= BALANCE.emp.radius) defender.disabledUntil = Math.max(defender.disabledUntil, state.elapsedSeconds + BALANCE.emp.duration * state.modifiers.empDurationMultiplier);
+    if (defender.health > 0 && distance(defender.position, target) <= BALANCE.emp.radius) defender.disabledUntil = Math.max(defender.disabledUntil, state.elapsedSeconds + disableDuration);
+  }
+  let disabledFighters = 0;
+  const eligibleFighters = state.enemies
+    .filter((enemy) => enemy.health > 0 && enemy.disabledUntil <= state.elapsedSeconds && distance(enemy.position, target) <= BALANCE.emp.radius)
+    .sort((a, b) => distance(a.position, target) - distance(b.position, target));
+  for (const enemy of eligibleFighters) {
+    if (disabledFighters >= state.modifiers.empFighterDisableLimit) break;
+    if (eventRandom(state.seed, state.empUses, enemy.id) >= state.modifiers.empFighterDisableChance) continue;
+    enemy.disabledUntil = state.elapsedSeconds + disableDuration;
+    enemy.absorptionStatus = 'DISABLED';
+    disabledFighters += 1;
   }
   state.missiles = state.missiles.filter((missile) => distance(missile.position, target) > BALANCE.emp.radius);
   refreshTargetStatuses(state);
@@ -697,6 +713,8 @@ export function tickCombat(state: CombatState, dt: number, options: CombatTickOp
   const step = Math.min(dt, 0.25);
   state.elapsedSeconds += step;
   state.mothershipHits = state.mothershipHits.filter((hit) => state.elapsedSeconds - hit.occurredAt <= 2.5);
+  state.airDefenseShots = state.airDefenseShots.filter((shot) => state.elapsedSeconds - shot.occurredAt <= 2.5);
+  state.pointDefenseShots = state.pointDefenseShots.filter((shot) => state.elapsedSeconds - shot.occurredAt <= 2.5);
   refreshTargetStatuses(state);
   for (const ability of Object.keys(state.cooldowns) as AbilityId[]) state.cooldowns[ability] = Math.max(0, state.cooldowns[ability] - step);
   state.mothership.overdriveSeconds = Math.max(0, state.mothership.overdriveSeconds - step);
@@ -990,30 +1008,28 @@ function tickAirDefenseLaser(state: CombatState, unitInvincibilityEnabled = fals
   const interval = BALANCE.defense.airDefenseLaser.interval * state.modifiers.airDefenseLaserIntervalMultiplier;
   if (state.elapsedSeconds - state.lastAirDefenseAt < interval) return;
 
-  let nearest: EnemyState | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const enemy of state.enemies) {
-    if (enemy.health <= 0) continue;
-    const distanceToShip = distance3D(enemy.position, fighterCombatCenter(state));
-    if (distanceToShip >= nearestDistance) continue;
-    nearest = enemy;
-    nearestDistance = distanceToShip;
-  }
-  if (!nearest) return;
+  const targets = state.enemies
+    .filter((enemy) => enemy.health > 0)
+    .sort((a, b) => distance3D(a.position, fighterCombatCenter(state)) - distance3D(b.position, fighterCombatCenter(state)))
+    .slice(0, state.modifiers.airDefenseLaserTargetCount);
+  if (targets.length === 0) return;
 
   state.lastAirDefenseAt = state.elapsedSeconds;
   const origin = { ...state.mothership.position };
-  const target = { ...nearest.position };
-  if (!unitInvincibilityEnabled) nearest.health = Math.max(0, nearest.health - BALANCE.defense.airDefenseLaser.damage);
-  state.lastAirDefenseShot = {
-    id: `air-defense-laser-${state.nextEntityId++}`,
-    targetId: nearest.id,
-    origin,
-    target,
-    targetAltitude: nearest.position.y,
-    damage: BALANCE.defense.airDefenseLaser.damage,
-    occurredAt: state.elapsedSeconds,
-  };
+  const damage = BALANCE.defense.airDefenseLaser.damage * state.modifiers.airDefenseLaserDamageMultiplier;
+  for (const enemy of targets) {
+    const target = { ...enemy.position };
+    if (!unitInvincibilityEnabled) enemy.health = Math.max(0, enemy.health - damage);
+    state.airDefenseShots.push({
+      id: `air-defense-laser-${state.nextEntityId++}`,
+      targetId: enemy.id,
+      origin,
+      target,
+      targetAltitude: enemy.position.y,
+      damage,
+      occurredAt: state.elapsedSeconds,
+    });
+  }
   if (!unitInvincibilityEnabled) state.enemies = state.enemies.filter((enemy) => enemy.health > 0);
 }
 
@@ -1225,22 +1241,42 @@ function hostileProjectileIntersectsMothership(missile: CombatState['missiles'][
 }
 
 function runPointDefense(state: CombatState): void {
-  if (state.elapsedSeconds - state.lastPointDefenseAt < BALANCE.defense.pointDefenseInterval || state.mothership.energy < BALANCE.defense.pointDefenseEnergy) return;
-  const missile = state.missiles.find((item) => hostileProjectileDistanceToShip(item, state) <= BALANCE.defense.pointDefenseRange);
-  if (!missile) return;
-  state.mothership.energy -= BALANCE.defense.pointDefenseEnergy;
+  const energyCost = state.modifiers.pointDefenseEnergyCost;
+  if (state.elapsedSeconds - state.lastPointDefenseAt < BALANCE.defense.pointDefenseInterval || state.mothership.energy < energyCost) return;
+  const affordableTargetCount = Math.floor(state.mothership.energy / energyCost);
+  const targets = state.missiles
+    .filter((missile) => missile.age < 9 && hostileProjectileDistanceToShip(missile, state) <= BALANCE.defense.pointDefenseRange)
+    .sort((a, b) => hostileProjectileDistanceToShip(a, state) - hostileProjectileDistanceToShip(b, state))
+    .slice(0, Math.min(state.modifiers.pointDefenseTargetCount, affordableTargetCount));
+  if (targets.length === 0) return;
   state.lastPointDefenseAt = state.elapsedSeconds;
-  if ((state.nextEntityId * 17) % 4 !== 0) {
-    state.lastPointDefenseShot = {
-      id: `point-defense-${state.nextEntityId++}`,
+  for (const missile of targets) {
+    state.mothership.energy -= energyCost;
+    const eventId = state.nextEntityId++;
+    const success = eventRandom(state.seed, eventId, missile.id) < state.modifiers.pointDefenseAccuracy;
+    state.pointDefenseShots.push({
+      id: `point-defense-${eventId}`,
       targetId: missile.id,
       origin: { ...state.mothership.position },
       target: { ...missile.position },
       targetAltitude: missile.y,
+      success,
       occurredAt: state.elapsedSeconds,
-    };
-    missile.age = 99;
+    });
+    if (success) missile.age = 99;
   }
+}
+
+function eventRandom(seed: number, sequence: number, entityId: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < entityId.length; index += 1) {
+    hash ^= entityId.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  let value = (seed ^ Math.imul(sequence + 1, 0x45d9f3b) ^ hash) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b) >>> 0;
+  return ((value ^ (value >>> 16)) >>> 0) / 0x1_0000_0000;
 }
 
 function spawnHostileProjectile(state: CombatState, source: 'sam' | 'fighter', sourceId: string, position: Vec2, y: number, speed: number, damage: number): void {

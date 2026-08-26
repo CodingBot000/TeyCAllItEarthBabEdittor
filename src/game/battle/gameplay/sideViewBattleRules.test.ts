@@ -314,7 +314,7 @@ describe('side-view battle gameplay', () => {
 
     tickCombat(combatState, 0.01, { disablePointDefense: true });
 
-    expect(combatState.lastPointDefenseShot).toBeNull();
+    expect(combatState.pointDefenseShots).toHaveLength(0);
     expect(combatState.missiles[0]?.age).toBeCloseTo(0.01, 5);
   });
 

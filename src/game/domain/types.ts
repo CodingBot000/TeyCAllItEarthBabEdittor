@@ -551,7 +551,14 @@ export interface CombatModifiers {
   cohortLossMultiplier: number;
   cohortRecoveryRadiusMultiplier: number;
   empDurationMultiplier: number;
+  empFighterDisableChance: number;
+  empFighterDisableLimit: number;
+  airDefenseLaserDamageMultiplier: number;
   airDefenseLaserIntervalMultiplier: number;
+  airDefenseLaserTargetCount: number;
+  pointDefenseAccuracy: number;
+  pointDefenseEnergyCost: number;
+  pointDefenseTargetCount: number;
   threatForecastMultiplier: number;
   commandBandwidth: number;
   dropCapacity: number;
@@ -625,6 +632,7 @@ export interface PointDefenseShotEvent {
   origin: Vec2;
   target: Vec2;
   targetAltitude: number;
+  success: boolean;
   occurredAt: number;
 }
 
@@ -682,8 +690,8 @@ export interface CombatState {
   missiles: MissileState[];
   groundSwarmProjectiles: GroundSwarmProjectileState[];
   groundSwarmImpacts: GroundSwarmImpactEvent[];
-  lastAirDefenseShot: AirDefenseShotEvent | null;
-  lastPointDefenseShot: PointDefenseShotEvent | null;
+  airDefenseShots: AirDefenseShotEvent[];
+  pointDefenseShots: PointDefenseShotEvent[];
   mothershipHits: MothershipHitEvent[];
   objectives: { id: string; label: string; progress: number; target: number; complete: boolean; linkedTargetId?: string }[];
   cargo: MissionCargo;
@@ -694,6 +702,7 @@ export interface CombatState {
   absorbedByKind: Record<AbsorbableKind, number>;
   destroyedInfrastructure: number;
   plasmaUses: number;
+  empUses: number;
   extractionStatus: ExtractionStatus;
   result: 'ACTIVE' | CombatOutcome;
   endReason: CombatEndReason | null;

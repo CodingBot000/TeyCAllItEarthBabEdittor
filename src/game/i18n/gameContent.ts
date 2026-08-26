@@ -23,7 +23,7 @@ const KOREAN_UPGRADES: Record<string, { label: string; group: string; descriptio
   'beam-radius': { label: '흡수 광선 반경', group: '수확', description: '단계당 흡수 반경 +1.0' },
   'beam-efficiency': { label: '흡수 광선 효율', group: '수확', description: '단계당 광선 열 증가량 -10%' },
   'cargo-bay': { label: '화물칸', group: '수확', description: '단계당 화물 용량 +10,000' },
-  'plasma-damage': { label: '플라즈마 피해', group: '무장', description: '단계당 타격 피해 +15%' },
+  'plasma-damage': { label: '플라즈마 피해', group: '무장', description: '단계당 시설·지상군·전투기 피해 +15%' },
   'shield-capacity': { label: '실드 용량', group: '방어', description: '단계당 최대 실드 +120' },
   'energy-core': { label: '에너지 코어', group: '방어', description: '단계당 에너지 +120, 재생 +4' },
   'scanner-array': { label: '스캐너 배열', group: '유틸리티', description: '단계당 스캔 범위 +6' },
@@ -36,9 +36,15 @@ const KOREAN_UPGRADES: Record<string, { label: string; group: string; descriptio
   'recovery-protocol': { label: '회수 프로토콜', group: '군단', description: '단계당 코호트 손실 -12%, 실패 화물 회수 +10%' },
   'core-reservoir': { label: '코어 저장소', group: '에너지', description: '단계당 최대 코어 충전 +20' },
   'capacitor-rack': { label: '축전기 랙', group: '에너지', description: '단계당 과충전 셀 수용량 +1' },
-  'emp-duration': { label: 'EMP 지속 시간', group: '무장', description: '단계당 EMP 지속 시간 +20%' },
+  'emp-duration': { label: 'EMP 무력화', group: '무장', description: '단계당 지속 시간 +20%, 전투기 무력화 확률 +2%p, 최대 대상 +1' },
   'emergency-bio-conversion': { label: '비상 생체 전환', group: '에너지', description: '단계당 비상 코어 충전 +4' },
   'threat-forecast': { label: '위협 예측', group: '유틸리티', description: '단계당 예상 경보 압력 -15%' },
+  'air-defense-damage': { label: '방공 레이저 출력', group: '무장', description: '단계당 방공 레이저 피해 +20%' },
+  'air-defense-cycle': { label: '방공 레이저 가속기', group: '무장', description: '단계당 방공 레이저 발사 간격 -10%' },
+  'air-defense-multitarget': { label: '방공 다중 추적 배열', group: '무장', description: '단계당 한 번에 공격하는 전투기 +1' },
+  'point-defense-accuracy': { label: '요격 레이저 정밀도', group: '무장', description: '단계당 미사일 요격 확률 +5%p' },
+  'point-defense-efficiency': { label: '요격 레이저 효율', group: '무장', description: '단계당 표적별 에너지 소모 -1' },
+  'point-defense-multitarget': { label: '요격 다중 추적 배열', group: '무장', description: '단계당 한 번에 요격하는 미사일 +1' },
 };
 
 const KOREAN_ENUMS: Record<string, string> = {

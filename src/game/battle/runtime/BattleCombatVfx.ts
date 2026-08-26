@@ -256,8 +256,8 @@ export class BattleCombatVfx {
   private readonly plasmaEffects: PlasmaEffect[] = [];
   private readonly airDefenseEffects: AirDefenseVisual[] = [];
   private readonly consumedHitIds = new Set<string>();
-  private consumedAirDefenseId: string | null = null;
-  private consumedPointDefenseId: string | null = null;
+  private readonly consumedAirDefenseIds = new Set<string>();
+  private readonly consumedPointDefenseIds = new Set<string>();
   private readonly damageId = { value: 0 };
   private readonly abilityId = { value: 0 };
   private readonly shieldBubbleMaterial: StandardMaterial;
@@ -626,24 +626,31 @@ export class BattleCombatVfx {
     this.syncProjectiles(state);
     this.syncCollisionOverlay(state);
     this.syncGroundSwarm(state);
-    if (state.lastAirDefenseShot && state.lastAirDefenseShot.id !== this.consumedAirDefenseId) {
-      this.consumedAirDefenseId = state.lastAirDefenseShot.id;
+    for (const shot of state.airDefenseShots) {
+      if (this.consumedAirDefenseIds.has(shot.id)) continue;
+      this.consumedAirDefenseIds.add(shot.id);
       this.triggerAirDefenseShot(
-        state.lastAirDefenseShot.origin,
-        state.lastAirDefenseShot.target,
-        state.lastAirDefenseShot.targetAltitude,
-        this.projectileVisualOriginResolver?.('fighter', state.lastAirDefenseShot.targetId) ?? undefined,
+        shot.origin,
+        shot.target,
+        shot.targetAltitude,
+        this.projectileVisualOriginResolver?.('fighter', shot.targetId) ?? undefined,
       );
     }
-    if (state.lastPointDefenseShot && state.lastPointDefenseShot.id !== this.consumedPointDefenseId) {
-      this.consumedPointDefenseId = state.lastPointDefenseShot.id;
+    for (const shot of state.pointDefenseShots) {
+      if (this.consumedPointDefenseIds.has(shot.id)) continue;
+      this.consumedPointDefenseIds.add(shot.id);
       this.triggerPointDefenseShot(
-        state.lastPointDefenseShot.origin,
-        state.lastPointDefenseShot.target,
-        state.lastPointDefenseShot.targetAltitude,
-        this.projectileVisualPositions.get(state.lastPointDefenseShot.targetId),
+        shot.origin,
+        shot.target,
+        shot.targetAltitude,
+        shot.success,
+        this.projectileVisualPositions.get(shot.targetId),
       );
     }
+    const retainedAirDefenseIds = new Set(state.airDefenseShots.map((shot) => shot.id));
+    for (const id of this.consumedAirDefenseIds) if (!retainedAirDefenseIds.has(id)) this.consumedAirDefenseIds.delete(id);
+    const retainedPointDefenseIds = new Set(state.pointDefenseShots.map((shot) => shot.id));
+    for (const id of this.consumedPointDefenseIds) if (!retainedPointDefenseIds.has(id)) this.consumedPointDefenseIds.delete(id);
     const target = state.absorbableTargets.find((item) => item.id === state.activeBeamTargetId);
     this.setAbsorption(Boolean(state.activeAbility === 'beam' && target), target ? new Vector3(target.center.x, GROUND_ABSORPTION_TARGET_Y, target.center.z) : undefined);
   }
@@ -764,8 +771,8 @@ export class BattleCombatVfx {
     this.searchBeamVisuals.splice(0).forEach((effect) => this.disposeSearchBeam(effect));
     this.consumedGroundSwarmImpactIds.clear();
     this.consumedHitIds.clear();
-    this.consumedAirDefenseId = null;
-    this.consumedPointDefenseId = null;
+    this.consumedAirDefenseIds.clear();
+    this.consumedPointDefenseIds.clear();
     this.airDefenseEffects.splice(0).forEach((effect) => {
       effect.beam.dispose();
       effect.core.dispose();
@@ -987,8 +994,8 @@ export class BattleCombatVfx {
     this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial, true, visualTarget);
   }
 
-  private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, visualTarget?: Vector3): void {
-    this.triggerDefenseLaserShot('battle-point-defense-laser', origin, target, targetAltitude, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, true, visualTarget);
+  private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, success: boolean, visualTarget?: Vector3): void {
+    this.triggerDefenseLaserShot('battle-point-defense-laser', origin, target, targetAltitude, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, success, visualTarget);
   }
 
   private triggerDefenseLaserShot(

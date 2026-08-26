@@ -64,6 +64,7 @@ export const BALANCE = {
     energy: 90,
     cooldown: 3.5,
     facilityDamage: 220,
+    fighterDamage: 40,
     collateralRatio: 0.12,
   },
   emp: { range: 28, radius: 18, energy: 180, cooldown: 16, duration: 8 },
@@ -115,6 +116,7 @@ export const BALANCE = {
     pointDefenseRange: 14,
     pointDefenseInterval: 0.45,
     pointDefenseEnergy: 8,
+    pointDefenseAccuracy: 0.75,
   },
   groundSwarm: {
     initialDelay: 2.5,

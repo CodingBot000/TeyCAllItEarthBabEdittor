@@ -6,6 +6,9 @@ import { resolveRecoveredCohorts } from './cohortRules';
 import { calculateBreachProgress } from './missionRules';
 import type { CampaignState, CityConquestState, CityDefinition, CityState, CombatModifiers, CombatState, LogisticsState, MissionCargo, PendingDebriefState, RepairAssessment, ResourceWallet } from './types';
 import { createCitySideViewResourceState } from '../battle/gameplay/sideViewResourcePools';
+import { isUpgradeId, UPGRADE_BY_ID } from './upgradeCatalog';
+import { requirementsMet } from './upgradeTree';
+export { UPGRADE_DEFINITIONS } from './upgradeCatalog';
 
 export function createCityConquestState(alert = 0, visits = 0): CityConquestState {
   return {
@@ -291,6 +294,7 @@ function recoverMissionCargo(cargo: MissionCargo, recoveryRate: number): Mission
 export function deriveCombatModifiers(campaign: CampaignState): CombatModifiers {
   const conditioningLevel = upgradeLevel(campaign, 'cohort-conditioning');
   const recoveryLevel = upgradeLevel(campaign, 'recovery-protocol');
+  const empLevel = upgradeLevel(campaign, 'emp-duration');
   return {
     beamRateMultiplier: 1 + upgradeLevel(campaign, 'beam-capacity') * 0.2,
     beamRadiusBonus: upgradeLevel(campaign, 'beam-radius'),
@@ -306,8 +310,15 @@ export function deriveCombatModifiers(campaign: CampaignState): CombatModifiers 
     cohortAssaultDamageMultiplier: 1 + conditioningLevel * 0.1,
     cohortLossMultiplier: Math.max(0.55, 1 - recoveryLevel * 0.12),
     cohortRecoveryRadiusMultiplier: 1 + recoveryLevel * 0.25,
-    empDurationMultiplier: 1 + upgradeLevel(campaign, 'emp-duration') * 0.2,
-    airDefenseLaserIntervalMultiplier: 1,
+    empDurationMultiplier: 1 + empLevel * 0.2,
+    empFighterDisableChance: 0.1 + empLevel * 0.02,
+    empFighterDisableLimit: 1 + empLevel,
+    airDefenseLaserDamageMultiplier: 1 + upgradeLevel(campaign, 'air-defense-damage') * 0.2,
+    airDefenseLaserIntervalMultiplier: Math.max(0.7, 1 - upgradeLevel(campaign, 'air-defense-cycle') * 0.1),
+    airDefenseLaserTargetCount: 1 + upgradeLevel(campaign, 'air-defense-multitarget'),
+    pointDefenseAccuracy: Math.min(0.9, BALANCE.defense.pointDefenseAccuracy + upgradeLevel(campaign, 'point-defense-accuracy') * 0.05),
+    pointDefenseEnergyCost: Math.max(5, BALANCE.defense.pointDefenseEnergy - upgradeLevel(campaign, 'point-defense-efficiency')),
+    pointDefenseTargetCount: 1 + upgradeLevel(campaign, 'point-defense-multitarget'),
     threatForecastMultiplier: Math.max(0.55, 1 - upgradeLevel(campaign, 'threat-forecast') * 0.15),
     commandBandwidth: campaign.logistics.commandBandwidth,
     dropCapacity: campaign.logistics.dropCapacity,
@@ -318,34 +329,13 @@ export function upgradeLevel(campaign: CampaignState, id: string): number {
   return campaign.upgrades[id] ?? 0;
 }
 
-export const UPGRADE_DEFINITIONS = [
-  { id: 'beam-capacity', label: 'BEAM CAPACITY', group: 'HARVEST', description: '+20% harvest rate per level', maxLevel: 3, cost: (level: number) => ({ biomass: 90 * (level + 1), alloy: 0, intel: level === 2 ? 4 : 0 }) },
-  { id: 'beam-radius', label: 'BEAM RADIUS', group: 'HARVEST', description: '+1.0 capture radius per level', maxLevel: 3, cost: (level: number) => ({ biomass: 120 * (level + 1), alloy: 0, intel: 0 }) },
-  { id: 'beam-efficiency', label: 'BEAM EFFICIENCY', group: 'HARVEST', description: '-10% beam heat gain per level', maxLevel: 3, cost: (level: number) => ({ biomass: 100 * (level + 1), alloy: 70 * (level + 1), intel: 0 }) },
-  { id: 'cargo-bay', label: 'CARGO BAY', group: 'HARVEST', description: '+10,000 cargo capacity per level', maxLevel: 3, cost: (level: number) => ({ biomass: 100 * (level + 1), alloy: 120 * (level + 1), intel: 0 }) },
-  { id: 'plasma-damage', label: 'PLASMA DAMAGE', group: 'WEAPON', description: '+15% strike damage per level', maxLevel: 3, cost: (level: number) => ({ biomass: 0, alloy: 110 * (level + 1), intel: level === 2 ? 3 : 0 }) },
-  { id: 'shield-capacity', label: 'SHIELD CAPACITY', group: 'DEFENSE', description: '+120 maximum shield per level', maxLevel: 3, cost: (level: number) => ({ biomass: 0, alloy: 100 * (level + 1), intel: 0 }) },
-  { id: 'energy-core', label: 'ENERGY CORE', group: 'DEFENSE', description: '+120 energy and +4 regen per level', maxLevel: 3, cost: (level: number) => ({ biomass: 80 * (level + 1), alloy: 80 * (level + 1), intel: 0 }) },
-  { id: 'scanner-array', label: 'SCANNER ARRAY', group: 'UTILITY', description: '+6 scan range per level', maxLevel: 3, cost: (level: number) => ({ biomass: 0, alloy: 80 * (level + 1), intel: 6 * (level + 1) }) },
-  { id: 'signature-dampener', label: 'SIGNATURE DAMPENER', group: 'UTILITY', description: '-10% beam alert per level', maxLevel: 3, cost: (level: number) => ({ biomass: 0, alloy: 90 * (level + 1), intel: 5 * (level + 1) }) },
-  { id: 'selective-filter', label: 'SELECTIVE FILTER', group: 'HARVEST', description: '+12% mission yield per level', maxLevel: 3, cost: (level: number) => ({ biomass: 140 * (level + 1), alloy: 50 * (level + 1), intel: level * 2 }) },
-  { id: 'neural-foundry', label: 'NEURAL FOUNDRY', group: 'ARMY', description: '+1 conversion capacity per level', maxLevel: 3, cost: (level: number) => ({ biomass: 180 * (level + 1), alloy: 130 * (level + 1), intel: 2 * (level + 1) }) },
-  { id: 'command-bandwidth', label: 'COMMAND BANDWIDTH', group: 'ARMY', description: '+1 simultaneous command bandwidth per level', maxLevel: 3, cost: (level: number) => ({ biomass: 120 * (level + 1), alloy: 160 * (level + 1), intel: 3 * (level + 1) }) },
-  { id: 'drop-capacity', label: 'DROP CAPACITY', group: 'ARMY', description: '+1 cohort drop capacity per level', maxLevel: 3, cost: (level: number) => ({ biomass: 160 * (level + 1), alloy: 140 * (level + 1), intel: 2 * (level + 1) }) },
-  { id: 'cohort-conditioning', label: 'COHORT CONDITIONING', group: 'ARMY', description: '+8% base strength and movement, +10% assault damage per level', maxLevel: 3, cost: (level: number) => ({ biomass: 200 * (level + 1), alloy: 160 * (level + 1), intel: 4 * (level + 1) }) },
-  { id: 'recovery-protocol', label: 'RECOVERY PROTOCOL', group: 'ARMY', description: '-12% cohort losses and +10% failed cargo recovery per level', maxLevel: 3, cost: (level: number) => ({ biomass: 170 * (level + 1), alloy: 130 * (level + 1), intel: 4 * (level + 1) }) },
-  { id: 'core-reservoir', label: 'CORE RESERVOIR', group: 'ENERGY', description: '+20 maximum Core Charge per level', maxLevel: 3, cost: (level: number) => ({ biomass: 130 * (level + 1), alloy: 180 * (level + 1), intel: 2 * (level + 1) }) },
-  { id: 'capacitor-rack', label: 'CAPACITOR RACK', group: 'ENERGY', description: '+1 Overcharge Cell capacity per level', maxLevel: 3, cost: (level: number) => ({ biomass: 120 * (level + 1), alloy: 220 * (level + 1), intel: 4 * (level + 1) }) },
-  { id: 'emp-duration', label: 'EMP DURATION', group: 'WEAPON', description: '+20% EMP duration per level', maxLevel: 3, cost: (level: number) => ({ biomass: 80 * (level + 1), alloy: 190 * (level + 1), intel: 3 * (level + 1) }) },
-  { id: 'emergency-bio-conversion', label: 'EMERGENCY BIO-CONVERSION', group: 'ENERGY', description: '+4 emergency Core Charge grant per level', maxLevel: 3, cost: (level: number) => ({ biomass: 220 * (level + 1), alloy: 100 * (level + 1), intel: 5 * (level + 1) }) },
-  { id: 'threat-forecast', label: 'THREAT FORECAST', group: 'UTILITY', description: '-15% projected alert pressure per level', maxLevel: 3, cost: (level: number) => ({ biomass: 100 * (level + 1), alloy: 120 * (level + 1), intel: 8 * (level + 1) }) },
-] as const;
-
 export function purchaseUpgrade(campaign: CampaignState, id: string): { campaign: CampaignState; ok: boolean; reason?: string } {
-  const definition = UPGRADE_DEFINITIONS.find((item) => item.id === id);
+  if (!isUpgradeId(id)) return { campaign, ok: false, reason: 'Unknown upgrade' };
+  const definition = UPGRADE_BY_ID.get(id);
   if (!definition) return { campaign, ok: false, reason: 'Unknown upgrade' };
   const level = upgradeLevel(campaign, id);
   if (level >= definition.maxLevel) return { campaign, ok: false, reason: 'Maximum level reached' };
+  if (level === 0 && !requirementsMet(campaign, id)) return { campaign, ok: false, reason: 'Prerequisites not met' };
   const cost = definition.cost(level);
   if (!hasResources(campaign.resources, cost)) return { campaign, ok: false, reason: 'Insufficient resources' };
   const next: CampaignState = { ...campaign, resources: subtractResources(campaign.resources, cost), upgrades: { ...campaign.upgrades, [id]: level + 1 } };
