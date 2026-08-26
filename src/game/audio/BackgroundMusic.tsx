@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 
 const MENU_BGM_URL = '/assets/runtime/audio/bgm-menu.mp3';
 const BATTLE_BGM_URL = '/assets/runtime/audio/bgm-battle.mp3';
+const BACKGROUND_MUSIC_ENABLED = false;
 
 type BackgroundMusicProps = {
   isBattle: boolean;
@@ -31,7 +32,7 @@ export function BackgroundMusic({ isBattle }: BackgroundMusicProps) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || !BACKGROUND_MUSIC_ENABLED) return undefined;
 
     const nextTrack = isBattle ? BATTLE_BGM_URL : MENU_BGM_URL;
     if (trackRef.current !== nextTrack) {
@@ -53,6 +54,7 @@ export function BackgroundMusic({ isBattle }: BackgroundMusicProps) {
   }, [isBattle]);
 
   useEffect(() => {
+    if (!BACKGROUND_MUSIC_ENABLED) return undefined;
     const resumeAudio = () => {
       const audio = audioRef.current;
       if (audio?.paused) {
