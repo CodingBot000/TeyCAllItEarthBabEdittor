@@ -13,12 +13,14 @@ type BackgroundMusicProps = {
 export function BackgroundMusic({ isBattle }: BackgroundMusicProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const trackRef = useRef<string | null>(null);
+  const playbackBlockedRef = useRef(false);
 
   useEffect(() => {
     const audio = new Audio();
     audio.loop = true;
     audio.preload = 'auto';
     audio.volume = 0.35;
+    audio.setAttribute('playsinline', '');
     audioRef.current = audio;
 
     return () => {
@@ -27,6 +29,7 @@ export function BackgroundMusic({ isBattle }: BackgroundMusicProps) {
       audio.load();
       audioRef.current = null;
       trackRef.current = null;
+      playbackBlockedRef.current = false;
     };
   }, []);
 
@@ -35,40 +38,60 @@ export function BackgroundMusic({ isBattle }: BackgroundMusicProps) {
     if (!audio || !BACKGROUND_MUSIC_ENABLED) return undefined;
 
     const nextTrack = isBattle ? BATTLE_BGM_URL : MENU_BGM_URL;
-    if (trackRef.current !== nextTrack) {
-      trackRef.current = nextTrack;
-      audio.src = nextTrack;
-      audio.load();
-    }
-
     const play = () => {
-      void audio.play().catch(() => {
-        // Browsers may block autoplay until the user interacts with the page.
-      });
+      if (!audio.paused) return;
+      const playPromise = audio.play();
+      if (playPromise) {
+        void playPromise.then(() => {
+          playbackBlockedRef.current = false;
+        }).catch(() => {
+          playbackBlockedRef.current = true;
+        });
+      }
     };
 
+    // Attach readiness listeners before load(). This avoids missing canplay
+    // for cached tracks and avoids racing load() against play().
     audio.addEventListener('canplay', play, { once: true });
-    play();
+    audio.addEventListener('canplaythrough', play, { once: true });
+    if (trackRef.current !== nextTrack) {
+      trackRef.current = nextTrack;
+      audio.pause();
+      audio.src = nextTrack;
+      audio.load();
+    } else if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      play();
+    }
 
-    return () => audio.removeEventListener('canplay', play);
+    return () => {
+      audio.removeEventListener('canplay', play);
+      audio.removeEventListener('canplaythrough', play);
+    };
   }, [isBattle]);
 
   useEffect(() => {
     if (!BACKGROUND_MUSIC_ENABLED) return undefined;
     const resumeAudio = () => {
       const audio = audioRef.current;
-      if (audio?.paused) {
-        void audio.play().catch(() => {
-          // Keep waiting for a browser gesture if playback is still blocked.
-        });
+      if (audio && (audio.paused || playbackBlockedRef.current)) {
+        const playPromise = audio.play();
+        if (playPromise) {
+          void playPromise.then(() => {
+            playbackBlockedRef.current = false;
+          }).catch(() => {
+            playbackBlockedRef.current = true;
+          });
+        }
       }
     };
 
     document.addEventListener('pointerdown', resumeAudio, { passive: true });
     document.addEventListener('keydown', resumeAudio);
+    document.addEventListener('click', resumeAudio, { passive: true });
     return () => {
       document.removeEventListener('pointerdown', resumeAudio);
       document.removeEventListener('keydown', resumeAudio);
+      document.removeEventListener('click', resumeAudio);
     };
   }, []);
 
