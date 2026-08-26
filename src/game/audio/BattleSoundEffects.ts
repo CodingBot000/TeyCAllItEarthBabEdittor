@@ -2,7 +2,6 @@ import type { AirDefenseShotEvent, CombatState } from '../domain/types';
 
 const ABSORPTION_BEAM_URL = '/assets/runtime/audio/sfx-absorption-beam-loop.mp3';
 const SPACESHIP_LASER_URL = '/assets/runtime/audio/sfx-spacship_laser.mp3';
-const EXPLOSION_URL = '/assets/runtime/audio/sfx-explosion-sound.mp3';
 const PLASMA_URL = '/assets/runtime/audio/sfx-plasma-sound.mp3';
 const EMP_URL = '/assets/runtime/audio/sfx-emp-shock.mp3';
 
@@ -18,12 +17,7 @@ export class BattleSoundEffects {
   private readonly oneShotAudios = new Set<HTMLAudioElement>();
   private readonly consumedAirDefenseIds = new Set<string>();
   private readonly consumedAirDefenseTimes = new Set<number>();
-  private readonly knownActiveEnemyIds = new Set<string>();
-  private readonly knownActiveFacilityIds = new Set<string>();
-  private readonly knownActiveDefenderIds = new Set<string>();
-  private readonly knownNonDestroyedTargetIds = new Set<string>();
   private absorptionActive = false;
-  private destructionStateInitialized = false;
   private disposed = false;
 
   constructor(private readonly audioFactory: AudioFactory = (source) => new Audio(source)) {
@@ -42,16 +36,10 @@ export class BattleSoundEffects {
     this.playOneShot(ability === 'plasma' ? PLASMA_URL : EMP_URL, 0.58);
   }
 
-  playExplosion(): void {
-    if (this.disposed) return;
-    this.playOneShot(EXPLOSION_URL, 0.34, { start: 1, end: 2 });
-  }
-
   syncCombatState(state: Readonly<CombatState>): void {
     if (this.disposed) return;
     this.setAbsorptionActive(state.result === 'ACTIVE' && state.activeAbility === 'beam');
     this.syncAirDefenseShots(state.airDefenseShots);
-    this.syncDestructionEvents(state);
   }
 
   dispose(): void {
@@ -63,10 +51,6 @@ export class BattleSoundEffects {
     this.oneShotAudios.clear();
     this.consumedAirDefenseIds.clear();
     this.consumedAirDefenseTimes.clear();
-    this.knownActiveEnemyIds.clear();
-    this.knownActiveFacilityIds.clear();
-    this.knownActiveDefenderIds.clear();
-    this.knownNonDestroyedTargetIds.clear();
   }
 
   private syncAirDefenseShots(shots: readonly AirDefenseShotEvent[]): void {
@@ -88,39 +72,6 @@ export class BattleSoundEffects {
     for (const time of this.consumedAirDefenseTimes) {
       if (!retainedTimes.has(time)) this.consumedAirDefenseTimes.delete(time);
     }
-  }
-
-  private syncDestructionEvents(state: Readonly<CombatState>): void {
-    const activeEnemyIds = new Set(state.enemies.filter((enemy) => enemy.health > 0).map((enemy) => enemy.id));
-    const activeFacilityIds = new Set(state.facilities
-      .filter((facility) => !facility.destroyed && facility.health > 0)
-      .map((facility) => facility.id));
-    const activeDefenderIds = new Set(state.groundDefenders
-      .filter((defender) => defender.health > 0)
-      .map((defender) => defender.id));
-    const nonDestroyedTargetIds = new Set(state.absorbableTargets
-      .filter((target) => target.status !== 'DESTROYED')
-      .map((target) => target.id));
-
-    if (this.destructionStateInitialized) {
-      for (const id of this.knownActiveEnemyIds) if (!activeEnemyIds.has(id)) this.playExplosion();
-      for (const id of this.knownActiveFacilityIds) if (!activeFacilityIds.has(id)) this.playExplosion();
-      for (const id of this.knownActiveDefenderIds) if (!activeDefenderIds.has(id)) this.playExplosion();
-      for (const id of this.knownNonDestroyedTargetIds) if (!nonDestroyedTargetIds.has(id)) {
-        const target = state.absorbableTargets.find((candidate) => candidate.id === id);
-        if (target?.status === 'DESTROYED') this.playExplosion();
-      }
-    }
-
-    this.knownActiveEnemyIds.clear();
-    activeEnemyIds.forEach((id) => this.knownActiveEnemyIds.add(id));
-    this.knownActiveFacilityIds.clear();
-    activeFacilityIds.forEach((id) => this.knownActiveFacilityIds.add(id));
-    this.knownActiveDefenderIds.clear();
-    activeDefenderIds.forEach((id) => this.knownActiveDefenderIds.add(id));
-    this.knownNonDestroyedTargetIds.clear();
-    nonDestroyedTargetIds.forEach((id) => this.knownNonDestroyedTargetIds.add(id));
-    this.destructionStateInitialized = true;
   }
 
   private createAudio(source: string, loop: boolean, volume: number): HTMLAudioElement {

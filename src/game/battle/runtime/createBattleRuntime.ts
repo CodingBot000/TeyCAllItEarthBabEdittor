@@ -604,7 +604,6 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     movementVelocity = 0;
     cinematic = { kind, elapsed: 0, duration: kind === 'CRASH' ? CINEMATIC_CRASH_DURATION : CINEMATIC_EVASION_DURATION, origin: mothershipGameplayRoot.position.clone(), direction: movementInputs.keyboard < 0 || movementInputs.pointer < 0 ? -1 : 1 };
     if (kind === 'CRASH') soundEffects.setAbsorptionActive(false);
-    if (kind === 'CRASH') soundEffects.playExplosion();
     if (kind === 'CRASH' && combatState && combatState.result === 'ACTIVE') {
       combatState.mothership.shield = 0;
       applyMothershipProjectileDamage(combatState, combatState.mothership.hull + 100, 'sam', { x: -0.6, y: -0.4, z: -1 }, `crash-hit-${combatState.nextEntityId++}`);

@@ -99,6 +99,11 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 
 ## 다음 튜닝 후보
 
+## 2026-08-27 — 폭발음 제거
+
+- `sfx-explosion-sound.mp3` 에셋과 전투 폭발음 재생 경로를 삭제했다.
+- 파괴 시 폭발 시각 이펙트는 유지하고, Plasma/EMP·흡수 광선·레이저 효과음은 유지했다.
+
 ## 2026-08-27 — 테스트용 배경음악 임시 비활성화
 
 - `BackgroundMusic`에 `BACKGROUND_MUSIC_ENABLED = false` 스위치를 추가해 메뉴/전투 BGM만 임시로 끄도록 했다.
