@@ -1,4 +1,5 @@
 import type { AbsorbableKind, AbsorbableTargetDefinition } from '../../domain/types';
+import { isShelterOrganicTarget } from '../../domain/shelterRules';
 import type { BattleGameplayProfile } from './BattleGameplayProfile';
 
 export interface AbsorbableClusterGenerationInput {
@@ -19,7 +20,10 @@ interface RandomSource {
 export function generateAbsorbableClusters(input: AbsorbableClusterGenerationInput): AbsorbableTargetDefinition[] {
   const { profile } = input;
   if (input.sourceTargets.length === 0 || profile.clusterCount <= 0) return [];
-  const availableTargets = input.sourceTargets.filter((target) => input.availableAmountsByKind === undefined || Math.max(0, input.availableAmountsByKind[target.kind] ?? 0) > 0);
+  const shelterTemplates = input.sourceTargets.filter(isShelterOrganicTarget);
+  const availableTargets = input.sourceTargets.filter((target) => isShelterOrganicTarget(target)
+    || input.availableAmountsByKind === undefined
+    || Math.max(0, input.availableAmountsByKind[target.kind] ?? 0) > 0);
   if (availableTargets.length === 0) return [];
   const random = seededRandom(input.layoutSeed === undefined
     ? `${input.campaignSeed}:${input.cityId}:${input.visit}:${input.missionId}:${profile.id}:${profile.version}`
@@ -29,9 +33,12 @@ export function generateAbsorbableClusters(input: AbsorbableClusterGenerationInp
   const gated = availableTargets.filter((target) => target.requirement !== 'NONE');
   const initialClusterIndex = positions.reduce((bestIndex, position, index) => Math.abs(position) < Math.abs(positions[bestIndex]) ? index : bestIndex, 0);
   const gatedClusterIndex = positions.reduce((bestIndex, position, index) => Math.abs(position) > Math.abs(positions[bestIndex]) ? index : bestIndex, 0);
+  const shelterSlotIndexes = new Set([0, Math.max(0, positions.length - 1)].slice(0, Math.min(2, positions.length)));
 
   const drafts = positions.map((x, index) => {
-    const candidates = index === initialClusterIndex && unguarded.length > 0
+    const candidates = shelterTemplates.length > 0 && shelterSlotIndexes.has(index)
+      ? shelterTemplates
+      : index === initialClusterIndex && unguarded.length > 0
       ? unguarded
       : index === gatedClusterIndex && gated.length > 0
         ? gated
@@ -44,7 +51,7 @@ export function generateAbsorbableClusters(input: AbsorbableClusterGenerationInp
 
   return drafts.flatMap(({ x, index, template, amountScale, radiusScale }, draftIndex) => {
     const initialAmountOverride = allocations[draftIndex];
-    if (input.availableAmountsByKind !== undefined && (!initialAmountOverride || initialAmountOverride <= 0)) return [];
+    if (input.availableAmountsByKind !== undefined && (!initialAmountOverride || initialAmountOverride <= 0) && !isShelterOrganicTarget(template)) return [];
     const clusterId = `${input.cityId}:visit-${input.visit}:cluster-${String(index + 1).padStart(2, '0')}`;
     return {
       ...template,
@@ -54,7 +61,7 @@ export function generateAbsorbableClusters(input: AbsorbableClusterGenerationInp
       center: { x, z: 0 },
       radius: Math.max(4.5, template.radius * radiusScale),
       baseAmount: Math.max(1000, Math.round(template.baseAmount * amountScale)),
-      ...(initialAmountOverride !== undefined ? { initialAmountOverride } : {}),
+      ...(initialAmountOverride !== undefined && initialAmountOverride > 0 ? { initialAmountOverride } : {}),
       yieldPerThousand: scaleYield(template.yieldPerThousand, profile.rewardMultiplier),
       visualBudget: Math.max(6, Math.min(36, template.visualBudget)),
     };

@@ -8,8 +8,9 @@ const shadowSourcePath = path.join(projectRoot, 'assets/battlescene/shared/units
 const outputRoot = path.join(projectRoot, 'public/assets/runtime/sprites');
 const cellSize = 627;
 const padding = 4;
+const gatlingDefenderSourcePath = path.join(projectRoot, 'assets/_weapon-temp/final/gatling-armored-vehicle-gameobject-v1-512.png');
 const units = [
-  { name: 'ground-defender-mobile-side.png', column: 0, row: 0 },
+  { name: 'ground-defender-mobile-side.png', sourcePath: gatlingDefenderSourcePath },
   { name: 'ground-radar-facility-side.png', column: 1, row: 0 },
   { name: 'ground-airbase-facility-side.png', column: 0, row: 1 },
   { name: 'ground-power-facility-side.png', column: 1, row: 1 },
@@ -21,8 +22,13 @@ const { data, info } = await sharp(sourcePath).raw().toBuffer({ resolveWithObjec
 const outputs = [];
 
 for (const unit of units) {
-  const cell = extractCell(unit);
   const outputPath = path.join(outputRoot, unit.name);
+  if (unit.sourcePath) {
+    const info = await sharp(unit.sourcePath).trim().png().toFile(outputPath);
+    outputs.push({ file: unit.name, width: info.width, height: info.height, bottomTrimmed: true, source: path.relative(projectRoot, unit.sourcePath) });
+    continue;
+  }
+  const cell = extractCell(unit);
   await sharp(cell.data, { raw: { width: cell.width, height: cell.height, channels: 4 } }).png().toFile(outputPath);
   outputs.push({ file: unit.name, width: cell.width, height: cell.height, bottomTrimmed: true });
 }

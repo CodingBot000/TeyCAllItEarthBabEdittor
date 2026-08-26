@@ -378,6 +378,8 @@ h1, h2, h3, p { margin-top: 0; }
 .secondary-button:hover, .small-button:hover { border-color: var(--cyan); background: rgba(125, 231, 212, .1); }
 .quick-battle-button { color: var(--amber); border-color: rgba(244, 184, 90, .5); background: rgba(244, 184, 90, .08); }
 .quick-battle-button:hover { border-color: var(--amber); background: rgba(244, 184, 90, .14); }
+/* Temporary: keep the night quick-battle action in the DOM, but hide it from the main menu. */
+.quick-night-battle-button { display: none; }
 .text-button { padding: 14px 0; border: 0; color: var(--muted); font-size: 10px; }
 .text-button:hover { color: var(--red); }
 .menu-card > .text-button { position: absolute; left: 32px; bottom: 38px; }

@@ -4,9 +4,10 @@
   "outputs": [
     {
       "file": "ground-defender-mobile-side.png",
-      "width": 481,
-      "height": 519,
-      "bottomTrimmed": true
+      "width": 460,
+      "height": 302,
+      "bottomTrimmed": true,
+      "source": "assets/_weapon-temp/final/gatling-armored-vehicle-gameobject-v1-512.png"
     },
     {
       "file": "ground-radar-facility-side.png",

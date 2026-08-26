@@ -25,6 +25,22 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - Node NullEngine은 `OffscreenCanvas`가 없어 GUI 포함 렌더 테스트에 사용할 수 없었으므로, 브라우저 E2E 진단으로 대체했다. 해당 검증은 콘솔/페이지/네트워크 오류 0건으로 통과했다.
 - 최종 검증은 `npm run check`(typecheck, Vitest 95/95, production build), 변경 파일 ESLint, `git diff --check`, 표준 develop-web-game 클라이언트까지 통과했다. 실제 캡처는 `output/ground-unit-positioning/ground-shatter.png`, `fighter-shatter.png`에 보존했다.
 
+## 2026-08-26 — 흡입광선 내부 가상 오브젝트 VFX 추가
+
+- 사용자가 제공한 `docs/reference_images/absorption-beam-impact-reference.png`는 분위기·배치 참고로만 사용하고, 실제 흡수 대상이나 게임 상태 위치는 변경하지 않았다.
+- `BattleAbsorptionVfx` 안에 10개 풀의 어두운 사람형 가상 실루엣을 추가했다. `public/assets/runtime/sprites/absorption-virtual-human-silhouettes-5x1.webp`의 5종 투명 스프라이트를 사용하며, 모두 VFX 전용 Babylon TransformNode라 실제 `AbsorbableTargetState`나 월드 오브젝트를 이동시키지 않는다.
+- 흡입광선이 켜져 있는 동안 0.12초 간격으로 재사용 오브젝트를 생성한다. 지면 쪽에서 모선 흡입구 방향으로 `t³` ease-in 이동하고 도달 시간은 정확히 0.8초다. 회전·미세 흔들림·페이드도 포함한다.
+- 흡입광선 종료 시 신규 생성은 멈추고 남은 가상 오브젝트를 정리한다. `visuals.absorptionVfx`에 풀 수, 활성 수, 개별 진행률, 가속 모션 진행률을 노출했다.
+- 기존 `outerLayerCount=3`, `shaftCount=12`, `meshCount=24` 계약은 유지했다. 추가 오브젝트는 별도 풀로 관리한다.
+- `scripts/verify-absorption-virtual-objects.mjs`를 추가해 IGNITING/SUSTAINED/FADING/OFF, 0.8초 이동, `t³` 가속, 풀 재사용, 종료 정리를 브라우저에서 검증한다.
+- 1280×720 실제 브라우저 검증 통과: 첫 오브젝트 progress 0.146→0.625, motionProgress 0.003→0.244, IGNITING 활성 1개, SUSTAINED 활성 5개, OFF 활성 0개, 콘솔/4xx 오류 0건. `01-ignition.png`, `02-sustained.png`, `03-arrival.png`에서 화면도 직접 확인했다.
+- 최종 `npm run typecheck`, production build, 관련 파일 ESLint, `git diff --check`, 표준 web-game client를 다시 통과했다. 가상 오브젝트 전용 E2E도 통과했고 `result.json`에서 0.8초 travel, t³ 가속, 빔 종료 후 0개를 확인했다.
+- ImageGen으로 만든 원본 실루엣은 `$CODEX_HOME/generated_images/...`에 보존하고, 프로젝트에는 320×128 투명 WebP(7,588 bytes)로 복사했다. 실제 E2E에서 스프라이트 기반 사람형 실루엣과 0.8초 이동을 확인했다.
+- 사람 실루엣 렌더 크기를 `0.45~1.1`에서 `0.9~2.1`로 키우고, 대상 흡수율에 `durationMultiplier=3`을 적용했다. 개별 실루엣 상승 시간 0.8초는 유지하고 대상 전체 흡수 시간만 3배로 늘렸다.
+- 전체 Vitest는 현재 병행 작업 반영 후 103/103, typecheck와 production build도 통과했다. 1280×720 흡수 E2E에서 확대 크기, 흡수 진행, 콘솔/4xx 오류 0건을 확인했다.
+- 전체 Vitest는 병행 중인 보호시설 작업의 `shelterRules.test.ts` 1건이 `discovered=true` 수동 변경 뒤 상태를 갱신하지 않아 `HIDDEN`/`LOCKED` 불일치로 실패한다(94/95). 흡입광선 관련 테스트 및 이번 변경 파일은 통과했다.
+- 이번 변경 파일 typecheck/ESLint/diff 검사는 통과했다. 전체 Vitest는 병행 작업 중인 `shelterRules.ts`의 기존 보호시설 테스트 1건이 `HIDDEN`/`LOCKED` 상태 불일치로 실패해 94/95이며 흡입광선 테스트와 무관하다. 해당 병행 변경은 보존했다.
+
 ## 2026-08-24
 
 - 원본 모선은 GLB가 아니라 `src/rendering/babylon/tactical/MothershipVisual.ts`에서 Babylon 메시를 절차적으로 조립하는 구현임을 확인했다.
@@ -82,6 +98,23 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 최종 브라우저 검증: 정상 전체 흐름, 대파 수리비 흐름, River/Desert 직접 진입 모두 오류 0건.
 
 ## 다음 튜닝 후보
+
+## 2026-08-26 — 전투 기본 상태 및 디버그 UI 임시 비노출
+
+- 전투 시간 흐름 기본값을 `NORMAL`로 명시하고, 함선 무적과 유닛 무적 기본값을 모두 `false`로 변경했다.
+- `SHOW_IN_BATTLE_DEBUG_CONTROLS = false` 단일 변수로 배경 정렬/충돌 오버레이, 요격빔 차단, 함선·유닛 무적, NORMAL/ENDLESS 디버그 버튼을 일괄 비노출한다.
+- 디버그 상태·핸들러·단축키 코드는 삭제하지 않고 유지했으며, 해당 변수를 `true`로 바꾸면 UI를 다시 표시할 수 있다.
+- 브라우저에서 `NORMAL / invincibility=false / unitInvincibility=false`, 디버그 버튼 0개, 일반 전투 액션 버튼 6개, 콘솔 오류 0건을 확인했다.
+- 전체 Vitest 103/103, TypeScript, production build, `git diff --check`를 통과했다. 변경 파일 lint는 기존 `BattleScreen.tsx`의 set-state-in-effect 1건으로만 실패했다.
+
+## 2026-08-26 — 스테이지 낮/밤 교차 규칙
+
+- 다음 전투 번호(`completedBattles + 1`)를 스테이지 번호의 단일 기준으로 사용했다.
+- 1, 3, 5… 스테이지는 도시별 DAY 맵을 사용하고 2, 4, 6… 스테이지는 `city-night` 맵을 사용하도록 정의했다.
+- 미션 예약, 저장된 미션 재개, 월드맵 즉시 진입, 디버그 기본 진입과 맵 ID 생략형 Battle Gateway 요청이 같은 `battleMapIdForStage` 규칙을 사용한다.
+- 낮/밤 시퀀스, 바이옴 낮 맵 보존, 다음 캠페인 스테이지 매핑 단위 테스트를 추가했다.
+- 전용 테스트 7/7, 전체 Vitest 102/102, TypeScript, production build, `git diff --check`를 통과했다.
+- 실제 브라우저에서 새 캠페인 1스테이지 `city-day`와 `completedBattles=1` 재진입 2스테이지 `city-night`을 순차 확인했고 콘솔 오류는 0건이다.
 
 ## 2026-08-26 — 차량 스프라이트 좌우 방향
 
@@ -838,3 +871,69 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - `scripts/create-battle-editor-scene.mjs`가 앞으로 해당 회색상자를 생성하지 않도록 수정했으며, `FighterPoolRoot`, `DronePoolRoot`, `GroundBattleRoot`, 레인 앵커 계약 노드는 유지했다.
 - 일반/디버그 배틀 씬의 패키징 참조에서 프로토타입 이름이 사라졌고, 감염강습 버튼은 `active=true`, `totalDrops=64`로 계속 동작한다.
 - TypeScript, Vitest 95/95, production build, 지상 유닛 3개 viewport 브라우저 회귀, 표준 web-game 캡처와 `git diff --check`를 통과했다.
+
+## 2026-08-26 — 정지 지상 차량 재점검
+
+- 실행 snapshot에서 `coastal:sam-west`, `coastal:sam-central`, `coastal:sam-east` 세 SAM 모두 `HOLD`, `shot.allowed=true`이며 각 ID에서 미사일이 반복 생성되는 것을 확인했다. `velocityX=0`은 발사 위치 도달 후 대기하는 정상 상태다.
+- 화면 중앙의 정지 탱크형 차량은 SAM이 아니라 `coastal:guard-command` 계열 `DEFENDER`다. DEFENDER는 배치된 ASSAULT 코호트만 공격 대상으로 삼고, 코호트가 없는 빠른 전투에서는 대기한다.
+- 이번 점검에서는 코드를 수정하지 않았다.
+
+## 2026-08-26 — DEFENDER 개틀링 전차 이미지 교체
+
+- `DEFENDER` 런타임 스프라이트를 기존 전차에서 투명 배경의 `assets/_weapon-temp/final/gatling-armored-vehicle-gameobject-v1-512.png` 기반 개틀링 전차로 교체했다.
+- `process-ground-unit-sprites.mjs`가 해당 원본을 자동 trim해 `ground-defender-mobile-side.png`로 생성하도록 연결했다. 출력 크기는 `460×302`다.
+- 개틀링 전차의 종횡비에 맞춰 런타임 크기를 조정하고, 모선 기준 좌우 반전 방향도 원본 이미지 방향에 맞게 보정했다.
+- SAM 로직·감염강습은 변경하지 않았다. TypeScript, Vitest 102/102, production build, 표준 web-game 캡처, 지상 유닛 브라우저 회귀에서 개틀링 전차와 SAM 발사를 확인했다.
+
+## 2026-08-26 — 시민 방공호 피난·수용 한도 구현
+
+- ORGANIC 지상 타깃을 맵에 배치되는 방공호로 취급하고, 전투 시작 시 잔량·수용 인원을 0으로 초기화했다. 수용량은 방공호별 초기 규모에 따라 계산하며 기존 유기물 자원 풀을 방공호 입장만으로 차감하지 않는다.
+- 런타임에 외부 시민 군중을 등록하고 가장 가까운 수용 가능한 방공호를 향해 이동시킨다. 방공호가 가득 차면 남은 시민은 `BLOCKED` 상태로 외부에 남고, 수용 중인 시민은 방공호 내부 오버레이로 표시된다.
+- 방공호는 `INTACT → BREACHING → DESTROYED`로 전환된다. 파괴 전에는 시민이 보호되고, 위가 열린 파괴 상태에서는 구조물 상호작용을 끄며 노출된 잔여 시민만 흡수 대상으로 남긴다. 빈 방공호는 파괴 후 `DEPLETED`가 되어 더 이상 빔 대상이 되지 않는다.
+- `render_game_to_text`에 방공호 수용량·현재 인원·잔여 공간·파괴 상태·상호작용 가능 여부와 시민의 이동/수용/차단 상태를 추가했다.
+- `src/game/domain/shelterRules.test.ts`에 빈 시작, 최단 방공호 배정, 수용량 초과 차단, 파괴 후 노출 규칙을 추가했다. 전체 Vitest 18개 파일 102개 테스트, TypeScript, 관련 ESLint, `git diff --check`가 통과했다.
+- `scripts/verify-civilian-shelters.mjs`와 `test:e2e:civilian-shelters`를 추가했다. 실제 로컬 브라우저에서 빈 방공호 → 시민 이동 → 수용 완료/초과 차단 → 방공호 접근·파괴 → `interactable=false`를 확인했고 콘솔/HTTP 오류는 0건이다. 캡처는 `output/civilian-shelters/`에 보존했다.
+
+### 다음 작업
+
+- 사용자 확인 후 방공호별 수용량 비율과 시민 이동 속도를 플레이테스트 기준으로 조정한다.
+- 현재 전체 lint에는 이번 기능과 무관한 기존 `BattleScreen.tsx`의 `react-hooks/set-state-in-effect` 오류 1건과 `<img>` 경고 2건이 남아 있다.
+
+## 2026-08-26 — 인게임 유닛명 임시 숨김
+
+- 군용 차량·생산 설비·방공호 등 월드 오브젝트 위에 생성되는 이름 라벨은 삭제하지 않고 `SHOW_IN_GAME_UNIT_LABELS=false` 표시 옵션으로 임시 비활성화했다.
+- 라벨 구성과 텍스트는 그대로 유지해 이후 다시 표시할 수 있으며, 시민 흡수 수치 같은 효과성 안내는 이름 라벨이 아니므로 기존 동작을 유지한다.
+- 1280×720 로컬 전투 화면에서 이름 박스가 사라지고 유닛 본체·체력바·전투 효과는 유지되는 것을 확인했다. TypeScript, 전체 Vitest 102/102, 관련 ESLint, `git diff --check`가 통과했으며 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 흡입광선 하단 확장형 보정
+
+- 레퍼런스 이미지와 현재 게임 캡처를 비교한 뒤, 기존 하단 반폭 6.5가 좁게 보이는 문제를 확인했다.
+- `BattleAbsorptionVfx`의 하단 반폭을 15로 확대하고 점화 시 폭 스케일도 0.9 이상으로 제한해 항상 위쪽은 좁고 아래쪽은 넓은 깔때기 형태가 보이게 했다.
+- 1280×720 브라우저 캡처에서 하단 확장형 광선을 확인했다. 내부 가상 오브젝트의 시각 전용 이동, 0.8초 이동 시간, 기존 광선 VFX는 유지된다.
+- typecheck, production build, 관련 파일 ESLint, diff check, 흡입광선 가상 오브젝트 E2E를 통과했다. 병행 중인 보호시설 변경으로 전체 Vitest는 현재 94/95 상태다.
+
+## 2026-08-26 — 방공호 내부 시민 정적 배치 전환
+
+- 외부 시민의 방공호 이동은 현재 임시로 비활성화하고, 방공호 타깃 생성 시 내부 시민 수를 고정 배치했다. 외부 도주 군중은 기존처럼 `OUTSIDE` 상태로 계속 이동한다.
+- 방공호 내부 시민 오버레이는 방공호 본체와 함께 표시되며, 흡입 빔은 기존 3초 `BREACHING` 보호 구간 후 `DESTROYED` 상태에서 내부 시민 잔량만 흡수한다.
+- 방공호 지면 기준 Y를 `-19`로 조정해 본체와 내부 시민 오버레이가 같은 레이어에 맞도록 정렬했다.
+- 정적 배치 전용 로컬 브라우저 검증에서 내부 시민 시작 표시, 외부 군중 유지, 방공호 파괴·내부 시민 흡수를 확인했다. 전체 Vitest 18개 파일 103개, TypeScript, 관련 ESLint, `git diff --check`를 통과했으며 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 밤 맵 DEFENDER Y 기준 보정
+
+- 밤 맵 snapshot에서 정지 차량 3대가 `coastal:guard-*` `DEFENDER`이며, 실제 SAM 3대(`coastal:sam-*`)와 달리 미사일 발사 AI 대상이 아님을 확인했다.
+- DEFENDER의 런타임 스프라이트는 기존 개틀링 전차 이미지이며, 기본 지상 루트 Y를 `GROUND_SAM_ROOT_Y=-16.5`로 맞춰 SAM과 동일한 높이에서 표시되도록 보정했다.
+- 밤 맵 브라우저 snapshot에서 DEFENDER와 SAM 모두 `visuals.ground[].y=-16.5`, 세 SAM의 미사일 생성, 콘솔 오류 0건을 확인했다.
+
+## 2026-08-26 — SAM 흰색 미사일 구간 발사 위치 보정
+
+- SAM 발사 소켓의 공통 로컬 Y를 `4.6`에서 `2.2`로 낮춰, 장비 위 투명 영역이 아니라 SAM 스프라이트의 흰색 미사일 구간에서 발사되도록 조정했다.
+- 도메인 발사 좌표와 Babylon 시각 소켓은 같은 상수를 계속 사용하며, 이에 따라 월드 발사 Y는 `-11.9`에서 `-14.3`으로 내려갔다.
+- SAM 발사 회귀 테스트 33개, TypeScript, 변경 파일 ESLint, `git diff --check`가 통과했다. 표준 web-game 캡처에서도 좌표 동기화와 화면을 확인했다.
+- 전체 `verify-ground-unit-positioning`은 좌우 발사·3개 viewport·이동/EMP까지 통과했지만, 마지막 geometry overlay 단계는 현재 `SHOW_IN_BATTLE_DEBUG_CONTROLS=false`로 숨겨진 기존 버튼을 찾지 못해 실패했다. 이번 좌표 변경과 무관한 검증 스크립트/UI 불일치다.
+
+## 2026-08-26 — 메인 메뉴 밤 빠른 전투 테스트 임시 숨김
+
+- 메인 메뉴의 `빠른 전투 테스트 (밤)` 버튼 렌더링·콜백·번역 키는 유지하고 `quick-night-battle-button` 클래스의 `display: none`으로만 임시 숨김 처리했다.
+- 낮 빠른 전투 테스트 버튼은 기존 위치와 동작을 유지한다.
+- 1280×720 및 640×360 Playwright 화면 검증에서 밤 버튼이 DOM에 존재하면서 숨겨진 상태이고, 낮 버튼이 표시되며 전투 화면으로 정상 진입하는 것을 확인했다. 콘솔·HTTP 오류는 0건이다.

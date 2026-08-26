@@ -26,7 +26,7 @@ export function MainMenuScreen({ hasSave, onNewGame, onContinue, onQuickBattle, 
           <button className="primary-button" onClick={onNewGame}>{t('main.newCampaign')}</button>
           <button className="secondary-button" onClick={onContinue} disabled={!hasSave}>{t('main.continue')}</button>
           {onQuickBattle ? <button className="secondary-button quick-battle-button" onClick={onQuickBattle}>{t('main.quickBattle')}</button> : null}
-          {onQuickNightBattle ? <button className="secondary-button quick-battle-button" onClick={onQuickNightBattle}>{t('main.quickNightBattle')}</button> : null}
+          {onQuickNightBattle ? <button className="secondary-button quick-battle-button quick-night-battle-button" onClick={onQuickNightBattle}>{t('main.quickNightBattle')}</button> : null}
         </div>
         <button className="text-button" onClick={onReset} disabled={!hasSave}>{t('main.erase')}</button>
       </section>

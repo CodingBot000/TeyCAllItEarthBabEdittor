@@ -12,7 +12,7 @@ import { clearCampaign, loadCampaign, saveCampaign } from './infrastructure/pers
 import { battleRequestFor, type BattleLaunchRequest } from './battle/BattleGateway';
 import { BattleScreen } from './battle/BattleScreen';
 import { getBattleDebugOptions } from './battle/gameplay/BattleDebug';
-import { battleMapIdForCity } from './battle/gameplay/battleSetupRules';
+import { battleMapIdForStage } from './battle/gameplay/battleSetupRules';
 import { MainMenuScreen } from './presentation/screens/MainMenuScreen';
 import { MissionLoadoutScreen } from './presentation/screens/MissionLoadoutScreen';
 import { WorldMapScreen } from './presentation/screens/WorldMapScreen';
@@ -45,7 +45,7 @@ export function GameApp() {
       setCampaign(debugCampaign);
       setIsDebugSession(true);
       setSelectedCityId(debugCityId);
-      setBattleRequest(battleRequestFor(debugCampaign, debugCityId, debugOptions.mapId ?? battleMapIdForCity(CITY_BY_ID[debugCityId])));
+      setBattleRequest(battleRequestFor(debugCampaign, debugCityId, debugOptions.mapId ?? battleMapIdForStage(CITY_BY_ID[debugCityId], debugCampaign.completedBattles + 1)));
       setScreen('BATTLE');
     } else {
       setCampaign(saved);
@@ -169,7 +169,7 @@ export function GameApp() {
 
   const enterBattle = () => {
     if (!campaign || !selectedCityId || !isPlayableCity(selectedCityId)) return;
-    setBattleRequest(battleRequestFor(campaign, selectedCityId, battleMapIdForCity(CITY_BY_ID[selectedCityId])));
+    setBattleRequest(battleRequestFor(campaign, selectedCityId, battleMapIdForStage(CITY_BY_ID[selectedCityId], campaign.completedBattles + 1)));
     setScreen('BATTLE');
   };
 

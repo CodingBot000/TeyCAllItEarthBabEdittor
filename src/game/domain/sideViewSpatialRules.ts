@@ -5,7 +5,9 @@ export const MOTHERSHIP_SIDE_VIEW_MAX_SPEED = 17;
 export const SIDE_VIEW_COMBAT_Y_OFFSET = 16.5;
 export const GROUND_SAM_ROOT_Y = -16.5;
 export const GROUND_UNIT_ROOT_Z = 1.1;
-export const GROUND_SAM_ATTACK_SPAWN_LOCAL: Readonly<Vec3> = { x: -0.9, y: 4.6, z: -1 };
+// The projectile should leave from the white missile tips in the SAM sprite,
+// not from the transparent space above the launcher.
+export const GROUND_SAM_ATTACK_SPAWN_LOCAL: Readonly<Vec3> = { x: -0.9, y: 2.2, z: -1 };
 export const SIDE_VIEW_FIXED_STEP = 1 / 60;
 
 /** Numeric snapshot made after ship movement and camera tracking, once per tick. */

@@ -39,6 +39,8 @@ interface CrowdVisual {
   phase: number;
   speed: number;
   direction: 'LEFT' | 'RIGHT';
+  targetState: 'OUTSIDE' | 'SEEKING_SHELTER' | 'SHELTERED' | 'BLOCKED';
+  assignedShelterId: string | null;
   visible: boolean;
   remainingAmount: number;
 }
@@ -57,6 +59,8 @@ export interface FleeingCrowdVisualSnapshot {
   textureReady: boolean;
   worldY: number;
   worldZ: number;
+  shelterState: 'OUTSIDE' | 'SEEKING_SHELTER' | 'SHELTERED' | 'BLOCKED';
+  assignedShelterId: string | null;
 }
 
 export class BattleFleeingCrowdVisuals {
@@ -93,10 +97,14 @@ export class BattleFleeingCrowdVisuals {
       const visual = this.visuals.get(target.id) ?? this.createVisual(target.id, target.center.x);
       const alive = target.remainingAmount > 0;
       const absorbing = alive && state.activeAbility === 'beam' && state.activeBeamTargetId === target.id;
-      if (advanceMovement && alive && !absorbing) {
+      const canRoamOutside = !target.civilianShelterState || target.civilianShelterState === 'OUTSIDE';
+      if (advanceMovement && alive && !absorbing && canRoamOutside) {
         const phase = elapsedSeconds * visual.speed + visual.phase;
         target.center.x = visual.anchorX + Math.sin(phase) * CROWD_TRAVEL_RANGE;
         visual.direction = Math.cos(phase) >= 0 ? 'RIGHT' : 'LEFT';
+      }
+      if (target.civilianShelterState === 'SEEKING_SHELTER' || target.civilianShelterState === 'BLOCKED') {
+        visual.direction = target.center.x >= visual.root.position.x ? 'RIGHT' : 'LEFT';
       }
       const phase = elapsedSeconds * visual.speed + visual.phase;
       const frame = Math.floor(elapsedSeconds * CROWD_FRAME_RATE + visual.phase * 2) % 4;
@@ -115,6 +123,8 @@ export class BattleFleeingCrowdVisuals {
       visual.labelPanel.isVisible = absorbing;
       visual.visible = alive;
       visual.remainingAmount = target.remainingAmount;
+      visual.targetState = target.civilianShelterState ?? 'OUTSIDE';
+      visual.assignedShelterId = target.assignedShelterId ?? null;
     }
     for (const [id, visual] of this.visuals) {
       if (activeIds.has(id)) continue;
@@ -129,7 +139,8 @@ export class BattleFleeingCrowdVisuals {
     return CROWD_IDS.flatMap((id) => {
       const visual = this.visuals.get(id);
       if (!visual) return [];
-      return [{ id, x: round(visual.root.position.x), people: CROWD_PEOPLE_COUNT, amountPerPerson: CROWD_AMOUNT_PER_PERSON, direction: visual.direction, moving: visual.visible && visual.flash.visibility <= 0, absorbing: visual.flash.visibility > 0, flashIntensity: round(visual.flash.visibility), visible: visual.visible, remainingAmount: round(visual.remainingAmount), textureReady: this.rightTexture.isReady() && this.leftTexture.isReady(), worldY: round(visual.root.getAbsolutePosition().y), worldZ: round(visual.root.getAbsolutePosition().z) }];
+      const targetState = visual.targetState ?? 'OUTSIDE';
+      return [{ id, x: round(visual.root.position.x), people: CROWD_PEOPLE_COUNT, amountPerPerson: CROWD_AMOUNT_PER_PERSON, direction: visual.direction, moving: visual.visible && visual.flash.visibility <= 0 && targetState === 'OUTSIDE', absorbing: visual.flash.visibility > 0, flashIntensity: round(visual.flash.visibility), visible: visual.visible, remainingAmount: round(visual.remainingAmount), textureReady: this.rightTexture.isReady() && this.leftTexture.isReady(), worldY: round(visual.root.getAbsolutePosition().y), worldZ: round(visual.root.getAbsolutePosition().z), shelterState: targetState, assignedShelterId: visual.assignedShelterId ?? null }];
     });
   }
 
@@ -198,7 +209,7 @@ export class BattleFleeingCrowdVisuals {
     labelPanel.linkWithMesh(sprite);
     labelPanel.linkOffsetY = -42;
     labelPanel.isVisible = false;
-    const visual: CrowdVisual = { id, root, sprite, flash, labelPanel, label, anchorX: x, phase: seededUnit(id.length * 31 + x) * Math.PI * 2, speed: 0.55 + seededUnit(id.length * 17 + Math.abs(x)) * 0.28, direction: 'RIGHT', visible: true, remainingAmount: CROWD_PEOPLE_COUNT * CROWD_AMOUNT_PER_PERSON };
+    const visual: CrowdVisual = { id, root, sprite, flash, labelPanel, label, anchorX: x, phase: seededUnit(id.length * 31 + x) * Math.PI * 2, speed: 0.55 + seededUnit(id.length * 17 + Math.abs(x)) * 0.28, direction: 'RIGHT', targetState: 'OUTSIDE', assignedShelterId: null, visible: true, remainingAmount: CROWD_PEOPLE_COUNT * CROWD_AMOUNT_PER_PERSON };
     this.visuals.set(id, visual);
     return visual;
   }
@@ -262,6 +273,10 @@ export function registerFleeingCrowdTargets(state: CombatState): void {
       destroyedAmount: 0,
       discovered: true,
       status: 'AVAILABLE',
+      civilianShelterState: 'OUTSIDE',
+      assignedShelterId: null,
+      shelterTravelProgress: 0,
+      initialCenterX: x,
     });
   });
 }

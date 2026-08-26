@@ -48,6 +48,11 @@ try {
   const ignitionEarly = await state();
   await page.screenshot({ path: `${outputDirectory}/01-ignition-120ms.png`, fullPage: true });
   if (ignitionEarly.absorptionVfx?.phase !== 'IGNITING') throw new Error(`Expected IGNITING at 120ms, received ${ignitionEarly.absorptionVfx?.phase}.`);
+  if (ignitionEarly.absorptionVfx?.virtualObjectTravelDuration !== 0.8 || ignitionEarly.absorptionVfx?.virtualObjectPoolCount !== 10 || ignitionEarly.absorptionVfx?.virtualObjectCount < 1) {
+    throw new Error(`Virtual absorption objects did not start with the expected pool/timing: ${JSON.stringify(ignitionEarly.absorptionVfx)}`);
+  }
+  const firstVirtualObject = ignitionEarly.absorptionVfx.virtualObjects[0];
+  if (!firstVirtualObject || firstVirtualObject.motionProgress >= firstVirtualObject.progress) throw new Error('Virtual absorption object did not begin with an accelerating motion curve.');
 
   await advance(380);
   const sustainedStart = await state();
@@ -56,11 +61,21 @@ try {
   if (sustainedStart.absorptionVfx?.outerLayerCount !== 3 || sustainedStart.absorptionVfx?.shaftCount !== 12 || sustainedStart.absorptionVfx?.meshCount !== 24) {
     throw new Error(`Unexpected absorption mesh budget: ${JSON.stringify(sustainedStart.absorptionVfx)}`);
   }
+  const sameObject = sustainedStart.absorptionVfx.virtualObjects.find((object) => object.id === firstVirtualObject.id);
+  if (!sameObject || sameObject.progress <= firstVirtualObject.progress || sameObject.motionProgress <= firstVirtualObject.motionProgress) {
+    throw new Error(`Virtual object did not move upward through the 0.8s curve: ${JSON.stringify({ firstVirtualObject, sameObject })}`);
+  }
 
   await advance(250);
   const sustained = await state();
   await page.screenshot({ path: `${outputDirectory}/03-sustained-750ms.png`, fullPage: true });
   if (sustained.absorptionVfx?.phase !== 'SUSTAINED') throw new Error(`Expected SUSTAINED at 750ms, received ${sustained.absorptionVfx?.phase}.`);
+  let arrived = await state();
+  for (let index = 0; index < 20 && arrived.absorptionVfx?.virtualObjects.some((object) => object.id === firstVirtualObject.id); index += 1) {
+    arrived = await advance(20);
+  }
+  if (arrived.absorptionVfx?.virtualObjects.some((object) => object.id === firstVirtualObject.id)) throw new Error('A virtual object remained after its 0.8 second travel duration.');
+  await page.screenshot({ path: `${outputDirectory}/03b-virtual-object-arrival.png`, fullPage: true });
 
   let depletedState = sustained;
   for (let index = 0; index < 220; index += 1) {
@@ -83,6 +98,9 @@ try {
   await page.screenshot({ path: `${outputDirectory}/06-finished.png`, fullPage: true });
   if (finished.absorptionVfx?.phase !== 'OFF' || finished.absorptionVfx?.active !== false) {
     throw new Error(`Absorption VFX did not finish its fade: ${JSON.stringify(finished.absorptionVfx)}`);
+  }
+  if (finished.absorptionVfx?.virtualObjectCount !== 0 || finished.absorptionVfx?.virtualObjects?.length !== 0) {
+    throw new Error(`Virtual absorption objects remained after beam shutdown: ${JSON.stringify(finished.absorptionVfx)}`);
   }
   if (errors.length > 0) throw new Error(`Browser errors:\n${errors.join('\n')}`);
   if (failedResponses.length > 0) throw new Error(`Failed responses:\n${failedResponses.join('\n')}`);

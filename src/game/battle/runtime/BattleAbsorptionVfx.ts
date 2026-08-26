@@ -7,6 +7,7 @@ import {
   MeshBuilder,
   ShaderMaterial,
   StandardMaterial,
+  Texture,
   TransformNode,
   Vector3,
   VertexBuffer,
@@ -25,6 +26,10 @@ export interface BattleAbsorptionVfxSnapshot {
   sourceHalfWidth: number;
   groundHalfWidth: number;
   meshCount: number;
+  virtualObjectCount: number;
+  virtualObjectPoolCount: number;
+  virtualObjectTravelDuration: number;
+  virtualObjects: Array<{ id: number; progress: number; motionProgress: number; size: number; x: number; y: number; z: number }>;
 }
 
 interface BeamQuad {
@@ -43,15 +48,38 @@ interface BeamShaft {
   pulseSpeed: number;
 }
 
+interface VirtualAbsorptionObject {
+  id: number;
+  root: TransformNode;
+  meshes: Mesh[];
+  texture: Texture;
+  material: StandardMaterial;
+  origin: Vector3;
+  destination: Vector3;
+  perpendicular: Vector3;
+  rotationVelocity: Vector3;
+  phase: number;
+  elapsed: number;
+  active: boolean;
+}
+
 const IGNITION_DURATION = 0.45;
 const FADE_DURATION = 0.22;
+// Keep the beam visibly funnel-shaped at every phase: the mothership emitter
+// is compact while the ground footprint stays broad like the reference shot.
 const SOURCE_HALF_WIDTH = 4.2;
-const GROUND_HALF_WIDTH = 6.5;
+const GROUND_HALF_WIDTH = 15;
 const OUTER_LAYER_COUNT = 3;
 const SHAFT_COUNT = 12;
 const OUTER_DEPTH = 1.36;
 const SHAFT_DEPTH = 0.88;
 const CORE_DEPTH = 0.74;
+const VIRTUAL_OBJECT_POOL_COUNT = 10;
+const VIRTUAL_OBJECT_TRAVEL_DURATION = 0.8;
+const VIRTUAL_OBJECT_SPAWN_INTERVAL = 0.12;
+const VIRTUAL_OBJECT_MIN_SIZE = 0.9;
+const VIRTUAL_OBJECT_MAX_SIZE = 2.1;
+const VIRTUAL_OBJECT_SPRITE_URL = '/assets/runtime/sprites/absorption-virtual-human-silhouettes-5x1.webp';
 
 Effect.ShadersStore.battleAbsorptionVolumeVertexShader = `
 precision highp float;
@@ -127,12 +155,16 @@ export class BattleAbsorptionVfx {
   private readonly groundCore: Mesh;
   private readonly groundRing: Mesh;
   private readonly meshes: Mesh[];
+  private readonly virtualObjectSourceTexture: Texture;
+  private readonly virtualObjects: VirtualAbsorptionObject[];
   private readonly source = new Vector3();
   private readonly target = new Vector3();
   private phase: AbsorptionPhase = 'OFF';
   private phaseElapsed = 0;
   private requestedActive = false;
   private disposed = false;
+  private virtualObjectSpawnElapsed = VIRTUAL_OBJECT_SPAWN_INTERVAL;
+  private virtualObjectSerial = 0;
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode('BattleAbsorptionVfxRoot', scene);
@@ -154,6 +186,10 @@ export class BattleAbsorptionVfx {
     });
     this.softGlowMaterial = createGlowMaterial('battle-absorption-soft-glow', scene, new Color3(0.15, 0.88, 0.78), 0.34, false);
     this.brightGlowMaterial = createGlowMaterial('battle-absorption-bright-glow', scene, new Color3(0.3, 1, 0.88), 0.76, true);
+    this.virtualObjectSourceTexture = new Texture(VIRTUAL_OBJECT_SPRITE_URL, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
+    this.virtualObjectSourceTexture.hasAlpha = true;
+    this.virtualObjectSourceTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
+    this.virtualObjectSourceTexture.wrapV = Texture.CLAMP_ADDRESSMODE;
 
     this.outerLayers = Array.from({ length: OUTER_LAYER_COUNT }, (_, index) => {
       const quad = createBeamQuad(`battle-absorption-volume-${index}`, scene, this.outerMaterial, -30 - index);
@@ -211,6 +247,7 @@ export class BattleAbsorptionVfx {
       this.groundCore,
       this.groundRing,
     ];
+    this.virtualObjects = Array.from({ length: VIRTUAL_OBJECT_POOL_COUNT }, (_, index) => createVirtualAbsorptionObject(scene, this.root, this.virtualObjectSourceTexture, index));
     this.glowLayer = new GlowLayer('AbsorptionGlowLayer', scene, { mainTextureRatio: 0.25 });
     this.glowLayer.blurKernelSize = 32;
     this.glowLayer.intensity = 0.42;
@@ -227,6 +264,7 @@ export class BattleAbsorptionVfx {
     if (this.phase === 'IGNITING' || this.phase === 'SUSTAINED') return;
     this.phase = 'IGNITING';
     this.phaseElapsed = 0;
+    this.virtualObjectSpawnElapsed = VIRTUAL_OBJECT_SPAWN_INTERVAL;
     this.setEnabled(true);
   }
 
@@ -258,6 +296,7 @@ export class BattleAbsorptionVfx {
     } else if (this.phase === 'FADING' && this.phaseElapsed >= FADE_DURATION) {
       this.phase = 'OFF';
       this.phaseElapsed = 0;
+      this.clearVirtualObjects();
       this.setEnabled(false);
       return;
     }
@@ -266,6 +305,7 @@ export class BattleAbsorptionVfx {
     this.outerMaterial.setFloat('time', elapsedSeconds);
     this.shaftMaterial.setFloat('time', elapsedSeconds);
     this.updateGeometry(elapsedSeconds, envelope);
+    this.updateVirtualObjects(dt, envelope);
   }
 
   getSnapshot(): BattleAbsorptionVfxSnapshot {
@@ -278,12 +318,30 @@ export class BattleAbsorptionVfx {
       sourceHalfWidth: SOURCE_HALF_WIDTH,
       groundHalfWidth: GROUND_HALF_WIDTH,
       meshCount: this.meshes.length,
+      virtualObjectCount: this.virtualObjects.filter((object) => object.active).length,
+      virtualObjectPoolCount: this.virtualObjects.length,
+      virtualObjectTravelDuration: VIRTUAL_OBJECT_TRAVEL_DURATION,
+      virtualObjects: this.virtualObjects.filter((object) => object.active).map((object) => {
+        const progress = Math.min(1, object.elapsed / VIRTUAL_OBJECT_TRAVEL_DURATION);
+        return {
+          id: object.id,
+          progress: round(progress),
+          motionProgress: round(progress * progress * progress),
+          size: round(object.root.scaling.x),
+          x: round(object.root.position.x),
+          y: round(object.root.position.y),
+          z: round(object.root.position.z),
+        };
+      }),
     };
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearVirtualObjects();
+    this.virtualObjects.forEach((object) => { object.material.dispose(); object.texture.dispose(); });
+    this.virtualObjectSourceTexture.dispose();
     this.glowLayer.dispose();
     this.root.dispose(false, false);
     this.outerMaterial.dispose();
@@ -305,7 +363,9 @@ export class BattleAbsorptionVfx {
     const perpendicularX = -deltaY / length;
     const perpendicularY = deltaX / length;
     const breathing = 1 + Math.sin(elapsedSeconds * 2.1) * 0.025;
-    const ignitionWidth = this.phase === 'IGNITING' ? 0.68 + envelope * 0.32 : 1;
+    // Ignition changes brightness and length, not the defining wide-bottom
+    // silhouette. The fan shape must remain visible from the first frame.
+    const ignitionWidth = this.phase === 'IGNITING' ? 0.9 + envelope * 0.1 : 1;
 
     const outerScales = [1, 0.88, 0.72];
     const outerVisibility = [0.56, 0.4, 0.28];
@@ -388,7 +448,106 @@ export class BattleAbsorptionVfx {
       if (!enabled) mesh.visibility = 0;
     });
     this.glowLayer.isEnabled = enabled;
+    for (const object of this.virtualObjects) object.root.setEnabled(enabled && object.active);
   }
+
+  private updateVirtualObjects(dt: number, envelope: number): void {
+    if (this.requestedActive && this.phase !== 'FADING') {
+      this.virtualObjectSpawnElapsed += Math.max(0, dt);
+      while (this.virtualObjectSpawnElapsed >= VIRTUAL_OBJECT_SPAWN_INTERVAL) {
+        this.virtualObjectSpawnElapsed -= VIRTUAL_OBJECT_SPAWN_INTERVAL;
+        this.spawnVirtualObject();
+      }
+    }
+    for (const object of this.virtualObjects) {
+      if (!object.active) continue;
+      object.elapsed += Math.max(0, dt);
+      const progress = Math.min(1, object.elapsed / VIRTUAL_OBJECT_TRAVEL_DURATION);
+      const easedProgress = progress * progress * progress;
+      const position = Vector3.Lerp(object.origin, object.destination, easedProgress);
+      const sway = Math.sin(object.elapsed * 8 + object.phase) * (1 - progress) * 0.22;
+      position.addInPlace(object.perpendicular.scale(sway));
+      object.root.position.copyFrom(position);
+      object.root.rotation.x += object.rotationVelocity.x * Math.max(0, dt);
+      object.root.rotation.y += object.rotationVelocity.y * Math.max(0, dt);
+      object.root.rotation.z += object.rotationVelocity.z * Math.max(0, dt);
+      const fade = Math.min(1, envelope * 1.35) * (progress < 0.82 ? 1 : (1 - progress) / 0.18);
+      object.meshes.forEach((mesh) => { mesh.visibility = Math.max(0, fade * 0.82); });
+      if (progress >= 1) {
+        object.active = false;
+        object.root.setEnabled(false);
+      }
+    }
+  }
+
+  private spawnVirtualObject(): void {
+    const object = this.virtualObjects.find((candidate) => !candidate.active);
+    if (!object) return;
+    const delta = this.source.subtract(this.target);
+    const length = Math.max(0.001, Math.hypot(delta.x, delta.y));
+    const perpendicular = new Vector3(-delta.y / length, delta.x / length, 0);
+    const serial = this.virtualObjectSerial++;
+    const sourceOffset = (seededUnit(serial * 17 + 3) * 2 - 1) * SOURCE_HALF_WIDTH * 0.68;
+    const targetOffset = (seededUnit(serial * 19 + 5) * 2 - 1) * GROUND_HALF_WIDTH * 0.72;
+    object.origin.copyFrom(this.target).addInPlace(perpendicular.scale(targetOffset));
+    object.destination.copyFrom(this.source).addInPlace(perpendicular.scale(sourceOffset));
+    object.origin.z -= 0.14 + seededUnit(serial * 23 + 7) * 0.22;
+    object.destination.z -= 0.14 + seededUnit(serial * 29 + 11) * 0.22;
+    object.perpendicular.copyFrom(perpendicular);
+    object.phase = seededUnit(serial * 31 + 13) * Math.PI * 2;
+    object.rotationVelocity.set(
+      randomSignedUnit(serial * 37 + 17) * 3.4,
+      randomSignedUnit(serial * 41 + 19) * 3.4,
+      randomSignedUnit(serial * 43 + 23) * 5.2,
+    );
+    const size = VIRTUAL_OBJECT_MIN_SIZE + seededUnit(serial * 47 + 29) * (VIRTUAL_OBJECT_MAX_SIZE - VIRTUAL_OBJECT_MIN_SIZE);
+    object.root.scaling.setAll(size);
+    object.elapsed = 0;
+    object.active = true;
+    object.root.setEnabled(true);
+    object.meshes.forEach((mesh) => { mesh.visibility = 0.82; });
+  }
+
+  private clearVirtualObjects(): void {
+    for (const object of this.virtualObjects) {
+      object.active = false;
+      object.root.setEnabled(false);
+    }
+  }
+}
+
+function createVirtualAbsorptionObject(scene: Scene, parent: TransformNode, sourceTexture: Texture, index: number): VirtualAbsorptionObject {
+  const root = new TransformNode(`battle-absorption-virtual-object-${index}`, scene);
+  root.parent = parent;
+  const texture = sourceTexture.clone();
+  texture.hasAlpha = true;
+  texture.wrapU = Texture.CLAMP_ADDRESSMODE;
+  texture.wrapV = Texture.CLAMP_ADDRESSMODE;
+  texture.uScale = 1 / 5;
+  texture.vScale = 1;
+  texture.uOffset = index % 5 / 5;
+  texture.vOffset = 0;
+  const material = new StandardMaterial(`${root.name}-material`, scene);
+  material.diffuseColor = Color3.White();
+  material.emissiveColor = Color3.White();
+  material.disableLighting = true;
+  material.backFaceCulling = false;
+  material.useAlphaFromDiffuseTexture = true;
+  material.transparencyMode = Engine.ALPHA_COMBINE;
+  material.disableDepthWrite = true;
+  material.diffuseTexture = texture;
+  material.emissiveTexture = texture;
+  const sprite = MeshBuilder.CreatePlane(`${root.name}-sprite`, { width: 0.58, height: 1, sideOrientation: Mesh.DOUBLESIDE }, scene);
+  sprite.parent = root;
+  sprite.material = material;
+  sprite.renderingGroupId = 3;
+  sprite.isPickable = false;
+  root.setEnabled(false);
+  return { id: index, root, meshes: [sprite], texture, material, origin: new Vector3(), destination: new Vector3(), perpendicular: new Vector3(), rotationVelocity: new Vector3(), phase: 0, elapsed: 0, active: false };
+}
+
+function randomSignedUnit(seed: number): number {
+  return seededUnit(seed) * 2 - 1;
 }
 
 function createVolumeMaterial(

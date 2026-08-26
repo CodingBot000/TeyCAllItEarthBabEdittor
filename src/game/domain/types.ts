@@ -21,6 +21,7 @@ export type AbsorbableKind = 'ORGANIC' | 'POWER' | 'VEHICLE' | 'MACHINERY' | 'DA
 export type AbsorbableRequirement = 'NONE' | 'EMP_WINDOW' | 'FACILITY_DISABLED' | 'PLASMA_OPENING';
 export type AbsorbableStatus = 'HIDDEN' | 'AVAILABLE' | 'LOCKED' | 'DEPLETED' | 'DESTROYED';
 export type ShelterBreachState = 'INTACT' | 'BREACHING' | 'DESTROYED';
+export type CivilianShelterState = 'OUTSIDE' | 'SEEKING_SHELTER' | 'SHELTERED' | 'BLOCKED';
 export type BeamHeatState = 'STABLE' | 'WARM' | 'CRITICAL' | 'OVERHEATED';
 export type BeamStopReason = 'MANUAL' | 'MOVED' | 'IMPACTED' | 'ENERGY_DEPLETED' | 'TARGET_DEPLETED' | 'TARGET_LOCKED' | 'TARGET_ATTACKING' | 'OUT_OF_RANGE' | 'CARGO_FULL' | 'EXTRACTION_STARTED' | 'OVERHEATED';
 export type EnemyAbsorptionStatus = 'NEUTRAL' | 'FLEEING' | 'ATTACKING' | 'DISABLED' | 'DESTROYED';
@@ -504,6 +505,12 @@ export interface AbsorbableTargetState extends AbsorbableTargetDefinition {
   status: AbsorbableStatus;
   shelterBreachState?: ShelterBreachState;
   shelterBreachProgress?: number;
+  shelterCapacity?: number;
+  shelterOccupants?: number;
+  civilianShelterState?: CivilianShelterState;
+  assignedShelterId?: string | null;
+  shelterTravelProgress?: number;
+  initialCenterX?: number;
 }
 
 export interface AbsorptionPreview {

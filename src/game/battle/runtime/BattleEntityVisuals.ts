@@ -7,6 +7,7 @@ import { fighterCombatCenter, fighterKeepOutMetric } from '../../domain/combatRu
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
 import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y, GROUND_SAM_ROOT_Y } from './battleVisualCoordinates';
 import { acquireGroundShadowMaterial, createGroundShadowMesh, placeGroundShadow, syncGroundShadow, type GroundShadowMaterialHandle } from './GroundShadow';
+import { SHOW_IN_GAME_UNIT_LABELS } from './battleRuntimeDisplayOptions';
 
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-side-4way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
@@ -49,7 +50,8 @@ const GROUND_SPRITE_URLS: Record<GroundSpriteKey, string> = {
 // Width/height are derived from the trimmed source PNGs. Every sprite's bottom
 // pixel is its gameplay footline, so the body sits directly on the ground lane.
 const GROUND_SPRITE_DIMENSIONS: Record<GroundSpriteKey, { width: number; height: number }> = {
-  DEFENDER: { width: 7.2, height: 7.77 },
+  // The DEFENDER slot uses the transparent Gatling armored vehicle asset.
+  DEFENDER: { width: 8.4, height: 5.52 },
   RADAR: { width: 7.2, height: 7.17 },
   AIRBASE: { width: 7.2, height: 5.71 },
   POWER: { width: 7.2, height: 4.78 },
@@ -317,7 +319,7 @@ export class BattleEntityVisuals {
 
   resetGroundUnitPositions(): void {
     this.groundPositionOverrides.clear();
-    for (const visual of this.groundVisuals.values()) this.applyGroundPosition(visual, visual.root.position.x, visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y);
+    for (const visual of this.groundVisuals.values()) this.applyGroundPosition(visual, visual.root.position.x, defaultGroundRootY(visual));
   }
 
   getGroundAttackSpawnPosition(facilityId: string): Vector3 | null {
@@ -843,6 +845,7 @@ export class BattleEntityVisuals {
       this.groundLabelUi.addControl(labelPanel);
       labelPanel.linkWithMesh(labelAnchor);
       labelPanel.linkOffsetY = -48;
+      labelPanel.isVisible = SHOW_IN_GAME_UNIT_LABELS;
     }
     const hitFlash = MeshBuilder.CreateSphere(`${root.name}-hit-flash`, { diameter: isSam ? 5.2 : 3.4, segments: 12 }, this.scene);
     hitFlash.parent = root;
@@ -863,9 +866,11 @@ export class BattleEntityVisuals {
   private syncGround(visual: GroundVisual, x: number, mothershipX: number, health: number, destroyed: boolean, disabled: boolean, aiFacingX?: FacingX): void {
     if (health < visual.previousHealth - 0.001 && !visual.destroyed) visual.hitElapsed = GROUND_HIT_FLASH_DURATION;
     const override = this.groundPositionOverrides.get(visual.group);
-    this.applyGroundPosition(visual, x, override ?? (visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y));
+    this.applyGroundPosition(visual, x, override ?? defaultGroundRootY(visual));
     if (visual.isDirectional) {
-      visual.body.scaling.x = aiFacingX ? visual.bodyBaseScaleX * aiFacingX : facingScaleX(visual.bodyBaseScaleX, x, mothershipX);
+      visual.body.scaling.x = aiFacingX
+        ? visual.bodyBaseScaleX * aiFacingX
+        : facingScaleX(visual.bodyBaseScaleX, x, mothershipX, visual.spriteKey === 'DEFENDER' ? -1 : 1);
       if (visual.attackSpawn) {
         const local = groundMuzzlePose({ x: 0, y: 0, z: 0 }, GROUND_SAM_ATTACK_SPAWN_LOCAL, Math.sign(visual.body.scaling.x) as FacingX);
         visual.attackSpawn.position.set(local.x, local.y, local.z);
@@ -880,7 +885,7 @@ export class BattleEntityVisuals {
     syncGroundShadow(visual.shadow, !destroyed, disabled ? 0.52 : undefined);
     if (visual.labelAnchor && visual.labelPanel) {
       visual.labelAnchor.position.x = x;
-      visual.labelPanel.isVisible = !destroyed;
+      visual.labelPanel.isVisible = SHOW_IN_GAME_UNIT_LABELS && !destroyed;
     }
     visual.destroyed = destroyed;
     const ratio = Math.max(0, Math.min(1, health / Math.max(1, visual.maximumHealth)));
@@ -953,10 +958,15 @@ function facilitySpriteKey(kind: FacilityKind | undefined): GroundSpriteKey {
   return 'POWER';
 }
 
-function facingScaleX(baseScaleX: number, unitX: number, referenceX: number): number {
-  // The source sprites face right. Ground vehicles face toward the mothership.
-  const direction = Math.sign(referenceX - unitX) || 1;
-  return Math.abs(baseScaleX) * direction;
+function facingScaleX(baseScaleX: number, unitX: number, referenceX: number, sourceFacingX: FacingX): number {
+  // Ground vehicles face toward the mothership. The Gatling source faces left,
+  // while the legacy directional assets face right, so account for both.
+  const desiredFacing = Math.sign(referenceX - unitX) || 1;
+  return Math.abs(baseScaleX) * desiredFacing * sourceFacingX;
+}
+
+function defaultGroundRootY(visual: GroundVisual): number {
+  return visual.isSam || visual.group === 'DEFENDER' ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y;
 }
 
 function setAtlasFrame(texture: Texture, columns: number, rows: number, frame: number): void {

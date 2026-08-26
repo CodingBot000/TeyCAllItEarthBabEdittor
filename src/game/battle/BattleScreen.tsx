@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { CITY_BY_ID } from '../data/cities';
 import type { CampaignState, CombatState } from '../domain/types';
 import type { BattleLaunchRequest } from './BattleGateway';
-import { getBattleDebugOptions } from './gameplay/BattleDebug';
+import { getBattleDebugOptions, SHOW_IN_BATTLE_DEBUG_CONTROLS } from './gameplay/BattleDebug';
 import { createSideViewBattleSession } from './gameplay/sideViewBattleRules';
 import { getBattleMapDefinition, loadBattleMapDefinition } from './maps/battleMapCatalog';
 import { TACTICAL_PRESETS } from '../data/tacticalPresets';
@@ -35,8 +35,8 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<BattleRuntimeSnapshot | null>(null);
-  const [invincibilityEnabled, setInvincibilityEnabled] = useState(true);
-  const [unitInvincibilityEnabled, setUnitInvincibilityEnabled] = useState(true);
+  const [invincibilityEnabled, setInvincibilityEnabled] = useState(false);
+  const [unitInvincibilityEnabled, setUnitInvincibilityEnabled] = useState(false);
   const [pointDefenseDisabled, setPointDefenseDisabled] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [abortConfirmationOpen, setAbortConfirmationOpen] = useState(false);
@@ -56,7 +56,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     () => getBattleDebugOptions(typeof window === 'undefined' ? '' : window.location.search),
     [],
   );
-  const backgroundDebugEnabled = debugOptions.directBattle || debugOptions.fastBattle;
+  const backgroundDebugEnabled = SHOW_IN_BATTLE_DEBUG_CONTROLS && (debugOptions.directBattle || debugOptions.fastBattle);
   const city = CITY_BY_ID[request.cityId];
   const preset = city ? TACTICAL_PRESETS[city.tacticalPresetId] : undefined;
   const session = useMemo(
@@ -385,15 +385,17 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
         </div>
       </aside> : <button className="battle-background-debug-toggle battle-collision-debug-toggle" data-testid="battle-collision-debug-toggle" type="button" onClick={() => { setBackgroundDebugOpen(false); setCollisionDebugVisible(true); }} aria-label="Open collision overlay debug panel">COLLISION DEBUG</button> : null}
       <div className="battle-top-right-actions">
-        <button className={`battle-point-defense-button ${pointDefenseDisabled ? 'is-on' : ''}`} data-testid="battle-point-defense-toggle" type="button" aria-pressed={pointDefenseDisabled} disabled={phase !== 'ready'} onClick={togglePointDefense}>
-          {pointDefenseDisabled ? '요격빔 차단 ON' : '요격빔 차단 OFF'}
-        </button>
-        <button className={`battle-invincibility-button ${invincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-invincibility-toggle" type="button" aria-pressed={invincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleInvincibility}>
-          {invincibilityEnabled ? t('battle.invincibilityOn') : t('battle.invincibilityOff')}
-        </button>
-        <button className={`battle-invincibility-button ${unitInvincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-unit-invincibility-toggle" type="button" aria-pressed={unitInvincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleUnitInvincibility}>
-          {unitInvincibilityEnabled ? t('battle.unitInvincibilityOn') : t('battle.unitInvincibilityOff')}
-        </button>
+        {SHOW_IN_BATTLE_DEBUG_CONTROLS ? <>
+          <button className={`battle-point-defense-button ${pointDefenseDisabled ? 'is-on' : ''}`} data-testid="battle-point-defense-toggle" type="button" aria-pressed={pointDefenseDisabled} disabled={phase !== 'ready'} onClick={togglePointDefense}>
+            {pointDefenseDisabled ? '요격빔 차단 ON' : '요격빔 차단 OFF'}
+          </button>
+          <button className={`battle-invincibility-button ${invincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-invincibility-toggle" type="button" aria-pressed={invincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleInvincibility}>
+            {invincibilityEnabled ? t('battle.invincibilityOn') : t('battle.invincibilityOff')}
+          </button>
+          <button className={`battle-invincibility-button ${unitInvincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-unit-invincibility-toggle" type="button" aria-pressed={unitInvincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleUnitInvincibility}>
+            {unitInvincibilityEnabled ? t('battle.unitInvincibilityOn') : t('battle.unitInvincibilityOff')}
+          </button>
+        </> : null}
         <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
       </div>
       {snapshot ? <section className="battle-status-hud" aria-label={t('battle.status')}>
@@ -410,15 +412,15 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           <span>{snapshot.extractionStatus === 'LOCKED' ? t('battle.survive') : extractionActive ? t('battle.extracting') : t('battle.escapeReady')}</span>
           <strong>{snapshot.extractionStatus === 'LOCKED' ? `${Math.ceil(snapshot.survivalRemainingSeconds)}s` : extractionActive ? `${Math.round(snapshot.extractionProgress * 100)}%` : t('common.ready')}</strong>
         </section>
-        <button
-          className={`battle-time-toggle ${snapshot.timeMode === 'ENDLESS' ? 'is-endless' : 'is-normal'}`}
-          type="button"
-          data-testid="battle-time-toggle"
-          aria-pressed={snapshot.timeMode === 'ENDLESS'}
-          aria-label={`Switch to ${snapshot.timeMode === 'ENDLESS' ? 'NORMAL' : 'ENDLESS'} mode`}
-          disabled={phase !== 'ready'}
-          onClick={() => runtimeRef.current?.setTimeMode(snapshot.timeMode === 'ENDLESS' ? 'NORMAL' : 'ENDLESS')}
-        >{snapshot.timeMode}</button>
+        {SHOW_IN_BATTLE_DEBUG_CONTROLS ? <button
+            className={`battle-time-toggle ${snapshot.timeMode === 'ENDLESS' ? 'is-endless' : 'is-normal'}`}
+            type="button"
+            data-testid="battle-time-toggle"
+            aria-pressed={snapshot.timeMode === 'ENDLESS'}
+            aria-label={`Switch to ${snapshot.timeMode === 'ENDLESS' ? 'NORMAL' : 'ENDLESS'} mode`}
+            disabled={phase !== 'ready'}
+            onClick={() => runtimeRef.current?.setTimeMode(snapshot.timeMode === 'ENDLESS' ? 'NORMAL' : 'ENDLESS')}
+          >{snapshot.timeMode}</button> : null}
       </div> : null}
       {snapshot ? <section className={`battle-target-hud ${nearbyTarget ? 'target-ready' : ''}`} aria-live="polite">
         <span>{nearbyTarget ? t('battle.targetReady') : guidanceTarget?.discovered ? t('battle.signalTracked') : guidanceTarget ? t('battle.signalUnknown') : t('battle.autoScan')}</span>

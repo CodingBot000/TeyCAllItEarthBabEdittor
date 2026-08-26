@@ -14,4 +14,9 @@ describe('battle gateway boundary', () => {
     };
     expect(battleRequestFor(campaign, 'seoul')).toEqual({ campaignId: 'campaign-1234', cityId: 'seoul', mapId: 'city-day', missionId: 'mission-1' });
   });
+
+  it('uses the next campaign stage when no map override is supplied', () => {
+    const campaign = { ...createNewCampaign(1235), completedBattles: 1 };
+    expect(battleRequestFor(campaign, 'seoul')).toEqual({ campaignId: 'campaign-1235', cityId: 'seoul', mapId: 'city-night' });
+  });
 });

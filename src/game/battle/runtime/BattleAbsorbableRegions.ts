@@ -3,6 +3,7 @@ import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonj
 import type { AbsorbableKind, CombatState } from '../../domain/types';
 import { isShelterOrganicTarget } from '../../domain/shelterRules';
 import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y } from './battleVisualCoordinates';
+import { SHOW_IN_GAME_UNIT_LABELS } from './battleRuntimeDisplayOptions';
 import { isFleeingCrowdTarget } from './BattleFleeingCrowdVisuals';
 import { acquireGroundShadowMaterial, createGroundShadowMesh, placeGroundShadow, syncGroundShadow, type GroundShadowMaterialHandle } from './GroundShadow';
 
@@ -43,7 +44,7 @@ const ORGANIC_SHELTER_DAMAGED_URL = '/assets/runtime/sprites/target-organic-shel
 const ORGANIC_SHELTER_CROWD_OVERLAY_URL = '/assets/runtime/sprites/target-organic-shelter-crowd-overlay-y0-web.webp';
 
 const LABEL_BY_KIND: Record<AbsorbableKind, string> = {
-  ORGANIC: '시민 주거',
+  ORGANIC: '방공호',
   VEHICLE: '군용 차량',
   MACHINERY: '생산 설비',
   POWER: '전력 저장고',
@@ -66,6 +67,7 @@ const ORGANIC_SHELTER_ASPECT = 1393 / 809;
 const ORGANIC_SHELTER_CROWD_ASPECT = 972 / 334;
 const ORGANIC_SHELTER_CROWD_WIDTH_RATIO = 972 / 1393;
 const ORGANIC_SHELTER_CROWD_FLOOR_OFFSET_RATIO = 0.06;
+const ORGANIC_SHELTER_GROUND_Y = -19;
 const MACHINERY_SPRITE_ASPECT = 460 / 259;
 const SPRITE_GROUND_Y = GROUND_ENTITY_ROOT_Y + GROUND_SAM_BODY_LOCAL_Y - GROUND_SAM_BODY_HEIGHT * 0.375;
 
@@ -137,12 +139,15 @@ export class BattleAbsorbableRegions {
         ? facingScaleX(visual.spriteBaseScaleX, target.center.x, state.mothership.position.x)
         : visual.spriteBaseScaleX;
       visual.sprite.scaling.set(spriteScaleX, visual.spriteBaseScaleY, 1);
-      visual.sprite.position.y = SPRITE_GROUND_Y + visual.spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
+      visual.sprite.position.y = groundYForKind(target.kind) + visual.spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
       placeGroundShadow(visual.shadow, visual.spriteBaseScaleX, visual.sprite.position.y - visual.spriteBaseScaleY / 2 - GROUND_ENTITY_ROOT_Y);
       visual.sprite.material = shelterOrganic && target.shelterBreachState === 'DESTROYED'
         ? this.organicShelterDamagedMaterial
         : this.spriteMaterials.get(target.kind)!;
-      const spriteVisibility = isCrowd ? 0 : target.discovered
+      const shelterVisibility = target.shelterBreachState === 'DESTROYED'
+        ? target.discovered ? 0.68 : 0.24
+        : target.discovered ? 0.9 : 0.38;
+      const spriteVisibility = isCrowd ? 0 : shelterOrganic ? shelterVisibility : target.discovered
         ? target.remainingAmount <= 0 ? 0 : active ? 1 : nearShip ? 0.9 : 0.68
         : 0.08;
       visual.sprite.visibility = visual.spriteTexture.isReady() ? spriteVisibility : 0;
@@ -152,14 +157,15 @@ export class BattleAbsorbableRegions {
         const crowdHeight = crowdWidth / ORGANIC_SHELTER_CROWD_ASPECT;
         visual.crowdOverlay.scaling.set(crowdWidth, crowdHeight, 1);
         visual.crowdOverlay.position.x = target.center.x;
-        visual.crowdOverlay.position.y = SPRITE_GROUND_Y
+        visual.crowdOverlay.position.y = ORGANIC_SHELTER_GROUND_Y
           + visual.spriteBaseScaleY * ORGANIC_SHELTER_CROWD_FLOOR_OFFSET_RATIO
           + crowdHeight * 0.5;
         visual.crowdOverlay.visibility = shelterOrganic && target.discovered && target.remainingAmount > 0
           ? target.shelterBreachState === 'DESTROYED' ? active ? 1 : nearShip ? 0.9 : 0.68 : 0.92
           : 0;
       }
-      visual.labelPanel.isVisible = !isCrowd && target.discovered && target.remainingAmount > 0 && visual.spriteTexture.isReady();
+      visual.labelPanel.isVisible = SHOW_IN_GAME_UNIT_LABELS && !isCrowd && target.discovered && visual.spriteTexture.isReady()
+        && (!shelterOrganic || target.shelterBreachState !== 'DESTROYED');
       const material = target.remainingAmount <= 0
         ? this.depletedMaterial
         : !target.discovered
@@ -241,7 +247,7 @@ export class BattleAbsorbableRegions {
     sprite.isPickable = false;
     const { width: spriteBaseScaleX, height: spriteBaseScaleY } = spriteDimensionsForKind(kind, radius);
     sprite.scaling.set(spriteBaseScaleX, spriteBaseScaleY, 1);
-    sprite.position.y = SPRITE_GROUND_Y + spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[kind];
+    sprite.position.y = groundYForKind(kind) + spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[kind];
     const shadow = createGroundShadowMesh(`${root.name}-shadow`, this.scene, root, this.groundShadowMaterial.material);
     shadow.position.z = 0.08;
     const crowdOverlay = isShelterOrganicTarget({ id, kind })
@@ -255,7 +261,7 @@ export class BattleAbsorbableRegions {
       crowdOverlay.isPickable = false;
       crowdOverlay.material = this.organicShelterCrowdMaterial;
       crowdOverlay.scaling.set(spriteBaseScaleX * ORGANIC_SHELTER_CROWD_WIDTH_RATIO, spriteBaseScaleX * ORGANIC_SHELTER_CROWD_WIDTH_RATIO / ORGANIC_SHELTER_CROWD_ASPECT, 1);
-      crowdOverlay.position.y = SPRITE_GROUND_Y
+      crowdOverlay.position.y = ORGANIC_SHELTER_GROUND_Y
         + spriteBaseScaleY * ORGANIC_SHELTER_CROWD_FLOOR_OFFSET_RATIO
         + crowdOverlay.scaling.y * 0.5;
       crowdOverlay.visibility = 0;
@@ -279,6 +285,7 @@ export class BattleAbsorbableRegions {
     this.labelUi.addControl(labelPanel);
     labelPanel.linkWithMesh(sprite);
     labelPanel.linkOffsetY = -64;
+    labelPanel.isVisible = SHOW_IN_GAME_UNIT_LABELS;
     const visual = { root, pad, core, beacon, sprite, shadow, spriteTexture, spriteBaseScaleX, spriteBaseScaleY, crowdOverlay, labelPanel, baseScaleX: radius };
     this.visuals.set(id, visual);
     return visual;
@@ -329,6 +336,10 @@ function spriteDimensionsForKind(kind: AbsorbableKind, radius: number): { width:
   }
   const size = Math.max(6.4, radius * 1.42);
   return { width: size, height: size };
+}
+
+function groundYForKind(kind: AbsorbableKind): number {
+  return kind === 'ORGANIC' ? ORGANIC_SHELTER_GROUND_Y : SPRITE_GROUND_Y;
 }
 
 function facingScaleX(baseScaleX: number, unitX: number, referenceX: number): number {

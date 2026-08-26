@@ -22,7 +22,7 @@ import type { GroundPositioningState } from '../../domain/units/unitCombatTypes'
 import { scriptsMap } from '../../../scripts';
 import { BattleSoundEffects } from '../../audio/BattleSoundEffects';
 import { activateAbility, applyMothershipProjectileDamage, fighterCombatCenter, fighterKeepOutMetric, startBeamOnTarget, stopBeam, tickCombat } from '../../domain/combatRules';
-import type { AbilityId, AbsorbableKind, CommandResult, CombatState, ExtractionStatus, ShelterBreachState } from '../../domain/types';
+import type { AbilityId, AbsorbableKind, CivilianShelterState, CommandResult, CombatState, ExtractionStatus, ShelterBreachState } from '../../domain/types';
 import type { BattleMapDefinition } from '../contracts/BattleMapDefinition';
 import type { BattleGameplayProfile } from '../gameplay/BattleGameplayProfile';
 import { battleAbilityAvailability, type AbilityAvailability, type BattleActionId } from '../gameplay/battleAbilityAvailability';
@@ -92,6 +92,7 @@ export interface BattleRuntime {
 }
 
 export type BattleTimeMode = 'NORMAL' | 'ENDLESS';
+const DEFAULT_BATTLE_TIME_MODE: BattleTimeMode = 'NORMAL';
 
 export interface BattleRuntimeOptions {
   combatState?: CombatState;
@@ -112,6 +113,8 @@ export interface BattleRuntimeTargetSnapshot {
   remainingAmount: number;
   initialAmount: number;
   shelterBreach: { state: ShelterBreachState; progress: number } | null;
+  shelter: { capacity: number; occupants: number; availableSpace: number; state: ShelterBreachState; interactable: boolean } | null;
+  civilianShelter: { state: CivilianShelterState; shelterId: string | null; travelProgress: number } | null;
 }
 
 export interface BattleRuntimeGuidanceTargetSnapshot {
@@ -282,15 +285,15 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   mothershipDestructionVfx.setQuality('HIGH');
   setGameplayRenderingGroup(mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
   let paused = false;
-  let timeMode: BattleTimeMode = 'NORMAL';
+  let timeMode: BattleTimeMode = DEFAULT_BATTLE_TIME_MODE;
   let elapsed = 0;
   let cinematic: MothershipCinematic | null = null;
   let completedCombat = false;
   let automationStepping = false;
   let cloudTextureOffset = 0;
   let cameraX = mothershipGameplayRoot.position.x;
-  let invincibilityEnabled = true;
-  let unitInvincibilityEnabled = true;
+  let invincibilityEnabled = false;
+  let unitInvincibilityEnabled = false;
   let pointDefenseDisabled = false;
   let samRootY = GROUND_SAM_ROOT_Y;
   camera.position.x = cameraX;
@@ -527,6 +530,18 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         shelterBreach: target.shelterBreachState
           ? { state: target.shelterBreachState, progress: round(target.shelterBreachProgress ?? 0, 3) }
           : null,
+        shelter: target.shelterCapacity !== undefined ? {
+          capacity: round(target.shelterCapacity, 2),
+          occupants: round(target.shelterOccupants ?? target.remainingAmount, 2),
+          availableSpace: round(Math.max(0, target.shelterCapacity - (target.shelterOccupants ?? target.remainingAmount)), 2),
+          state: target.shelterBreachState ?? 'INTACT',
+          interactable: target.shelterBreachState !== 'DESTROYED',
+        } : null,
+        civilianShelter: target.civilianShelterState ? {
+          state: target.civilianShelterState,
+          shelterId: target.assignedShelterId ?? null,
+          travelProgress: round(target.shelterTravelProgress ?? 0, 3),
+        } : null,
       })),
       groundSwarm: {
         activeProjectiles: combatState.groundSwarmProjectiles.length,
@@ -948,7 +963,7 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     coordinateSystem: 'side-view world: x increases right, y increases up, z increases away from camera; fighters use true 3D coordinates',
     mapId,
     paused,
-    timeMode: 'NORMAL',
+    timeMode: DEFAULT_BATTLE_TIME_MODE,
     elapsedSeconds: round(elapsedSeconds, 3),
     survivalRemainingSeconds: 0,
     extractionStatus: 'LOCKED',
@@ -959,9 +974,9 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     mothershipDestruction: { active: false, phase: 'IDLE', elapsedSeconds: 0, durationSeconds: MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds, altitude: 0, fireCount: 0, flameFallbackActive: false, triggeredExplosions: 0, activeExplosions: 0, smokeCount: 0, debrisCount: 0, impactTriggered: false },
     infectedAssault: { active: false, activeWaves: 0, fallingCount: 0, groundImpactCount: 0, totalDrops: 0 },
     fleeingCrowds: [],
-    absorptionVfx: { phase: 'OFF', active: false, elapsedSeconds: 0, outerLayerCount: 3, shaftCount: 12, sourceHalfWidth: 4.2, groundHalfWidth: 6.5, meshCount: 24 },
-    invincibilityEnabled: true,
-    unitInvincibilityEnabled: true,
+    absorptionVfx: { phase: 'OFF', active: false, elapsedSeconds: 0, outerLayerCount: 3, shaftCount: 12, sourceHalfWidth: 4.2, groundHalfWidth: 6.5, meshCount: 24, virtualObjectCount: 0, virtualObjectPoolCount: 10, virtualObjectTravelDuration: 0.8, virtualObjects: [] },
+    invincibilityEnabled: false,
+    unitInvincibilityEnabled: false,
     effectiveAutoScanRange: 0,
     profile: { id: null, version: null, enemyPressureMultiplier: 1, groundPressureMultiplier: 1, facilityCount: 0, groundDefenderCount: 0, requiredOccupationNodeCount: 0 },
     camera: { x: round(shipX, 3), y: CAMERA_Y, z: CAMERA_Z, targetX: round(shipX, 3), targetY: CAMERA_Y, targetZ: 0 },

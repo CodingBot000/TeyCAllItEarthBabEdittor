@@ -3,7 +3,7 @@ import { CITIES } from '../../data/cities';
 import { TACTICAL_PRESETS } from '../../data/tacticalPresets';
 import { createNewCampaign, stageMissionResult } from '../../domain/campaignRules';
 import { BALANCE } from '../../domain/balance';
-import { fighterCombatCenter, fighterKeepOutMetric, fighterSegmentKeepOutIntersection, projectFighterOutsideKeepOut, tickCombat as domainTickCombat, type CombatTickOptions } from '../../domain/combatRules';
+import { fighterCombatCenter, fighterKeepOutMetric, fighterSegmentKeepOutIntersection, getAbsorptionPreview, projectFighterOutsideKeepOut, startBeamOnTarget, tickCombat as domainTickCombat, type CombatTickOptions } from '../../domain/combatRules';
 import { createDeployedCohorts, resolveRecoveredCohorts, tickCohorts } from '../../domain/cohortRules';
 import { mothershipContactVolume } from '../../domain/combatGeometry';
 import type { CombatState } from '../../domain/types';
@@ -132,6 +132,37 @@ describe('side-view battle gameplay', () => {
     }
   });
 
+  it('reports and applies a three-times-longer target absorption duration', () => {
+    const campaign = createNewCampaign(7415);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const target = combatState.absorbableTargets.find((candidate) => !candidate.id.startsWith('ambient:') && candidate.kind !== 'ORGANIC' && candidate.remainingAmount > 0)!;
+    target.discovered = true;
+    const preview = getAbsorptionPreview(combatState, target.id)!;
+    const unscaledDuration = preview.absorbableAmount / (BALANCE.beam.harvestPerSecond * target.density * combatState.modifiers.beamRateMultiplier);
+    expect(preview.estimatedSeconds).toBeCloseTo(unscaledDuration * 3, 8);
+  });
+
+  it('spends 10 energy per 0.1 seconds while the beam is absorbing', () => {
+    const campaign = createNewCampaign(7416);
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+    const target = combatState.absorbableTargets.find((candidate) => !candidate.id.startsWith('ambient:') && candidate.kind !== 'ORGANIC' && candidate.remainingAmount > 0)!;
+    target.discovered = true;
+    target.status = 'AVAILABLE';
+    combatState.mothership.position = { x: target.center.x, z: target.center.z };
+    combatState.mothership.energy = combatState.mothership.maxEnergy;
+    expect(startBeamOnTarget(combatState, target.id)).toEqual({ ok: true });
+
+    tickCombat(combatState, 0.1, { unitInvincibilityEnabled: true, disablePointDefense: true });
+    const expectedAbsorbed = BALANCE.beam.harvestPerSecond * target.density * combatState.modifiers.beamRateMultiplier * 0.1 / BALANCE.beam.durationMultiplier;
+    const expectedEnergyGain = expectedAbsorbed / 1000 * BALANCE.beam.tacticalEnergyPerThousand;
+    expect(combatState.mothership.energy).toBeCloseTo(combatState.mothership.maxEnergy - 10 + expectedEnergyGain, 8);
+    combatState.mothership.maxEnergy = combatState.mothership.energy;
+    tickCombat(combatState, 0.1, { unitInvincibilityEnabled: true, disablePointDefense: true });
+    expect(combatState.mothership.energy).toBeCloseTo(combatState.mothership.maxEnergy - 10 + expectedEnergyGain, 8);
+  });
+
   it('applies River and Desert profile pressure, defense, and occupation data to the combat state', () => {
     const baseCity = CITIES.find((candidate) => candidate.id === 'seoul')!;
     const sessionFor = (presetId: 'coastal-megacity' | 'river-metropolis' | 'desert-tech-hub') => {
@@ -252,7 +283,7 @@ describe('side-view battle gameplay', () => {
     const missile = combatState.missiles.find((candidate) => candidate.source === 'sam' && candidate.sourceId === sam.id);
     expect(missile?.launchPosition.x).toBeCloseTo(-50.9, 8);
     expect(missile?.launchPosition.z).toBeCloseTo(0.1, 8);
-    expect(missile?.launchY).toBe(4.6);
+    expect(missile?.launchY).toBe(2.2);
     expect(missile?.launchAngleRadians).toBeGreaterThanOrEqual(20 * Math.PI / 180);
     expect(missile?.launchAngleRadians).toBeLessThanOrEqual(40 * Math.PI / 180);
     const launch = { ...missile!.launchPosition };

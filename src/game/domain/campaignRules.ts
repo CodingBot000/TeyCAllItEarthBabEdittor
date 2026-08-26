@@ -250,7 +250,7 @@ function applySideViewResourceResult(previous: CityState, combat: CombatState): 
   for (const target of combat.absorbableTargets) {
     const pool = pools[target.kind];
     if (!pool) continue;
-    const depletedAmount = Math.max(0, Math.min(pool.remainingAmount, target.initialAmount - target.remainingAmount));
+    const depletedAmount = Math.max(0, Math.min(pool.remainingAmount, target.absorbedAmount + target.destroyedAmount));
     const destroyedAmount = Math.max(0, Math.min(depletedAmount, target.destroyedAmount));
     pool.remainingAmount = Math.max(0, pool.remainingAmount - depletedAmount);
     pool.destroyedAmount = Math.min(pool.initialAmount - pool.remainingAmount, pool.destroyedAmount + destroyedAmount);

@@ -1,6 +1,6 @@
 import { createCombatState, refreshAbsorbableTargetStatuses, stopBeam } from '../../domain/combatRules';
 import { resolveMissionOutcome } from '../../domain/missionRules';
-import { isShelterOrganicTarget } from '../../domain/shelterRules';
+import { ENABLE_DYNAMIC_CIVILIAN_SHELTER_MOVEMENT, isShelterOrganicTarget, tickCivilianShelters } from '../../domain/shelterRules';
 import type { AbilityId, AbsorbableTargetState, CampaignState, CityDefinition, CityState, CombatState, TacticalPreset, Vec2 } from '../../domain/types';
 import { gameplayProfileById, gameplayProfileForPreset, type BattleGameplayProfile } from './BattleGameplayProfile';
 import { createPlannedBattleSetup } from './battleSetupRules';
@@ -67,6 +67,7 @@ function profileFacilities(sourceFacilities: TacticalPreset['facilities'], profi
 export function tickSideViewBattle(state: CombatState, profile: BattleGameplayProfile, dt: number, unitInvincibilityEnabled = false): void {
   if (state.battleMode !== 'SIDE_VIEW' || state.result !== 'ACTIVE') return;
   discoverNearbySideViewTargets(state, profile);
+  if (ENABLE_DYNAMIC_CIVILIAN_SHELTER_MOVEMENT) tickCivilianShelters(state, dt);
   tickGroundSwarm(state, profile, dt, unitInvincibilityEnabled);
   for (const facility of state.facilities) if (facility.destroyed || facility.health <= 0) delete state.groundUnitAi[facility.id];
   tickSideViewCohortAi(state);
@@ -111,7 +112,7 @@ export function discoverNearbySideViewTargets(state: CombatState, profile: Battl
   let discovered = 0;
   const effectiveAutoScanRange = profile.autoScanRange + state.modifiers.scanRangeBonus;
   for (const target of state.absorbableTargets) {
-    if (target.discovered || target.remainingAmount <= 0) continue;
+    if (target.discovered || (!isShelterOrganicTarget(target) && target.remainingAmount <= 0)) continue;
     if (Math.abs(target.center.x - state.mothership.position.x) > effectiveAutoScanRange + target.radius) continue;
     target.discovered = true;
     discovered += 1;
@@ -126,7 +127,9 @@ export function discoverNearbySideViewTargets(state: CombatState, profile: Battl
 
 export function nearestUsableSideViewTarget(state: CombatState): AbsorbableTargetState | null {
   return state.absorbableTargets
-    .filter((target) => target.discovered && target.remainingAmount > 0 && (target.status === 'AVAILABLE' || (isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED')))
+    .filter((target) => target.discovered
+      && (target.remainingAmount > 0 || isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED')
+      && (target.status === 'AVAILABLE' || isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED'))
     .map((target) => ({ target, distance: Math.abs(target.center.x - state.mothership.position.x) }))
     .filter(({ target, distance }) => distance <= target.radius + state.modifiers.beamRadiusBonus + 2)
     .sort((a, b) => a.distance - b.distance)[0]?.target ?? null;

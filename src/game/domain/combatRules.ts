@@ -7,7 +7,7 @@ import type { ShotSolution } from './units/unitCombatTypes';
 import { deriveCombatModifiers } from './campaignRules';
 import { createControlNodes, createDeployedCohorts, createGroundDefenders, tickCohorts, updateControlNodes } from './cohortRules';
 import { occupationRequirements, resolveMissionOutcome } from './missionRules';
-import { ensureShelterBreachState, isShelterOrganicTarget } from './shelterRules';
+import { ensureShelterBreachState, ensureShelterOccupancyState, isShelterOrganicTarget, shelterInitialOccupantsFor } from './shelterRules';
 import { ABSORBABLE_WEIGHT_BY_KIND } from './types';
 import { clampTacticalPosition, TACTICAL_MAP_BOUNDS } from './tacticalBounds';
 import type { AbsorbableKind, AbsorbableTargetState, AbsorptionPreview, AbilityId, BeamHeatState, BeamStopReason, CampaignState, CityDefinition, CityState, CombatFacilityState, CombatState, EnemyAbsorptionStatus, EnemyState, MissionCargo, MissionYieldPerThousand, MothershipHitEvent, PopulationZoneState, TacticalPreset, TacticalRiskForecast, TargetRecommendation, Vec2, Vec3 } from './types';
@@ -169,8 +169,9 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
   const absorbableTargets: AbsorbableTargetState[] = preset.absorbableTargets.map((target) => {
     const initialAmount = Math.max(0, Math.round(target.initialAmountOverride ?? target.baseAmount * targetAmountScale(city, target.kind) * Math.max(0.4, 1 - cityState.destruction / 140)));
     const saved = target.initialAmountOverride === undefined ? cityState.absorbables[target.id] : undefined;
-    const remainingAmount = clamp(saved?.remainingAmount ?? initialAmount, 0, initialAmount);
-    const destroyedAmount = clamp(saved?.destroyedAmount ?? 0, 0, initialAmount - remainingAmount);
+    const shelterTarget = isShelterOrganicTarget(target);
+    const remainingAmount = shelterTarget ? shelterInitialOccupantsFor(initialAmount) : clamp(saved?.remainingAmount ?? initialAmount, 0, initialAmount);
+    const destroyedAmount = shelterTarget ? 0 : clamp(saved?.destroyedAmount ?? 0, 0, initialAmount - remainingAmount);
     const discovered = saved?.discovered === true || distance(initialPosition, target.center) <= BALANCE.scan.autoRevealRange + target.radius;
     const state: AbsorbableTargetState = {
       ...target,
@@ -182,6 +183,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
       status: remainingAmount <= 0 ? (destroyedAmount > 0 ? 'DESTROYED' : 'DEPLETED') : discovered ? 'AVAILABLE' : 'HIDDEN',
     };
     ensureShelterBreachState(state);
+    ensureShelterOccupancyState(state);
     return state;
   });
   const state: CombatState = {
@@ -264,7 +266,9 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
 
 function landmarkProgress(targets: AbsorbableTargetState[], targetId: string): number {
   const target = targets.find((item) => item.id === targetId);
-  return target ? Math.max(0, target.initialAmount - target.remainingAmount - target.destroyedAmount) : 0;
+  if (!target) return 0;
+  if (isShelterOrganicTarget(target)) return Math.max(0, target.absorbedAmount, target.destroyedAmount);
+  return Math.max(0, target.initialAmount - target.remainingAmount - target.destroyedAmount);
 }
 
 function targetAmountScale(city: CityDefinition, kind: AbsorbableKind): number {
@@ -394,6 +398,7 @@ function isAmbientDirectAccessTarget(target: AbsorbableTargetState): boolean {
 }
 
 function targetAbsorbedAmount(target: AbsorbableTargetState): number {
+  if (isShelterOrganicTarget(target)) return Math.max(0, target.absorbedAmount, target.destroyedAmount);
   const persistedAbsorbed = target.initialAmount - target.remainingAmount - target.destroyedAmount;
   return Math.max(0, target.absorbedAmount, persistedAbsorbed);
 }
@@ -436,10 +441,11 @@ export function getBeamHeatRate(state: CombatState, target?: AbsorbableTargetSta
 export function getAbsorptionPreview(state: CombatState, targetId: string): AbsorptionPreview | null {
   const target = state.absorbableTargets.find((item) => item.id === targetId);
   if (!target || (!target.discovered && !isAmbientDirectAccessTarget(target)) || target.remainingAmount <= 0) return null;
-  const ratePerSecond = BALANCE.beam.harvestPerSecond * target.density * state.modifiers.beamRateMultiplier;
+  const ratePerSecond = BALANCE.beam.harvestPerSecond * target.density * state.modifiers.beamRateMultiplier / BALANCE.beam.durationMultiplier;
   const cargoRemaining = Math.max(0, state.mothership.maxCargo - state.mothership.cargoUsed);
   const absorbableAmount = Math.max(0, Math.min(target.remainingAmount, cargoRemaining));
   const estimatedSeconds = ratePerSecond > 0 ? absorbableAmount / ratePerSecond : 0;
+  const energyCost = estimatedSeconds * BALANCE.beam.energyDrainPerSecond;
   const activeRadars = state.facilities.filter((facility) => facility.kind === 'RADAR' && !facility.destroyed && facility.disabledUntil <= state.elapsedSeconds).length;
   const radarMultiplier = 1 + activeRadars * 0.2;
   const alertPerSecond = (BALANCE.alert.basePerSecond + BALANCE.alert.beamPerSecond * state.modifiers.beamAlertMultiplier * target.alertMultiplier) * radarMultiplier;
@@ -448,10 +454,11 @@ export function getAbsorptionPreview(state: CombatState, targetId: string): Abso
   else if (target.remainingAmount <= absorbableAmount + 0.001) limitingFactor = 'TARGET';
   const generatedEnergy = absorbableAmount / 1000 * BALANCE.beam.tacticalEnergyPerThousand;
   const energyGain = Math.min(generatedEnergy, Math.max(0, state.mothership.maxEnergy - state.mothership.energy));
+  if (limitingFactor === 'NONE' && state.mothership.energy + energyGain < energyCost - 0.001) limitingFactor = 'ENERGY';
   return {
     absorbableAmount,
     estimatedSeconds,
-    energyCost: 0,
+    energyCost,
     energyGain,
     heatGain: BALANCE.beam.heatPerSecond
       * state.modifiers.beamHeatMultiplier
@@ -556,6 +563,7 @@ export function abilityCheck(state: CombatState, ability: AbilityId, target?: Ve
   if (state.result !== 'ACTIVE') return { ok: false, reason: 'Combat is over' };
   if (ability === 'beam' && state.mothership.extractionStatus === 'IN_PROGRESS') return { ok: false, reason: 'EXTRACTION IN PROGRESS' };
   if (ability === 'beam' && state.mothership.beamRecoverySeconds > 0) return { ok: false, reason: 'BEAM OVERHEATED' };
+  if (ability === 'beam' && state.mothership.energy < BALANCE.beam.energyDrainPerSecond * 0.1) return { ok: false, reason: 'ENERGY LOW' };
   if (state.cooldowns[ability] > 0) return { ok: false, reason: `COOLDOWN ${state.cooldowns[ability].toFixed(1)}s` };
   if (target && (ability === 'plasma' || ability === 'emp') && distance(state.mothership.position, target) > (ability === 'emp' ? BALANCE.emp.range : BALANCE.plasma.range)) {
     return { ok: false, reason: 'OUT OF RANGE' };
@@ -685,10 +693,15 @@ function applyEmp(state: CombatState, target: Vec2): void {
 function damageAbsorbablesInRadius(state: CombatState, center: Vec2, radius: number, ratio: number): number {
   let organicCollateral = 0;
   for (const target of state.absorbableTargets) {
+    if (isShelterOrganicTarget(target) && distance(target.center, center) <= radius + target.radius) {
+      target.shelterBreachState = 'DESTROYED';
+      target.shelterBreachProgress = 1;
+    }
     if (target.remainingAmount > 0 && distance(target.center, center) <= radius + target.radius) {
       const destroyed = Math.min(target.remainingAmount, target.remainingAmount * ratio);
       target.remainingAmount -= destroyed;
       target.destroyedAmount += destroyed;
+      if (isShelterOrganicTarget(target)) target.shelterOccupants = target.remainingAmount;
       if (target.kind === 'ORGANIC') organicCollateral += destroyed;
     }
   }
@@ -703,6 +716,20 @@ const refreshTargetStatuses = refreshAbsorbableTargetStatuses;
 
 function refreshTargetStatus(state: CombatState, target: AbsorbableTargetState): void {
   ensureShelterBreachState(target);
+  if (isShelterOrganicTarget(target)) {
+    ensureShelterOccupancyState(target);
+    if (!target.discovered) {
+      target.status = 'HIDDEN';
+      return;
+    }
+    if (target.shelterBreachState !== 'DESTROYED') {
+      target.status = 'LOCKED';
+      return;
+    }
+    target.status = target.remainingAmount > 0.001 ? 'AVAILABLE' : 'DEPLETED';
+    if (target.remainingAmount <= 0.001) target.remainingAmount = 0;
+    return;
+  }
   if (target.remainingAmount <= 0.001) {
     target.remainingAmount = 0;
     target.status = target.destroyedAmount >= target.initialAmount - 0.001 ? 'DESTROYED' : 'DEPLETED';
@@ -843,10 +870,6 @@ function tickBeam(state: CombatState, dt: number): void {
     return;
   }
   refreshTargetStatus(state, target);
-  if (target.remainingAmount <= 0) {
-    stopBeam(state, 'TARGET_DEPLETED');
-    return;
-  }
   if (isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED') {
     target.shelterBreachState = 'BREACHING';
     target.shelterBreachProgress = clamp(
@@ -858,6 +881,10 @@ function tickBeam(state: CombatState, dt: number): void {
     target.shelterBreachProgress = 1;
     target.shelterBreachState = 'DESTROYED';
     refreshTargetStatus(state, target);
+    return;
+  }
+  if (target.remainingAmount <= 0) {
+    stopBeam(state, 'TARGET_DEPLETED');
     return;
   }
   if (target.status === 'LOCKED') {
@@ -882,12 +909,21 @@ function tickBeam(state: CombatState, dt: number): void {
     return;
   }
 
-  const absorbed = Math.min(target.remainingAmount, cargoRemaining, BALANCE.beam.harvestPerSecond * target.density * state.modifiers.beamRateMultiplier * dt);
+  const energyDrain = BALANCE.beam.energyDrainPerSecond * dt;
+  const availableEnergy = Math.max(0, state.mothership.energy);
+  const absorbableDelta = energyDrain > 0 ? Math.min(dt, availableEnergy / BALANCE.beam.energyDrainPerSecond) : dt;
+  if (absorbableDelta <= 0.000001) {
+    stopBeam(state, 'ENERGY_DEPLETED');
+    return;
+  }
+  state.mothership.energy = Math.max(0, state.mothership.energy - BALANCE.beam.energyDrainPerSecond * absorbableDelta);
+  const absorbed = Math.min(target.remainingAmount, cargoRemaining, BALANCE.beam.harvestPerSecond * target.density * state.modifiers.beamRateMultiplier * absorbableDelta / BALANCE.beam.durationMultiplier);
   const generatedEnergy = absorbed / 1000 * BALANCE.beam.tacticalEnergyPerThousand;
   const appliedEnergy = Math.min(generatedEnergy, Math.max(0, state.mothership.maxEnergy - state.mothership.energy));
   state.mothership.energy = Math.min(state.mothership.maxEnergy, state.mothership.energy + appliedEnergy);
   state.mothership.absorptionEnergyEarned += appliedEnergy;
   target.remainingAmount = Math.max(0, target.remainingAmount - absorbed);
+  if (isShelterOrganicTarget(target)) target.shelterOccupants = target.remainingAmount;
   target.absorbedAmount += absorbed;
   state.totalAbsorbed += absorbed;
   state.mothership.cargoUsed += absorbed;
@@ -901,6 +937,7 @@ function tickBeam(state: CombatState, dt: number): void {
   };
   refreshTargetStatus(state, target);
   if (target.remainingAmount <= 0) stopBeam(state, 'TARGET_DEPLETED');
+  else if (absorbableDelta < dt - 0.000001 || state.mothership.energy <= 0.000001) stopBeam(state, 'ENERGY_DEPLETED');
   else if (state.mothership.cargoUsed >= state.mothership.maxCargo - 0.001) stopBeam(state, 'CARGO_FULL');
 }
 

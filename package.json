@@ -18,6 +18,8 @@
     "test:e2e:side-view": "node scripts/run-side-view-verification.mjs",
     "test:e2e:ground-positioning": "node scripts/verify-ground-unit-positioning.mjs",
     "test:e2e:absorption-v2": "node scripts/verify-absorption-beam-v2.mjs",
+    "test:e2e:absorption-virtual-objects": "node scripts/verify-absorption-virtual-objects.mjs",
+    "test:e2e:civilian-shelters": "node scripts/verify-civilian-shelters.mjs",
     "test:e2e:fighter-ghosting": "node scripts/verify-fighter-frame-ghosting.mjs",
 		"check:full": "npm run check && npm run lint && npm run test:e2e:side-view"
 	},
