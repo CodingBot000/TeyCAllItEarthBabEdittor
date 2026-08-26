@@ -555,8 +555,10 @@ function riskWarning(level: TacticalRiskForecast['level'], input: { cargoRatio: 
   return 'BEAM WINDOW ACCEPTABLE';
 }
 
-export function heavyAbilityCellCost(ability: AbilityId): number {
-  return ability === 'plasma' || ability === 'emp' || ability === 'overdrive' ? 1 : 0;
+export function heavyAbilityCellCost(_ability: AbilityId): number {
+  // Heavy abilities are energy-funded now; mission overcharge cells are kept
+  // in the save schema for compatibility but no longer gate or decrement use.
+  return 0;
 }
 
 export function abilityCheck(state: CombatState, ability: AbilityId, target?: Vec2): { ok: boolean; reason?: string } {

@@ -64,14 +64,14 @@ export const BALANCE = {
   plasma: {
     range: 28,
     radius: 4.5,
-    energy: 90,
+    energy: 400,
     cooldown: 3.5,
     facilityDamage: 220,
     fighterDamage: 40,
     collateralRatio: 0.12,
   },
-  emp: { range: 28, radius: 18, energy: 180, cooldown: 16, duration: 8 },
-  overdrive: { energy: 280, cooldown: 18, duration: 5, damageReduction: 0.6 },
+  emp: { range: 28, radius: 18, energy: 400, cooldown: 16, duration: 8 },
+  overdrive: { energy: 400, cooldown: 18, duration: 5, damageReduction: 0.6 },
   defense: {
     samHealth: 350,
     missileDamage: 90,

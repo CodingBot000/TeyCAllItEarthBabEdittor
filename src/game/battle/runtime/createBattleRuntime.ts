@@ -1035,10 +1035,10 @@ function mergeInfectedAssaultSnapshots(
 function emptyAbilityAvailability(): Record<BattleActionId, AbilityAvailability> {
   const unavailable = (energyCost: number, cellCost: number): AbilityAvailability => ({ enabled: false, reason: 'COMBAT_OVER', cooldownRemaining: 0, energyCost, cellCost });
   return {
-    emp: unavailable(180, 1),
-    plasma: unavailable(90, 1),
+    emp: unavailable(400, 0),
+    plasma: unavailable(400, 0),
     beam: unavailable(0, 0),
-    overdrive: unavailable(280, 1),
+    overdrive: unavailable(400, 0),
     assault: unavailable(0, 0),
     extract: unavailable(0, 0),
   };

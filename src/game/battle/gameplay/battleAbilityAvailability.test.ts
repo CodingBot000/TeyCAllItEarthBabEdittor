@@ -14,11 +14,12 @@ describe('battle ability availability', () => {
 
     expect(battleAbilityAvailability(combatState).extract).toMatchObject({ enabled: false, reason: 'EXTRACT_LOCKED', energyCost: 0, cellCost: 0 });
     combatState.overchargeCells = 0;
-    expect(battleAbilityAvailability(combatState).emp).toMatchObject({ enabled: false, reason: 'NO_CELLS', cellCost: 1 });
+    expect(battleAbilityAvailability(combatState).emp).toMatchObject({ enabled: true, energyCost: 400, cellCost: 0 });
+    expect(battleAbilityAvailability(combatState).plasma).toMatchObject({ enabled: true, energyCost: 400, cellCost: 0 });
+    expect(battleAbilityAvailability(combatState).overdrive).toMatchObject({ enabled: true, energyCost: 400, cellCost: 0 });
     expect(combatState.mothership.energy).toBe(initialEnergy);
     expect(combatState.overchargeCells).toBe(0);
 
-    combatState.overchargeCells = 3;
     combatState.cooldowns.plasma = 3.2;
     expect(battleAbilityAvailability(combatState).plasma).toMatchObject({ enabled: false, reason: 'COOLDOWN', cooldownRemaining: 3.2 });
 

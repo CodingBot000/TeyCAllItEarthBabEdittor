@@ -35,6 +35,21 @@ function missile(id: string, position: Vec2): MissileState {
 }
 
 describe('mothership weapon upgrades', () => {
+  it('uses 400 energy and ignores overcharge cells for heavy abilities', () => {
+    for (const ability of ['emp', 'plasma', 'overdrive'] as const) {
+      const state = createState();
+      state.overchargeCells = 0;
+      state.mothership.energy = 1000;
+      const result = ability === 'overdrive'
+        ? activateAbility(state, ability)
+        : activateAbility(state, ability, { x: 0, z: 0 });
+
+      expect(result.ok).toBe(true);
+      expect(state.mothership.energy).toBe(600);
+      expect(state.overchargeCells).toBe(0);
+    }
+  });
+
   it('applies upgraded plasma damage to fighters instead of instant-killing them', () => {
     const state = createState({ 'plasma-damage': 2 });
     state.enemies = [fighter('fighter-plasma', { x: 2, z: 2 })];
