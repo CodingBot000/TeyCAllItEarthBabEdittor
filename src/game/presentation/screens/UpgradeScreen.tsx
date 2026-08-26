@@ -105,7 +105,6 @@ export function UpgradeScreen({ campaign, onSave, onBack }: { campaign: Campaign
     <section className="skill-tree-layout">
       <aside className="skill-tree-legend">
         <p className="eyebrow">{t('upgrade.salvaged')}</p>
-        <h1>{t('upgrade.title')} <span>{t('upgrade.titleAccent')}</span></h1>
         <p>{t('upgrade.copy')}</p>
         <nav aria-label={t('upgrade.tree')}>
           {UPGRADE_TREE_BRANCHES.map((branch) => <button key={branch.id} style={{ '--branch-color': branch.color } as CSSProperties} onClick={() => focusPoint(branch.x, branch.y)}>
