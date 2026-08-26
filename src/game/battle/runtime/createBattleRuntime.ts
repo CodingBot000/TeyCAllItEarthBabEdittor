@@ -31,6 +31,7 @@ import { mapBackgroundUrl } from '../maps/battleMapCatalog';
 import type { BattleAbsorptionVfxSnapshot } from './BattleAbsorptionVfx';
 import { BattleAbsorbableRegions } from './BattleAbsorbableRegions';
 import { BattleCohortVisuals } from './BattleCohortVisuals';
+import { BattleCohortHumanDropVfx, type CohortHumanDropVfxSnapshot } from './BattleCohortHumanDropVfx';
 import { BattleCombatVfx } from './BattleCombatVfx';
 import { BattleEntityVisuals, type BattleEntityVisualSnapshot, type GroundUnitGroup } from './BattleEntityVisuals';
 import { BattleFleeingCrowdVisuals, registerFleeingCrowdTargets, type FleeingCrowdVisualSnapshot } from './BattleFleeingCrowdVisuals';
@@ -78,6 +79,7 @@ export interface BattleRuntime {
   triggerAbility(ability: Extract<AbilityId, 'emp' | 'plasma' | 'overdrive'>): CommandResult;
   toggleAbsorption(): CommandResult;
   dropInfectedAssault(): CommandResult;
+  dropLegacyInfectedAssault(): CommandResult;
   beginExtraction(): CommandResult;
   abortMission(): CommandResult;
   setMovementInput(direction: -1 | 0 | 1, source?: 'keyboard' | 'pointer'): void;
@@ -149,6 +151,8 @@ export interface BattleRuntimeSnapshot {
   cinematic: { kind: MothershipCinematic['kind']; progress: number } | null;
   mothershipDestruction: MothershipDestructionVfxSnapshot;
   infectedAssault: InfectedAssaultVfxSnapshot;
+  cohortHumanDrop: CohortHumanDropVfxSnapshot;
+  legacyInfectedAssault: InfectedAssaultVfxSnapshot;
   fleeingCrowds: FleeingCrowdVisualSnapshot[];
   absorptionVfx: BattleAbsorptionVfxSnapshot;
   invincibilityEnabled: boolean;
@@ -271,6 +275,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const absorbableRegions = new BattleAbsorbableRegions(scene, options.language);
   const fleeingCrowdVisuals = new BattleFleeingCrowdVisuals(scene, map.id === 'city-night');
   const cohortVisuals = new BattleCohortVisuals(scene);
+  const cohortHumanDropVfx = new BattleCohortHumanDropVfx(scene);
   const infectedAssaultVfx = new BattleInfectedAssaultVfx(scene);
   const entityVisuals = new BattleEntityVisuals(scene, fighterPoolRoot, groundBattleRoot, mothershipGameplayRoot);
   const combatVfx = new BattleCombatVfx(
@@ -383,6 +388,11 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     return result;
   };
   const dropInfectedAssault = (): CommandResult => {
+    cohortHumanDropVfx.trigger(mothershipGameplayRoot.getAbsolutePosition());
+    emitSnapshot(true);
+    return { ok: true };
+  };
+  const dropLegacyInfectedAssault = (): CommandResult => {
     infectedAssaultVfx.trigger(mothershipGameplayRoot.getAbsolutePosition());
     emitSnapshot(true);
     return { ok: true };
@@ -453,7 +463,9 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       endReason: combatState.endReason,
       cinematic: cinematic ? { kind: cinematic.kind, progress: round(cinematic.elapsed / cinematic.duration, 4) } : null,
       mothershipDestruction: mothershipDestructionVfx.getSnapshot(),
-      infectedAssault: infectedAssaultVfx.getSnapshot(),
+      infectedAssault: mergeInfectedAssaultSnapshots(infectedAssaultVfx.getSnapshot(), cohortHumanDropVfx.getSnapshot()),
+      cohortHumanDrop: cohortHumanDropVfx.getSnapshot(),
+      legacyInfectedAssault: infectedAssaultVfx.getSnapshot(),
       fleeingCrowds: fleeingCrowdVisuals.getSnapshot(),
       absorptionVfx: combatVfx.getAbsorptionSnapshot(),
       invincibilityEnabled,
@@ -813,6 +825,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     }
     combatVfx.update(deltaSeconds, elapsed);
     infectedAssaultVfx.update(deltaSeconds);
+    cohortHumanDropVfx.update(deltaSeconds);
     emitSnapshot();
   };
   const advanceSimulation = createFixedStepper(simulateStep);
@@ -856,6 +869,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     triggerAbility: triggerCombatAbility,
     toggleAbsorption: triggerBeam,
     dropInfectedAssault,
+    dropLegacyInfectedAssault,
     beginExtraction,
     abortMission,
     setMovementInput,
@@ -878,6 +892,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       entityVisuals.dispose();
       combatVfx.dispose();
       soundEffects.dispose();
+      cohortHumanDropVfx.dispose();
       infectedAssaultVfx.dispose();
       mothershipDestructionVfx.dispose();
       mothershipPurpleGlow?.dispose();
@@ -972,8 +987,10 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     cinematic: null,
     mothershipDestruction: { active: false, phase: 'IDLE', elapsedSeconds: 0, durationSeconds: MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds, altitude: 0, fireCount: 0, flameFallbackActive: false, triggeredExplosions: 0, activeExplosions: 0, smokeCount: 0, debrisCount: 0, impactTriggered: false },
     infectedAssault: { active: false, activeWaves: 0, fallingCount: 0, groundImpactCount: 0, totalDrops: 0 },
+    cohortHumanDrop: { active: false, activeWaves: 0, fallingCount: 0, groundImpactCount: 0, totalDrops: 0, landedCount: 0, spriteReady: false, tailCount: 0, tint: '#75f5d1' },
+    legacyInfectedAssault: { active: false, activeWaves: 0, fallingCount: 0, groundImpactCount: 0, totalDrops: 0 },
     fleeingCrowds: [],
-    absorptionVfx: { phase: 'OFF', active: false, elapsedSeconds: 0, outerLayerCount: 3, shaftCount: 12, sourceHalfWidth: 4.2, groundHalfWidth: 6.5, meshCount: 24, virtualObjectCount: 0, virtualObjectPoolCount: 10, virtualObjectTravelDuration: 0.8, virtualObjects: [] },
+    absorptionVfx: { phase: 'OFF', active: false, elapsedSeconds: 0, outerLayerCount: 3, shaftCount: 12, sourceHalfWidth: 4.2, groundHalfWidth: 15, meshCount: 24, virtualObjectCount: 0, virtualObjectPoolCount: 20, virtualObjectSizeMultiplier: 1.5, virtualObjectTravelDuration: 0.8, virtualObjects: [] },
     invincibilityEnabled: false,
     unitInvincibilityEnabled: false,
     effectiveAutoScanRange: 0,
@@ -998,6 +1015,19 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     missiles: [],
     projectileVisuals: [],
     visuals: { fighters: [], ground: [], effects: { explosionCount: 0, shatterCount: 0, shatterPieceCount: 0 } },
+  };
+}
+
+function mergeInfectedAssaultSnapshots(
+  legacy: InfectedAssaultVfxSnapshot,
+  human: CohortHumanDropVfxSnapshot,
+): InfectedAssaultVfxSnapshot {
+  return {
+    active: legacy.active || human.active,
+    activeWaves: legacy.activeWaves + human.activeWaves,
+    fallingCount: legacy.fallingCount + human.fallingCount,
+    groundImpactCount: legacy.groundImpactCount + human.groundImpactCount,
+    totalDrops: legacy.totalDrops + human.totalDrops,
   };
 }
 

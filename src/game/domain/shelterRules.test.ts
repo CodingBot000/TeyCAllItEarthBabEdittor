@@ -105,6 +105,24 @@ describe('organic shelter rules', () => {
     expect(second.remainingAmount).toBe(300);
   });
 
+  it('freezes the selected external civilian group while its beam is active', () => {
+    const shelter = organicTarget('shelter-open', 100, 1000, { remainingAmount: 0 });
+    const civilian = organicTarget('ambient:civilian', 0, 400);
+    const state = shelterState([shelter, civilian]);
+    state.activeAbility = 'beam';
+    state.activeBeamTargetId = civilian.id;
+
+    tickCivilianShelters(state, 1);
+
+    expect(civilian.center.x).toBe(0);
+    expect(civilian.civilianShelterState).toBe('OUTSIDE');
+
+    state.activeAbility = null;
+    state.activeBeamTargetId = null;
+    tickCivilianShelters(state, 1);
+    expect(civilian.center.x).toBe(16);
+  });
+
   it('marks a destroyed occupied shelter as exposed civilians, not an interactable shelter', () => {
     const shelter = organicTarget('shelter-destroyed', 0, 1000, {
       remainingAmount: 400,

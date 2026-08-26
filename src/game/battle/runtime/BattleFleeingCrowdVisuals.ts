@@ -37,7 +37,16 @@ interface CrowdVisual {
   label: TextBlock;
   anchorX: number;
   phase: number;
+  frame: number;
   speed: number;
+  rightTexture: Texture;
+  leftTexture: Texture;
+  rightFlashTexture: Texture;
+  leftFlashTexture: Texture;
+  rightMaterial: StandardMaterial;
+  leftMaterial: StandardMaterial;
+  rightFlashMaterial: StandardMaterial;
+  leftFlashMaterial: StandardMaterial;
   direction: 'LEFT' | 'RIGHT';
   targetState: 'OUTSIDE' | 'SEEKING_SHELTER' | 'SHELTERED' | 'BLOCKED';
   assignedShelterId: string | null;
@@ -54,6 +63,7 @@ export interface FleeingCrowdVisualSnapshot {
   moving: boolean;
   absorbing: boolean;
   flashIntensity: number;
+  frame: number;
   visible: boolean;
   remainingAmount: number;
   textureReady: boolean;
@@ -68,12 +78,6 @@ export class BattleFleeingCrowdVisuals {
   private readonly labelUi: AdvancedDynamicTexture;
   private readonly rightTexture: Texture;
   private readonly leftTexture: Texture;
-  private readonly rightFlashTexture: Texture;
-  private readonly leftFlashTexture: Texture;
-  private readonly rightMaterial: StandardMaterial;
-  private readonly leftMaterial: StandardMaterial;
-  private readonly rightFlashMaterial: StandardMaterial;
-  private readonly leftFlashMaterial: StandardMaterial;
   private readonly visuals = new Map<string, CrowdVisual>();
 
   constructor(private readonly scene: Scene, nightMode = false) {
@@ -81,12 +85,6 @@ export class BattleFleeingCrowdVisuals {
     this.labelUi = AdvancedDynamicTexture.CreateFullscreenUI('BattleFleeingCrowdLabelsUi', true, scene);
     this.rightTexture = this.texture(nightMode ? CROWD_RIGHT_NIGHT_SPRITE_URL : CROWD_RIGHT_SPRITE_URL);
     this.leftTexture = this.texture(nightMode ? CROWD_LEFT_NIGHT_SPRITE_URL : CROWD_LEFT_SPRITE_URL);
-    this.rightFlashTexture = this.rightTexture.clone();
-    this.leftFlashTexture = this.leftTexture.clone();
-    this.rightFlashMaterial = this.material('battle-fleeing-crowd-right-flash', this.rightFlashTexture, true);
-    this.leftFlashMaterial = this.material('battle-fleeing-crowd-left-flash', this.leftFlashTexture, true);
-    this.rightMaterial = this.material('battle-fleeing-crowd-right', this.rightTexture, false);
-    this.leftMaterial = this.material('battle-fleeing-crowd-left', this.leftTexture, false);
   }
 
   sync(state: Readonly<CombatState>, elapsedSeconds: number, advanceMovement: boolean): void {
@@ -106,11 +104,14 @@ export class BattleFleeingCrowdVisuals {
       if (target.civilianShelterState === 'SEEKING_SHELTER' || target.civilianShelterState === 'BLOCKED') {
         visual.direction = target.center.x >= visual.root.position.x ? 'RIGHT' : 'LEFT';
       }
-      const phase = elapsedSeconds * visual.speed + visual.phase;
-      const frame = Math.floor(elapsedSeconds * CROWD_FRAME_RATE + visual.phase * 2) % 4;
+      // Freeze both the world position and the walk-cycle frame while the
+      // selected crowd is being pulled up. This prevents the atlas animation
+      // from making a stationary target still look like it is running.
+      if (!absorbing) visual.frame = Math.floor(elapsedSeconds * CROWD_FRAME_RATE + visual.phase * 2) % 4;
+      const frame = visual.frame;
       const flashIntensity = absorbing ? 0.38 + (Math.sin(elapsedSeconds * 18 + visual.phase) * 0.5 + 0.5) * 0.42 : 0;
-      const material = visual.direction === 'RIGHT' ? this.rightMaterial : this.leftMaterial;
-      const flashMaterial = visual.direction === 'RIGHT' ? this.rightFlashMaterial : this.leftFlashMaterial;
+      const material = visual.direction === 'RIGHT' ? visual.rightMaterial : visual.leftMaterial;
+      const flashMaterial = visual.direction === 'RIGHT' ? visual.rightFlashMaterial : visual.leftFlashMaterial;
       setSheetFrame(material.diffuseTexture instanceof Texture ? material.diffuseTexture : null, frame);
       setSheetFrame(flashMaterial.diffuseTexture instanceof Texture ? flashMaterial.diffuseTexture : null, frame);
       visual.root.position.x = target.center.x;
@@ -140,7 +141,7 @@ export class BattleFleeingCrowdVisuals {
       const visual = this.visuals.get(id);
       if (!visual) return [];
       const targetState = visual.targetState ?? 'OUTSIDE';
-      return [{ id, x: round(visual.root.position.x), people: CROWD_PEOPLE_COUNT, amountPerPerson: CROWD_AMOUNT_PER_PERSON, direction: visual.direction, moving: visual.visible && visual.flash.visibility <= 0 && targetState === 'OUTSIDE', absorbing: visual.flash.visibility > 0, flashIntensity: round(visual.flash.visibility), visible: visual.visible, remainingAmount: round(visual.remainingAmount), textureReady: this.rightTexture.isReady() && this.leftTexture.isReady(), worldY: round(visual.root.getAbsolutePosition().y), worldZ: round(visual.root.getAbsolutePosition().z), shelterState: targetState, assignedShelterId: visual.assignedShelterId ?? null }];
+      return [{ id, x: round(visual.root.position.x), people: CROWD_PEOPLE_COUNT, amountPerPerson: CROWD_AMOUNT_PER_PERSON, direction: visual.direction, moving: visual.visible && visual.flash.visibility <= 0 && targetState === 'OUTSIDE', absorbing: visual.flash.visibility > 0, flashIntensity: round(visual.flash.visibility), frame: visual.frame, visible: visual.visible, remainingAmount: round(visual.remainingAmount), textureReady: this.rightTexture.isReady() && this.leftTexture.isReady(), worldY: round(visual.root.getAbsolutePosition().y), worldZ: round(visual.root.getAbsolutePosition().z), shelterState: targetState, assignedShelterId: visual.assignedShelterId ?? null }];
     });
   }
 
@@ -150,17 +151,19 @@ export class BattleFleeingCrowdVisuals {
       visual.sprite.dispose(false, true);
       visual.flash.dispose(false, true);
       visual.root.dispose(false, true);
+      visual.rightMaterial.dispose();
+      visual.leftMaterial.dispose();
+      visual.rightFlashMaterial.dispose();
+      visual.leftFlashMaterial.dispose();
+      visual.rightTexture.dispose();
+      visual.leftTexture.dispose();
+      visual.rightFlashTexture.dispose();
+      visual.leftFlashTexture.dispose();
     });
     this.visuals.clear();
     this.labelUi.dispose();
-    this.rightMaterial.dispose();
-    this.leftMaterial.dispose();
-    this.rightFlashMaterial.dispose();
-    this.leftFlashMaterial.dispose();
     this.rightTexture.dispose();
     this.leftTexture.dispose();
-    this.rightFlashTexture.dispose();
-    this.leftFlashTexture.dispose();
     this.root.dispose();
   }
 
@@ -175,7 +178,6 @@ export class BattleFleeingCrowdVisuals {
     sprite.parent = root;
     sprite.billboardMode = Mesh.BILLBOARDMODE_ALL;
     sprite.scaling.set(CROWD_WIDTH, CROWD_HEIGHT, 1);
-    sprite.material = this.rightMaterial;
     sprite.renderingGroupId = 3;
     sprite.alphaIndex = 10;
     sprite.isPickable = false;
@@ -184,11 +186,22 @@ export class BattleFleeingCrowdVisuals {
     flash.position.z = -0.04;
     flash.billboardMode = Mesh.BILLBOARDMODE_ALL;
     flash.scaling.set(CROWD_WIDTH, CROWD_HEIGHT, 1);
-    flash.material = this.rightFlashMaterial;
     flash.renderingGroupId = 3;
     flash.alphaIndex = 11;
     flash.isPickable = false;
     flash.visibility = 0;
+    // Each crowd owns its atlas textures so one moving crowd cannot advance
+    // the shared UV frame of another crowd that is frozen under the beam.
+    const rightTexture = this.rightTexture.clone();
+    const leftTexture = this.leftTexture.clone();
+    const rightFlashTexture = rightTexture.clone();
+    const leftFlashTexture = leftTexture.clone();
+    const rightFlashMaterial = this.material(`${root.name}-right-flash`, rightFlashTexture, true);
+    const leftFlashMaterial = this.material(`${root.name}-left-flash`, leftFlashTexture, true);
+    const rightMaterial = this.material(`${root.name}-right`, rightTexture, false);
+    const leftMaterial = this.material(`${root.name}-left`, leftTexture, false);
+    sprite.material = rightMaterial;
+    flash.material = rightFlashMaterial;
     const labelPanel = new Rectangle(`${root.name}-label`);
     labelPanel.width = '60px';
     labelPanel.height = '18px';
@@ -209,7 +222,7 @@ export class BattleFleeingCrowdVisuals {
     labelPanel.linkWithMesh(sprite);
     labelPanel.linkOffsetY = -42;
     labelPanel.isVisible = false;
-    const visual: CrowdVisual = { id, root, sprite, flash, labelPanel, label, anchorX: x, phase: seededUnit(id.length * 31 + x) * Math.PI * 2, speed: 0.55 + seededUnit(id.length * 17 + Math.abs(x)) * 0.28, direction: 'RIGHT', targetState: 'OUTSIDE', assignedShelterId: null, visible: true, remainingAmount: CROWD_PEOPLE_COUNT * CROWD_AMOUNT_PER_PERSON };
+    const visual: CrowdVisual = { id, root, sprite, flash, labelPanel, label, anchorX: x, phase: seededUnit(id.length * 31 + x) * Math.PI * 2, frame: 0, speed: 0.55 + seededUnit(id.length * 17 + Math.abs(x)) * 0.28, rightTexture, leftTexture, rightFlashTexture, leftFlashTexture, rightMaterial, leftMaterial, rightFlashMaterial, leftFlashMaterial, direction: 'RIGHT', targetState: 'OUTSIDE', assignedShelterId: null, visible: true, remainingAmount: CROWD_PEOPLE_COUNT * CROWD_AMOUNT_PER_PERSON };
     this.visuals.set(id, visual);
     return visual;
   }

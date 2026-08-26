@@ -60,6 +60,11 @@ export function tickCivilianShelters(state: CombatState, deltaSeconds: number): 
   const civilians = state.absorbableTargets.filter(isExternalCivilianTarget);
   for (const civilian of civilians) {
     ensureCivilianShelterState(civilian);
+    // A beam locks its selected civilian group in place for the full
+    // absorption channel. The visual adapter also freezes its walk cycle, but
+    // keeping the domain position stable protects the rule if shelter motion
+    // is enabled later.
+    if (state.activeAbility === 'beam' && state.activeBeamTargetId === civilian.id) continue;
     if (civilian.remainingAmount <= 0.001) {
       civilian.remainingAmount = 0;
       civilian.civilianShelterState = 'SHELTERED';

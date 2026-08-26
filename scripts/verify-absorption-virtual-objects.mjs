@@ -33,28 +33,34 @@ try {
   const ignition = await advance(120);
   await capture('01-ignition');
   assert.equal(ignition.absorptionVfx.phase, 'IGNITING');
-  assert.equal(ignition.absorptionVfx.virtualObjectPoolCount, 10);
+  assert.equal(ignition.absorptionVfx.virtualObjectPoolCount, 20);
+  assert.equal(ignition.absorptionVfx.virtualObjectSizeMultiplier, 1.5);
   assert.equal(ignition.absorptionVfx.virtualObjectTravelDuration, 0.8);
   assert(ignition.absorptionVfx.virtualObjectCount >= 1);
   const first = ignition.absorptionVfx.virtualObjects[0];
   assert(first && first.progress > 0 && first.progress < 0.3);
-  assert(first.size >= 0.9 && first.size <= 2.1, `Unexpected enlarged silhouette size: ${first.size}`);
+  assert(first.size >= 1.35 && first.size <= 3.15, `Unexpected 1.5x silhouette size: ${first.size}`);
   assert(first.motionProgress < first.progress, 'Expected ease-in acceleration');
 
   const sustained = await advance(380);
   await capture('02-sustained');
   assert.equal(sustained.absorptionVfx.phase, 'SUSTAINED');
-  const progressed = sustained.absorptionVfx.virtualObjects.find((object) => object.id === first.id);
+  const progressed = sustained.absorptionVfx.virtualObjects.find((object) => object.serial === first.serial);
   assert(progressed && progressed.progress > first.progress && progressed.motionProgress > first.motionProgress);
 
-  const beforeArrival = await advance(250);
-  assert(beforeArrival.absorptionVfx.virtualObjects.some((object) => object.id === first.id));
+  const fullPool = await advance(280);
+  assert(fullPool.absorptionVfx.virtualObjectCount >= 20, `Expected all 20 silhouettes to rise together: ${JSON.stringify(fullPool.absorptionVfx)}`);
+  const poolObject = [...fullPool.absorptionVfx.virtualObjects].sort((a, b) => a.progress - b.progress)[0];
+  assert(poolObject, 'The full silhouette pool did not expose an active object to track.');
+
+  const beforeArrival = await advance(20);
+  assert(beforeArrival.absorptionVfx.virtualObjects.some((object) => object.serial === poolObject.serial));
   let afterArrival = await read();
-  for (let index = 0; index < 20 && afterArrival.absorptionVfx.virtualObjects.some((object) => object.id === first.id); index += 1) {
+  for (let index = 0; index < 60 && afterArrival.absorptionVfx.virtualObjects.some((object) => object.serial === poolObject.serial); index += 1) {
     afterArrival = await advance(20);
   }
   await capture('03-arrival');
-  assert(!afterArrival.absorptionVfx.virtualObjects.some((object) => object.id === first.id), 'Object exceeded its 0.8 second travel');
+  assert(!afterArrival.absorptionVfx.virtualObjects.some((object) => object.serial === poolObject.serial), 'Object exceeded its 0.8 second travel');
 
   await page.locator('[data-testid="battle-action-absorb"]').evaluate((element) => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
   const fading = await advance(120);
@@ -66,7 +72,7 @@ try {
   assert.equal(finished.absorptionVfx.virtualObjects.length, 0);
   assert.equal(errors.length, 0, errors.join('\n'));
   assert.equal(failedResponses.length, 0, failedResponses.join('\n'));
-  const result = { ok: true, targetId: target.id, firstObject: first, progressed, ignition: ignition.absorptionVfx, sustained: sustained.absorptionVfx, arrived: afterArrival.absorptionVfx, finished: finished.absorptionVfx, errors, failedResponses };
+  const result = { ok: true, targetId: target.id, firstObject: first, progressed, fullPool: fullPool.absorptionVfx, ignition: ignition.absorptionVfx, sustained: sustained.absorptionVfx, arrived: afterArrival.absorptionVfx, finished: finished.absorptionVfx, errors, failedResponses };
   await writeFile(`${outputDirectory}/result.json`, JSON.stringify(result, null, 2));
   console.log(JSON.stringify({ ok: true, targetId: target.id, firstObject: first, progressed, errors, failedResponses }));
 } catch (error) {

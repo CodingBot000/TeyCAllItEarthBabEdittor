@@ -6,6 +6,10 @@ interface CohortVisual {
   bodies: Mesh[];
 }
 
+// Keep the assault drop's sprite tint tied to the same hue used by the
+// deployed cohort bodies. Both visuals represent the same unit family.
+export const COHORT_ACTIVE_COLOR = new Color3(0.46, 0.96, 0.82);
+
 export class BattleCohortVisuals {
   private readonly root: TransformNode;
   private readonly visuals = new Map<string, CohortVisual>();
@@ -15,7 +19,7 @@ export class BattleCohortVisuals {
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode('BattleCohortVisualsRoot', scene);
-    this.activeMaterial = this.material('battle-cohort-active', new Color3(0.46, 0.96, 0.82));
+    this.activeMaterial = this.material('battle-cohort-active', COHORT_ACTIVE_COLOR);
     this.retreatMaterial = this.material('battle-cohort-retreat', new Color3(0.98, 0.72, 0.28));
     this.lostMaterial = this.material('battle-cohort-lost', new Color3(0.42, 0.25, 0.28));
   }

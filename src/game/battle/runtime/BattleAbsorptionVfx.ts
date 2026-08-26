@@ -28,8 +28,9 @@ export interface BattleAbsorptionVfxSnapshot {
   meshCount: number;
   virtualObjectCount: number;
   virtualObjectPoolCount: number;
+  virtualObjectSizeMultiplier: number;
   virtualObjectTravelDuration: number;
-  virtualObjects: Array<{ id: number; progress: number; motionProgress: number; size: number; x: number; y: number; z: number }>;
+  virtualObjects: Array<{ id: number; serial: number; progress: number; motionProgress: number; size: number; x: number; y: number; z: number }>;
 }
 
 interface BeamQuad {
@@ -50,6 +51,7 @@ interface BeamShaft {
 
 interface VirtualAbsorptionObject {
   id: number;
+  serial: number;
   root: TransformNode;
   meshes: Mesh[];
   texture: Texture;
@@ -74,11 +76,16 @@ const SHAFT_COUNT = 12;
 const OUTER_DEPTH = 1.36;
 const SHAFT_DEPTH = 0.88;
 const CORE_DEPTH = 0.74;
-const VIRTUAL_OBJECT_POOL_COUNT = 10;
+const VIRTUAL_OBJECT_POOL_COUNT = 20;
 const VIRTUAL_OBJECT_TRAVEL_DURATION = 0.8;
-const VIRTUAL_OBJECT_SPAWN_INTERVAL = 0.12;
-const VIRTUAL_OBJECT_MIN_SIZE = 0.9;
-const VIRTUAL_OBJECT_MAX_SIZE = 2.1;
+// The previous silhouette range was 0.9–2.1. Keep this multiplier explicit so
+// the requested 1.5x enlargement remains easy to audit when the art changes.
+const VIRTUAL_OBJECT_SIZE_MULTIPLIER = 1.5;
+const VIRTUAL_OBJECT_MIN_SIZE = 0.9 * VIRTUAL_OBJECT_SIZE_MULTIPLIER;
+const VIRTUAL_OBJECT_MAX_SIZE = 2.1 * VIRTUAL_OBJECT_SIZE_MULTIPLIER;
+// Fill the 20-object pool across one travel window, keeping all 20 visible in
+// the sustained beam instead of recycling only a small subset at once.
+const VIRTUAL_OBJECT_SPAWN_INTERVAL = VIRTUAL_OBJECT_TRAVEL_DURATION / VIRTUAL_OBJECT_POOL_COUNT;
 const VIRTUAL_OBJECT_SPRITE_URL = '/assets/runtime/sprites/absorption-virtual-human-silhouettes-5x1.webp';
 
 Effect.ShadersStore.battleAbsorptionVolumeVertexShader = `
@@ -320,11 +327,13 @@ export class BattleAbsorptionVfx {
       meshCount: this.meshes.length,
       virtualObjectCount: this.virtualObjects.filter((object) => object.active).length,
       virtualObjectPoolCount: this.virtualObjects.length,
+      virtualObjectSizeMultiplier: VIRTUAL_OBJECT_SIZE_MULTIPLIER,
       virtualObjectTravelDuration: VIRTUAL_OBJECT_TRAVEL_DURATION,
       virtualObjects: this.virtualObjects.filter((object) => object.active).map((object) => {
         const progress = Math.min(1, object.elapsed / VIRTUAL_OBJECT_TRAVEL_DURATION);
         return {
           id: object.id,
+          serial: object.serial,
           progress: round(progress),
           motionProgress: round(progress * progress * progress),
           size: round(object.root.scaling.x),
@@ -487,6 +496,7 @@ export class BattleAbsorptionVfx {
     const length = Math.max(0.001, Math.hypot(delta.x, delta.y));
     const perpendicular = new Vector3(-delta.y / length, delta.x / length, 0);
     const serial = this.virtualObjectSerial++;
+    object.serial = serial;
     const sourceOffset = (seededUnit(serial * 17 + 3) * 2 - 1) * SOURCE_HALF_WIDTH * 0.68;
     const targetOffset = (seededUnit(serial * 19 + 5) * 2 - 1) * GROUND_HALF_WIDTH * 0.72;
     object.origin.copyFrom(this.target).addInPlace(perpendicular.scale(targetOffset));
@@ -543,7 +553,7 @@ function createVirtualAbsorptionObject(scene: Scene, parent: TransformNode, sour
   sprite.renderingGroupId = 3;
   sprite.isPickable = false;
   root.setEnabled(false);
-  return { id: index, root, meshes: [sprite], texture, material, origin: new Vector3(), destination: new Vector3(), perpendicular: new Vector3(), rotationVelocity: new Vector3(), phase: 0, elapsed: 0, active: false };
+  return { id: index, serial: -1, root, meshes: [sprite], texture, material, origin: new Vector3(), destination: new Vector3(), perpendicular: new Vector3(), rotationVelocity: new Vector3(), phase: 0, elapsed: 0, active: false };
 }
 
 function randomSignedUnit(seed: number): number {

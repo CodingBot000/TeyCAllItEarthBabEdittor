@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 
 const MENU_BGM_URL = '/assets/runtime/audio/bgm-menu.mp3';
 const BATTLE_BGM_URL = '/assets/runtime/audio/bgm-battle.mp3';
-const BACKGROUND_MUSIC_ENABLED = false;
+const BACKGROUND_MUSIC_ENABLED = true;
 
 type BackgroundMusicProps = {
   isBattle: boolean;

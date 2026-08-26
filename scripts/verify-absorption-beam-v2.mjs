@@ -21,7 +21,10 @@ page.on('pageerror', (error) => errors.push(`pageerror: ${String(error)}`));
 page.on('response', (response) => { if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`); });
 
 const state = async () => JSON.parse(await page.evaluate(() => window.render_game_to_text?.() ?? '{}'));
-const advance = async (milliseconds) => page.evaluate((duration) => window.advanceTime?.(duration), milliseconds);
+const advance = async (milliseconds) => {
+  await page.evaluate((duration) => window.advanceTime?.(duration), milliseconds);
+  return state();
+};
 
 try {
   await page.goto(`${baseUrl}/?debug=battle&city=seoul&battle-fast=1`, { waitUntil: 'domcontentloaded' });
@@ -48,7 +51,7 @@ try {
   const ignitionEarly = await state();
   await page.screenshot({ path: `${outputDirectory}/01-ignition-120ms.png`, fullPage: true });
   if (ignitionEarly.absorptionVfx?.phase !== 'IGNITING') throw new Error(`Expected IGNITING at 120ms, received ${ignitionEarly.absorptionVfx?.phase}.`);
-  if (ignitionEarly.absorptionVfx?.virtualObjectTravelDuration !== 0.8 || ignitionEarly.absorptionVfx?.virtualObjectPoolCount !== 10 || ignitionEarly.absorptionVfx?.virtualObjectCount < 1) {
+  if (ignitionEarly.absorptionVfx?.virtualObjectTravelDuration !== 0.8 || ignitionEarly.absorptionVfx?.virtualObjectPoolCount !== 20 || ignitionEarly.absorptionVfx?.virtualObjectSizeMultiplier !== 1.5 || ignitionEarly.absorptionVfx?.virtualObjectCount < 1) {
     throw new Error(`Virtual absorption objects did not start with the expected pool/timing: ${JSON.stringify(ignitionEarly.absorptionVfx)}`);
   }
   const firstVirtualObject = ignitionEarly.absorptionVfx.virtualObjects[0];
@@ -61,7 +64,7 @@ try {
   if (sustainedStart.absorptionVfx?.outerLayerCount !== 3 || sustainedStart.absorptionVfx?.shaftCount !== 12 || sustainedStart.absorptionVfx?.meshCount !== 24) {
     throw new Error(`Unexpected absorption mesh budget: ${JSON.stringify(sustainedStart.absorptionVfx)}`);
   }
-  const sameObject = sustainedStart.absorptionVfx.virtualObjects.find((object) => object.id === firstVirtualObject.id);
+  const sameObject = sustainedStart.absorptionVfx.virtualObjects.find((object) => object.serial === firstVirtualObject.serial);
   if (!sameObject || sameObject.progress <= firstVirtualObject.progress || sameObject.motionProgress <= firstVirtualObject.motionProgress) {
     throw new Error(`Virtual object did not move upward through the 0.8s curve: ${JSON.stringify({ firstVirtualObject, sameObject })}`);
   }
@@ -71,10 +74,10 @@ try {
   await page.screenshot({ path: `${outputDirectory}/03-sustained-750ms.png`, fullPage: true });
   if (sustained.absorptionVfx?.phase !== 'SUSTAINED') throw new Error(`Expected SUSTAINED at 750ms, received ${sustained.absorptionVfx?.phase}.`);
   let arrived = await state();
-  for (let index = 0; index < 20 && arrived.absorptionVfx?.virtualObjects.some((object) => object.id === firstVirtualObject.id); index += 1) {
+  for (let index = 0; index < 60 && arrived.absorptionVfx?.virtualObjects.some((object) => object.serial === firstVirtualObject.serial); index += 1) {
     arrived = await advance(20);
   }
-  if (arrived.absorptionVfx?.virtualObjects.some((object) => object.id === firstVirtualObject.id)) throw new Error('A virtual object remained after its 0.8 second travel duration.');
+  if (arrived.absorptionVfx?.virtualObjects.some((object) => object.serial === firstVirtualObject.serial)) throw new Error('A virtual object remained after its 0.8 second travel duration.');
   await page.screenshot({ path: `${outputDirectory}/03b-virtual-object-arrival.png`, fullPage: true });
 
   let depletedState = sustained;

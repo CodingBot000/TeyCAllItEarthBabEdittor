@@ -72,7 +72,7 @@ describe('battle sound effects', () => {
       const audio = new FakeAudio(source);
       audios.push(audio);
       return audio as unknown as HTMLAudioElement;
-    });
+    }, true);
     const absorption = audios[0];
 
     sounds.setAbsorptionActive(true);
@@ -92,7 +92,7 @@ describe('battle sound effects', () => {
       const audio = new FakeAudio(source);
       audios.push(audio);
       return audio as unknown as HTMLAudioElement;
-    });
+    }, true);
     const state = createState();
     state.airDefenseShots = [airDefenseShot('shot-1', 3), airDefenseShot('shot-2', 3)];
     sounds.syncCombatState(state);
@@ -112,7 +112,7 @@ describe('battle sound effects', () => {
       const audio = new FakeAudio(source);
       audios.push(audio);
       return audio as unknown as HTMLAudioElement;
-    });
+    }, true);
 
     sounds.playAbilitySound('plasma');
     sounds.playAbilitySound('emp');
@@ -122,6 +122,27 @@ describe('battle sound effects', () => {
     const emp = audios.find((audio) => audio.source.includes('sfx-emp-shock'))!;
     expect(plasma.playCount).toBe(1);
     expect(emp.playCount).toBe(1);
+    sounds.dispose();
+  });
+
+  it('keeps every battle sound effect silent when disabled by default', async () => {
+    const audios: FakeAudio[] = [];
+    const sounds = new BattleSoundEffects((source) => {
+      const audio = new FakeAudio(source);
+      audios.push(audio);
+      return audio as unknown as HTMLAudioElement;
+    });
+    const state = createState({
+      activeAbility: 'beam',
+      airDefenseShots: [airDefenseShot('shot-1', 3)],
+    });
+
+    sounds.syncCombatState(state);
+    sounds.playAbilitySound('plasma');
+    sounds.playAbilitySound('emp');
+    await Promise.resolve();
+
+    expect(audios).toHaveLength(0);
     sounds.dispose();
   });
 });

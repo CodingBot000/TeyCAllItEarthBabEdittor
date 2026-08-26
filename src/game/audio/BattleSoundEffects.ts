@@ -4,6 +4,7 @@ const ABSORPTION_BEAM_URL = '/assets/runtime/audio/sfx-absorption-beam-loop.mp3'
 const SPACESHIP_LASER_URL = '/assets/runtime/audio/sfx-spacship_laser.mp3';
 const PLASMA_URL = '/assets/runtime/audio/sfx-plasma-sound.mp3';
 const EMP_URL = '/assets/runtime/audio/sfx-emp-shock.mp3';
+export const BATTLE_SOUND_EFFECTS_ENABLED = false;
 
 type AudioFactory = (source: string) => HTMLAudioElement;
 type PlaybackSegment = { start: number; end: number };
@@ -13,31 +14,34 @@ type PlaybackSegment = { start: number; end: number };
  * actions can overlap without interrupting the music or one another.
  */
 export class BattleSoundEffects {
-  private readonly absorptionBeam: HTMLAudioElement;
+  private readonly absorptionBeam: HTMLAudioElement | null;
   private readonly oneShotAudios = new Set<HTMLAudioElement>();
   private readonly consumedAirDefenseIds = new Set<string>();
   private readonly consumedAirDefenseTimes = new Set<number>();
   private absorptionActive = false;
   private disposed = false;
 
-  constructor(private readonly audioFactory: AudioFactory = (source) => new Audio(source)) {
-    this.absorptionBeam = this.createAudio(ABSORPTION_BEAM_URL, true, 0.48);
+  constructor(
+    private readonly audioFactory: AudioFactory = (source) => new Audio(source),
+    private readonly enabled = BATTLE_SOUND_EFFECTS_ENABLED,
+  ) {
+    this.absorptionBeam = this.enabled ? this.createAudio(ABSORPTION_BEAM_URL, true, 0.48) : null;
   }
 
   setAbsorptionActive(active: boolean): void {
-    if (this.disposed || this.absorptionActive === active) return;
+    if (!this.enabled || this.disposed || this.absorptionActive === active) return;
     this.absorptionActive = active;
-    if (active) this.playLoop(this.absorptionBeam);
-    else this.stopAudio(this.absorptionBeam);
+    if (active && this.absorptionBeam) this.playLoop(this.absorptionBeam);
+    else if (this.absorptionBeam) this.stopAudio(this.absorptionBeam);
   }
 
   playAbilitySound(ability: 'emp' | 'plasma'): void {
-    if (this.disposed) return;
+    if (!this.enabled || this.disposed) return;
     this.playOneShot(ability === 'plasma' ? PLASMA_URL : EMP_URL, 0.58);
   }
 
   syncCombatState(state: Readonly<CombatState>): void {
-    if (this.disposed) return;
+    if (!this.enabled || this.disposed) return;
     this.setAbsorptionActive(state.result === 'ACTIVE' && state.activeAbility === 'beam');
     this.syncAirDefenseShots(state.airDefenseShots);
   }
@@ -46,7 +50,7 @@ export class BattleSoundEffects {
     if (this.disposed) return;
     this.disposed = true;
     this.absorptionActive = false;
-    this.stopAudio(this.absorptionBeam, true);
+    if (this.absorptionBeam) this.stopAudio(this.absorptionBeam, true);
     for (const audio of this.oneShotAudios) this.stopAudio(audio, true);
     this.oneShotAudios.clear();
     this.consumedAirDefenseIds.clear();
@@ -54,6 +58,7 @@ export class BattleSoundEffects {
   }
 
   private syncAirDefenseShots(shots: readonly AirDefenseShotEvent[]): void {
+    if (!this.enabled) return;
     const retainedIds = new Set(shots.map((shot) => shot.id));
     const retainedTimes = new Set(shots.map((shot) => shot.occurredAt));
     for (const shot of shots) {

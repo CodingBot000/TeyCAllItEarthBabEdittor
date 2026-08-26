@@ -953,6 +953,14 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - DEFENDER의 런타임 스프라이트는 기존 개틀링 전차 이미지이며, 기본 지상 루트 Y를 `GROUND_SAM_ROOT_Y=-16.5`로 맞춰 SAM과 동일한 높이에서 표시되도록 보정했다.
 - 밤 맵 브라우저 snapshot에서 DEFENDER와 SAM 모두 `visuals.ground[].y=-16.5`, 세 SAM의 미사일 생성, 콘솔 오류 0건을 확인했다.
 
+## 2026-08-27 — 방공호 전용 내부 시민 합성 에셋 적용
+
+- 외부에서 이동하는 인간 군중과 방공호 내부 시민을 분리했다. 동적 시민의 방공호 진입 코드는 `ENABLE_DYNAMIC_CIVILIAN_SHELTER_MOVEMENT=false`로 임시 차단하고, 외부 군중은 `OUTSIDE` 상태로 기존 이동만 유지한다.
+- 방공호는 시작 시 내부 시민 수를 고정 보유하며, `organic-shelter-with-crowd-composite-v2-preview.png`를 최적화한 통합 합성 에셋을 사용한다. 파괴 중에는 내부 시민이 포함된 파괴 합성 에셋으로 전환하고, 모두 흡수된 뒤에는 빈 파괴 방공호 에셋으로 전환한다.
+- 방공호와 내부 시민의 지면 기준 Y를 `-19`로 맞췄다. 기존 별도 도주 인간 스프라이트는 방공호 내부 표현에 사용하지 않는다.
+- `generate:shelter-assets` 처리 스크립트로 원본 합성 이미지를 런타임 WebP로 재생성할 수 있게 했다.
+- 로컬 브라우저에서 야간 방공호 내부 인원 표시, 외부 군중 분리, 흡입 3초 후 방공호 파괴, 파괴 후 내부 시민 흡수를 확인했다. 콘솔/HTTP 오류는 0건이며 전체 Vitest 19개 파일 108개, TypeScript, 관련 ESLint, `git diff --check`를 통과했다. 빌드는 실행하지 않았다.
+
 ## 2026-08-26 — SAM 흰색 미사일 구간 발사 위치 보정
 
 - SAM 발사 소켓의 공통 로컬 Y를 `4.6`에서 `2.2`로 낮춰, 장비 위 투명 영역이 아니라 SAM 스프라이트의 흰색 미사일 구간에서 발사되도록 조정했다.
@@ -972,3 +980,37 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 흡수 미리보기의 `energyCost`에도 동일한 초당 비용을 반영하고, beam 시작 시 최소 0.1초 비용 미만 에너지는 거부한다. 기존 흡수로 얻는 tactical energy와 에너지 회복/다른 능력 규칙은 유지했다.
 - 대상 흡수 속도는 이전 요청대로 `durationMultiplier=3`을 계속 사용해 전체 흡수 시간이 기존의 3배다.
 - 에너지 규칙을 검증하는 회귀 테스트를 추가했다. 전체 Vitest 109/109, typecheck, production build, 관련 ESLint, diff check, 흡입광선 브라우저 E2E와 표준 web-game 캡처가 통과했다.
+
+## 2026-08-27 — 흡입 중 인간 정지 및 20개 상승 오브젝트
+
+- `BattleFleeingCrowdVisuals`에서 흡입 대상 도주 군중의 위치뿐 아니라 4프레임 걷기 애니메이션도 흡입 중 고정했다. 흡입 종료 후에는 위치와 프레임이 다시 갱신된다.
+- `tickCivilianShelters`에도 현재 빔 대상 외부 시민 그룹을 건너뛰는 보호 규칙을 추가해 동적 시민 이동이 다시 활성화되어도 흡입 중 대상이 움직이지 않도록 했다.
+- 흡입광선 인간 실루엣 풀을 10개에서 20개로 확장하고, 기존 0.9~2.1 크기 범위에 `1.5x` 배율을 적용해 1.35~3.15로 키웠다. 생성 간격은 0.8초 이동 창에 맞춘 0.04초로 조정했다.
+- `render_game_to_text`의 흡입 VFX snapshot에 `virtualObjectSizeMultiplier`와 객체별 고유 `serial`을 추가했다.
+- 단위 테스트 108개 통과. 전용 브라우저 검증에서 실제 `ambient:fleeing-crowd-center` 흡입 중 X/프레임 고정, 종료 후 재이동, 20개 풀, 1.5배 크기, 콘솔/HTTP 오류 0건을 확인했다. 캡처는 `output/fleeing-crowd-absorption-human-change/`와 `output/absorption-beam-virtual-objects-human-change/`에 보존했다.
+- 표준 web-game Playwright 클라이언트와 관련 ESLint도 통과했다. 첫 `npm run check`는 병행 중이던 사용자 변경 `BattleAbsorbableRegions.ts`의 필드명 불일치로 일시 중단됐지만, 해당 파일을 덮어쓰지 않고 사용자 변경 완료 후 재실행해 최종 `npm run check`(typecheck·Vitest 108/108·production build)를 통과했다.
+- 후속 렌더 점검에서 군중 간 공유 아틀라스 UV가 흡입 대상의 정지 프레임을 덮어쓸 수 있음을 확인해 군중별 텍스처·머티리얼을 분리했다. 이후 전용 브라우저 검증과 캔버스 캡처를 다시 통과했다.
+
+## 2026-08-27 — 방공호 내부 시민 통합 합성 에셋 전환
+
+- 외부 이동 군중과 분리된 방공호 내부 시민을 `organic-shelter-with-crowd-composite-v2-preview.png` 기반 통합 스프라이트로 교체했다. 방공호와 내부 인원이 한 이미지로 함께 렌더링된다.
+- 파괴 후에는 시민 포함 파괴 합성 에셋을 사용하고, 내부 시민 잔량이 0이 되면 빈 파괴 방공호 에셋으로 전환한다.
+- `process-organic-shelter-assets.mjs`와 `generate:shelter-assets`를 추가해 원본 합성 에셋을 런타임 WebP로 재생성할 수 있게 했다.
+- 로컬 브라우저에서 내부 시민 시작 표시, 외부 군중 `OUTSIDE` 유지, 방공호 파괴 후 내부 시민 흡수를 확인했다. 전체 Vitest 108/108, TypeScript, 관련 ESLint, `git diff --check`가 통과했고 빌드는 실행하지 않았다.
+
+## 2026-08-27 — 효과음 OFF / 배경음악 ON
+
+- 사용 요청에 따라 `BackgroundMusic`의 BGM 스위치를 다시 `true`로 켰다.
+- `BattleSoundEffects`에는 `BATTLE_SOUND_EFFECTS_ENABLED=false` 기본 게이트를 추가해 흡수 빔 루프, 레이저, Plasma, EMP 등 전투 효과음이 재생되지 않도록 했다.
+- 효과음 로직과 테스트용 활성화 경로는 삭제하지 않고 보존했으며, 단위 테스트에서 기본 OFF와 명시적 ON 동작을 분리 검증한다.
+- 실제 브라우저에서 메뉴 BGM 재생 호출 4회, 전투 BGM 재생 호출 2회, 효과음 재생 호출 0회를 확인했고 전투 화면 로드와 표준 Playwright 캡처도 통과했다.
+- 최종 타입 검사·전체 Vitest 109/109·production build·diff 검사는 통과했다. 전체 lint는 기존 `BattleScreen.tsx` 오류 1건과 `<img>` 경고 2건만 남아 있다.
+
+## 2026-08-27 — 흡수 인간형 스프라이트 기반 코호트 투하 VFX
+
+- 기존 흡수광선에서 사용하는 `absorption-virtual-human-silhouettes-5x1.webp`를 새 코호트 투하 VFX에서 재사용했다.
+- 스프라이트 알파 형태는 유지하고 배치된 코호트와 같은 청록색 `#75f5d1`로 틴트했으며, 모선 하부에서 지면으로 퍼지는 자유낙하·지연·흔들림·뒤쪽 꼬리·착지 링을 추가했다.
+- 기존 절차적 캡슐/머리/꼬리 투하 `BattleInfectedAssaultVfx`는 삭제·덮어쓰기하지 않고 별도 풀과 `dropLegacyInfectedAssault` 경로로 보존했다.
+- 기존 `infectedAssault` snapshot 호환은 유지하고, `cohortHumanDrop`/`legacyInfectedAssault`를 분리 노출해 어느 이펙트가 활성인지 확인할 수 있게 했다.
+- 인스턴스 풀에는 `visibility`를 쓰지 않고 `setEnabled`만 사용해 Babylon 경고를 제거했다. 1280×720 실제 브라우저에서 인간형 실루엣·코호트 색상·꼬리·착지·자동 정리, `spriteReady=true`, 콘솔 오류 0건을 확인했다.
+- 변경 파일 typecheck, 관련 ESLint, `git diff --check`를 통과했다. 새 인간형 투하는 감염 강습 버튼과 `/` 입력에서 사용한다.

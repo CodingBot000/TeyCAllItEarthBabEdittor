@@ -9,6 +9,7 @@
 		"generate:battle": "node scripts/pack-editor.mjs --battle",
     "generate:battle:night": "node scripts/generate-battle-night-assets.mjs",
     "generate:battle:biomes": "node scripts/build-battle-biome-layers.mjs",
+    "generate:shelter-assets": "node scripts/process-organic-shelter-assets.mjs",
 		"check:battle:compression": "node scripts/check-battle-compression.mjs",
 		"start": "next start",
 		"lint": "eslint .",
@@ -19,6 +20,8 @@
     "test:e2e:ground-positioning": "node scripts/verify-ground-unit-positioning.mjs",
     "test:e2e:absorption-v2": "node scripts/verify-absorption-beam-v2.mjs",
     "test:e2e:absorption-virtual-objects": "node scripts/verify-absorption-virtual-objects.mjs",
+    "test:e2e:cohort-human-drop": "node scripts/verify-cohort-human-drop.mjs",
+    "test:e2e:fleeing-crowd-absorption": "node scripts/verify-fleeing-crowd-absorption.mjs",
     "test:e2e:civilian-shelters": "node scripts/verify-civilian-shelters.mjs",
     "test:e2e:fighter-ghosting": "node scripts/verify-fighter-frame-ghosting.mjs",
 		"check:full": "npm run check && npm run lint && npm run test:e2e:side-view"
