@@ -937,3 +937,10 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 메인 메뉴의 `빠른 전투 테스트 (밤)` 버튼 렌더링·콜백·번역 키는 유지하고 `quick-night-battle-button` 클래스의 `display: none`으로만 임시 숨김 처리했다.
 - 낮 빠른 전투 테스트 버튼은 기존 위치와 동작을 유지한다.
 - 1280×720 및 640×360 Playwright 화면 검증에서 밤 버튼이 DOM에 존재하면서 숨겨진 상태이고, 낮 버튼이 표시되며 전투 화면으로 정상 진입하는 것을 확인했다. 콘솔·HTTP 오류는 0건이다.
+
+## 2026-08-27 — 흡수 에너지 소모 조정 재개 완료
+
+- 중단했던 작업을 재개해 흡입 중 에너지 소모를 `energyDrainPerSecond=100`으로 적용했다. 고정 60Hz 기준 0.1초마다 10씩 차감되며, 에너지가 부족한 마지막 구간은 가능한 시간만 처리한 뒤 `ENERGY_DEPLETED`로 정지한다.
+- 흡수 미리보기의 `energyCost`에도 동일한 초당 비용을 반영하고, beam 시작 시 최소 0.1초 비용 미만 에너지는 거부한다. 기존 흡수로 얻는 tactical energy와 에너지 회복/다른 능력 규칙은 유지했다.
+- 대상 흡수 속도는 이전 요청대로 `durationMultiplier=3`을 계속 사용해 전체 흡수 시간이 기존의 3배다.
+- 에너지 규칙을 검증하는 회귀 테스트를 추가했다. 전체 Vitest 109/109, typecheck, production build, 관련 ESLint, diff check, 흡입광선 브라우저 E2E와 표준 web-game 캡처가 통과했다.
