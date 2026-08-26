@@ -24,10 +24,12 @@ import type { BattleGameplayProfile } from '../gameplay/BattleGameplayProfile';
 import { battleAbilityAvailability, type AbilityAvailability, type BattleActionId } from '../gameplay/battleAbilityAvailability';
 import { abortSideViewBattle, beginSideViewExtraction, nearestUsableSideViewTarget, selectAutomaticSideViewAbilityTarget, sideViewBattleTimeRemaining, tickSideViewBattle } from '../gameplay/sideViewBattleRules';
 import { mapBackgroundUrl } from '../maps/battleMapCatalog';
+import type { BattleAbsorptionVfxSnapshot } from './BattleAbsorptionVfx';
 import { BattleAbsorbableRegions } from './BattleAbsorbableRegions';
 import { BattleCohortVisuals } from './BattleCohortVisuals';
 import { BattleCombatVfx } from './BattleCombatVfx';
 import { BattleEntityVisuals, type BattleEntityVisualSnapshot, type GroundUnitGroup } from './BattleEntityVisuals';
+import { BattleFleeingCrowdVisuals, registerFleeingCrowdTargets, type FleeingCrowdVisualSnapshot } from './BattleFleeingCrowdVisuals';
 import { BattleInfectedAssaultVfx, type InfectedAssaultVfxSnapshot } from './BattleInfectedAssaultVfx';
 import { BattleMothershipDestructionSequence, MOTHERSHIP_DESTRUCTION_TIMING, type MothershipDestructionVfxSnapshot } from './BattleMothershipDestructionSequence';
 import { normalizeBattleKey } from './battleKeyboardInput';
@@ -45,7 +47,7 @@ const CAMERA_Z = -92;
 const MOTHERSHIP_Y = 16.5;
 const CINEMATIC_EVASION_DURATION = 1.25;
 const CINEMATIC_CRASH_DURATION = MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds;
-const MOTHERSHIP_SIDE_VIEW_MAX_SPEED = 34;
+const MOTHERSHIP_SIDE_VIEW_MAX_SPEED = 17;
 const MOTHERSHIP_SIDE_VIEW_ACCELERATION = MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
 const MOTHERSHIP_SIDE_VIEW_DECELERATION = MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
 const MOTHERSHIP_DIRECTION_TURN_RADIANS = 0.14;
@@ -136,6 +138,8 @@ export interface BattleRuntimeSnapshot {
   cinematic: { kind: MothershipCinematic['kind']; progress: number } | null;
   mothershipDestruction: MothershipDestructionVfxSnapshot;
   infectedAssault: InfectedAssaultVfxSnapshot;
+  fleeingCrowds: FleeingCrowdVisualSnapshot[];
+  absorptionVfx: BattleAbsorptionVfxSnapshot;
   invincibilityEnabled: boolean;
   unitInvincibilityEnabled: boolean;
   effectiveAutoScanRange: number;
@@ -253,6 +257,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const groundBattleRoot = getOrCreateNode(scene, 'GroundBattleRoot');
   if (options.debugControls !== true) hideDebugPrototypes(scene);
   const absorbableRegions = new BattleAbsorbableRegions(scene, options.language);
+  const fleeingCrowdVisuals = new BattleFleeingCrowdVisuals(scene, map.id === 'city-night');
   const cohortVisuals = new BattleCohortVisuals(scene);
   const infectedAssaultVfx = new BattleInfectedAssaultVfx(scene);
   const entityVisuals = new BattleEntityVisuals(scene, fighterPoolRoot, groundBattleRoot, mothershipGameplayRoot);
@@ -312,6 +317,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const movementInputs: Record<'keyboard' | 'pointer', -1 | 0 | 1> = { keyboard: 0, pointer: 0 };
   let movementVelocity = 0;
   const combatState = options.combatState;
+  if (combatState) registerFleeingCrowdTargets(combatState);
   const gameplayProfile = options.gameplayProfile;
   const debugControls = options.debugControls === true;
   let lastSnapshotSecond = -1;
@@ -420,6 +426,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       cinematic: cinematic ? { kind: cinematic.kind, progress: round(cinematic.elapsed / cinematic.duration, 4) } : null,
       mothershipDestruction: mothershipDestructionVfx.getSnapshot(),
       infectedAssault: infectedAssaultVfx.getSnapshot(),
+      fleeingCrowds: fleeingCrowdVisuals.getSnapshot(),
+      absorptionVfx: combatVfx.getAbsorptionSnapshot(),
       invincibilityEnabled,
       unitInvincibilityEnabled,
       effectiveAutoScanRange: round((gameplayProfile?.autoScanRange ?? 0) + combatState.modifiers.scanRangeBonus, 2),
@@ -678,6 +686,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (combatState && !cinematic) {
       combatState.mothership.position.x = mothershipGameplayRoot.position.x;
       combatState.mothership.position.z = 0;
+      fleeingCrowdVisuals.sync(combatState, elapsed, true);
       const hullBeforeStep = invincibilityEnabled ? combatState.mothership.hull : null;
       if (invincibilityEnabled && gameplayProfile) combatState.survivalUnlockSeconds += deltaSeconds;
       tickCombat(combatState, deltaSeconds, { unitInvincibilityEnabled, disablePointDefense: pointDefenseDisabled });
@@ -695,6 +704,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       entityVisuals.sync(combatState, deltaSeconds);
       combatVfx.syncCombatState(combatState);
       absorbableRegions.sync(combatState);
+      fleeingCrowdVisuals.sync(combatState, elapsed, false);
       cohortVisuals.sync(combatState, elapsed);
       if (combatState.result !== 'ACTIVE' && !completedCombat) {
         if (combatState.endReason === 'MOTHERSHIP_DISABLED') startCinematic('CRASH');
@@ -735,6 +745,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   };
   if (combatState) {
     absorbableRegions.sync(combatState);
+    fleeingCrowdVisuals.sync(combatState, elapsed, false);
     cohortVisuals.sync(combatState, elapsed);
     entityVisuals.sync(combatState, 0);
     combatVfx.syncCombatState(combatState);
@@ -776,6 +787,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       window.removeEventListener('blur', resetMovementInputs);
       window.removeEventListener('resize', resize);
       absorbableRegions.dispose();
+      fleeingCrowdVisuals.dispose();
       cohortVisuals.dispose();
       entityVisuals.dispose();
       combatVfx.dispose();
@@ -872,6 +884,8 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     cinematic: null,
     mothershipDestruction: { active: false, phase: 'IDLE', elapsedSeconds: 0, durationSeconds: MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds, altitude: 0, fireCount: 0, flameFallbackActive: false, triggeredExplosions: 0, activeExplosions: 0, smokeCount: 0, debrisCount: 0, impactTriggered: false },
     infectedAssault: { active: false, activeWaves: 0, fallingCount: 0, groundImpactCount: 0, totalDrops: 0 },
+    fleeingCrowds: [],
+    absorptionVfx: { phase: 'OFF', active: false, elapsedSeconds: 0, outerLayerCount: 3, shaftCount: 12, sourceHalfWidth: 4.2, groundHalfWidth: 6.5, meshCount: 24 },
     invincibilityEnabled: true,
     unitInvincibilityEnabled: true,
     effectiveAutoScanRange: 0,

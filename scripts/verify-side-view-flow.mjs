@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 const baseUrl = process.env.SIDE_VIEW_BASE_URL ?? 'http://localhost:3010';
 const outputDirectory = process.env.SIDE_VIEW_OUTPUT_DIR ?? 'output/side-view-full-flow';
 const browserExecutable = process.env.SIDE_VIEW_BROWSER_EXECUTABLE;
+const mothershipRuntimeSpeed = 17;
 await mkdir(outputDirectory, { recursive: true });
 
 const browser = await chromium.launch({ ...(browserExecutable ? { executablePath: browserExecutable } : {}), headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader'] });
@@ -50,7 +51,7 @@ try {
   if (!target) throw new Error('No absorbable target was generated.');
   const poolBefore = launchedCampaign.cities.seoul?.sideViewResources?.pools?.[target.kind]?.remainingAmount;
   if (!Number.isFinite(poolBefore)) throw new Error(`No persisted pool exists for ${target.kind}.`);
-  const movementMs = Math.max(0, Math.abs(target.x - initial.ship.x) / 34 * 1000);
+  const movementMs = Math.max(0, Math.abs(target.x - initial.ship.x) / mothershipRuntimeSpeed * 1000);
   const directionKey = target.x < initial.ship.x ? 'ArrowLeft' : 'ArrowRight';
   await page.keyboard.down(directionKey);
   await page.evaluate((milliseconds) => window.advanceTime?.(milliseconds), movementMs);

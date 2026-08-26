@@ -13,10 +13,11 @@
 		"start": "next start",
 		"lint": "eslint .",
 		"typecheck": "tsc --noEmit",
-		"test": "vitest run",
-		"check": "npm run typecheck && npm run test && npm run build",
-		"test:e2e:side-view": "node scripts/run-side-view-verification.mjs",
-		"test:e2e:fighter-ghosting": "node scripts/verify-fighter-frame-ghosting.mjs",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test && npm run build",
+    "test:e2e:side-view": "node scripts/run-side-view-verification.mjs",
+    "test:e2e:absorption-v2": "node scripts/verify-absorption-beam-v2.mjs",
+    "test:e2e:fighter-ghosting": "node scripts/verify-fighter-frame-ghosting.mjs",
 		"check:full": "npm run check && npm run lint && npm run test:e2e:side-view"
 	},
 	"dependencies": {

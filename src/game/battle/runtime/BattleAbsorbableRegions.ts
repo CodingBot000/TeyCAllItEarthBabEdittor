@@ -2,6 +2,7 @@ import { Color3, Engine, Mesh, MeshBuilder, StandardMaterial, Texture, Transform
 import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonjs/gui';
 import type { AbsorbableKind, CombatState } from '../../domain/types';
 import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y } from './battleVisualCoordinates';
+import { isFleeingCrowdTarget } from './BattleFleeingCrowdVisuals';
 
 interface RegionVisual {
   root: TransformNode;
@@ -102,6 +103,7 @@ export class BattleAbsorbableRegions {
       const remainingRatio = target.remainingAmount / Math.max(1, target.initialAmount);
       const nearShip = Math.abs(target.center.x - state.mothership.position.x) <= target.radius + 3;
       const active = state.activeBeamTargetId === target.id;
+      const isCrowd = isFleeingCrowdTarget(target.id);
       visual.root.position.x = target.center.x;
       visual.sprite.position.x = target.center.x;
       visual.pad.scaling.x = visual.baseScaleX * Math.max(0.18, remainingRatio);
@@ -112,11 +114,11 @@ export class BattleAbsorbableRegions {
       visual.sprite.scaling.set(visual.spriteBaseScaleX, visual.spriteBaseScaleY, 1);
       visual.sprite.position.y = SPRITE_GROUND_Y + visual.spriteBaseScaleY * SPRITE_GROUND_ANCHOR_BY_KIND[target.kind];
       visual.sprite.material = this.spriteMaterials.get(target.kind)!;
-      const spriteVisibility = target.discovered
+      const spriteVisibility = isCrowd ? 0 : target.discovered
         ? target.remainingAmount <= 0 ? 0 : active ? 1 : nearShip ? 0.9 : 0.68
         : 0.08;
       visual.sprite.visibility = visual.spriteTexture.isReady() ? spriteVisibility : 0;
-      visual.labelPanel.isVisible = target.discovered && target.remainingAmount > 0 && visual.spriteTexture.isReady();
+      visual.labelPanel.isVisible = !isCrowd && target.discovered && target.remainingAmount > 0 && visual.spriteTexture.isReady();
       const material = target.remainingAmount <= 0
         ? this.depletedMaterial
         : !target.discovered

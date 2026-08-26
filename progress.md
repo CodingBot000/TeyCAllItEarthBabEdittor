@@ -486,6 +486,25 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - SAM과 비슷한 작은 화면 크기에서 개별 인물보다 군중 덩어리로 읽히도록 약 50명의 피난민이 촘촘히 달리는 단일 클러스터 시안을 생성했다.
 - 512×256 RGBA PNG로 크로마키 정리했으며, 리소스 경로는 `public/assets/runtime/sprites/infected-fleeing-crowd-swarm-v1.png`이다.
 
+## 2026-08-26 — 타이트 앵커형 군중 와글거림 시트
+
+- 군중의 상하좌우 빈 공간을 제거하고 바닥 접지선을 고정한 1×4 와글거림 애니메이션 시트를 제작했다.
+- 프레임마다 군중의 압축·확장과 앞/뒤 행의 미세한 위치 변화를 넣어, 아래 기준 배치에서도 덩어리가 흔들리는 느낌을 유지한다.
+- 리소스 경로: `public/assets/runtime/sprites/infected-fleeing-crowd-swarm-wiggle-1x4.png` (`1984×213`, RGBA, 프레임당 496px).
+
+## 2026-08-26 — 좌향 도주 군중 시트
+
+- 기존 1×4 와글거림 시트를 프레임별로 좌우 반전해, 애니메이션 순서와 바닥 앵커를 유지한 반대 방향 리소스를 만들었다.
+- 리소스 경로: `public/assets/runtime/sprites/infected-fleeing-crowd-swarm-wiggle-left-1x4.png` (`1984×213`, RGBA, 프레임당 496px).
+
+## 2026-08-26 — 지상 도주 군중 배치·흡수 연결
+
+- 지상 Unit과 같은 `GROUND_ENTITY_ROOT_Y`에 5개 도주 군중을 배치하고, 화면 밖 이동 영역까지 포함하도록 x 좌표를 `-168/-84/0/84/168`에 분산했다.
+- 각 군중은 50명×100 흡수량으로 총 5,000을 가지며, 좌우로 이동하다가 흡수 대상이 되면 이동을 멈춘다.
+- 흡수 중에는 군중 이미지가 흰색 플래시 오버레이로 반짝이고 `+100 / 인` 표시가 나타나며, 흡수가 끝나면 이미지가 사라진다.
+- 기존 ORGANIC 기본 타깃 이미지는 군중 타깃에서 숨기고 전용 좌향/우향 1×4 시트를 사용한다.
+- 브라우저에서 서쪽 군중 선택 → 빔 시작 → `moving=false`, `absorbing=true`, `flashIntensity=0.79`, `remainingAmount=3750` → 1.5초 후 `visible=false`, `remainingAmount=0`, cargo 5,000을 확인했다. 오류는 0건이다.
+
 ## 2026-08-26 — 원본 모선 파괴 시퀀스 독립 이식
 
 - 사용자 지시서 `mothership_destroyed_implement.md`에 따라 `/Users/switch/Development/game/webgame/TheyCallItEarth`의 `MothershipDestructionVisual`, TacticalScene 연결부, flipbook/atlas/material/geometry 헬퍼를 모두 조사했다.
@@ -593,6 +612,19 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 실제 전투 피격 화면에서 우주선 전체 bubble과 기존 방사형 효과가 함께 표시되고 콘솔 오류가 없음을 확인했다.
 - 최종 TypeScript, Vitest 48/48, production build, `git diff --check` 통과.
 
+## 2026-08-26 — 대공 레이저 전투기 피격 효과
+
+- 기존 대공 레이저는 전투기 목표까지 beam/core와 작은 impact Sphere만 표시하고 목표 지점 피격 flipbook은 비활성화되어 있었다.
+- 대공 레이저 경로의 목표 지점에 explosion flipbook을 활성화해 레이저가 전투기에 닿는 순간 주황색 피격 섬광이 표시되도록 했다. 기존 전투기 체력 감소 flash는 그대로 유지된다.
+- 브라우저에서 빠른 전투 대공 레이저 경로와 콘솔 오류 0건을 확인했으며, TypeScript/Vitest 48/48/production build를 통과했다. 장시간 표준 클라이언트 캡처는 개발 서버 재컴파일 제한으로 완료되지 않았지만 짧은 브라우저 검증은 통과했다.
+
+## 2026-08-26 — 지상 유닛 피격·폭발 효과
+
+- `BattleEntityVisuals`의 지상 유닛에는 체력 감소 감지와 파괴 이펙트가 없어, 차량/SAM/시설이 맞아도 스프라이트와 체력바만 변하는 상태였다.
+- 모든 지상 유닛에 짧은 밝은 3D hit flash를 추가하고, `destroyed` 전환 시 지상 위치에서 차량/시설 크기에 맞춘 explosion flipbook·코어·링을 생성하도록 연결했다.
+- 기존 전투기 폭발 업데이트를 공유하되 ground explosion scale을 별도로 적용해 SAM은 1.15배, 일반 지상 유닛은 0.9배로 표시한다.
+- TypeScript, Vitest 48/48, production build, `git diff --check`를 통과했다. 브라우저 전투 화면에서 지상 유닛 렌더링과 콘솔 오류 0건을 확인했다.
+
 ## 2026-08-26 — 쉴드 소진 후 hull 파편 복원
 
 - 쉴드가 0이 된 뒤 hull 피격 시 `createHullEffect()`가 파편을 빈 배열로 만들고 `createDebris()` 호출도 제거된 상태를 확인했다.
@@ -647,3 +679,31 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 흡수 완료 대상의 생산설비 라벨도 함께 숨겨 빈 투명 형체가 남지 않도록 했다.
 - 생산설비 흡수 전·후 화면과 `DEPLETED / remainingAmount=0` 상태를 직접 확인했으며 콘솔 오류는 0건이다.
 - TypeScript와 Vitest 48/48 통과.
+
+## 2026-08-26 — 흡수 광선 V2 구현 완료
+
+- 기존 가는 원통·funnel·28×2 rod 기반 약 60메시 흡수광을 `BattleAbsorptionVfx`로 분리한 V2로 교체했다.
+- 셰이더 기반 외곽 체적광 3개, 결정적 내부 shaft 12개, 중심 core 2개, 모선 흡입구와 지면 halo/ring을 포함해 총 24메시로 구성했다.
+- 외곽은 Alpha combine, 내부 광선은 낮은 강도의 Additive로 분리해 낮 배경에서도 생산설비와 도시 실루엣이 보이게 했다.
+- `IGNITING(0.45초) → SUSTAINED → FADING(0.22초) → OFF` 상태를 구현했고, 기존 0.85초 반복 재전개와 즉시 dispose를 제거했다.
+- 흡수 중 기존 탐색광을 정리하고 새 탐색광 생성을 중단해 대표 효과끼리 겹치지 않게 했다.
+- runtime snapshot에 phase, 레이어 수, shaft 수, 폭, 메시 수를 추가했다.
+- `verify-absorption-beam-v2.mjs`와 `test:e2e:absorption-v2`를 추가해 점화·유지·목표 고갈·중간 페이드·종료를 자동 검증한다.
+- 1280×720, 900×500, 640×360에서 검증 결과 ok=true, `MACHINERY 5995 → 0`, 최종 phase OFF, 콘솔 오류와 4xx 응답 0건을 확인했다.
+- TypeScript, Vitest 48/48, production build, 변경 파일 ESLint, `git diff --check`가 통과했다.
+
+## 2026-08-26 — 밤 전투용 도주 군중 오브젝트
+
+- 기존 좌향·우향 1×4 군중 시트의 프레임·투명 여백·1984×213 규격을 유지하면서 RGB를 낮추고 차가운 남청색 음영을 더한 야간 시트를 추가했다.
+- 신규 리소스: `infected-fleeing-crowd-swarm-wiggle-1x4-night.png`, `infected-fleeing-crowd-swarm-wiggle-left-1x4-night.png`.
+- `BattleFleeingCrowdVisuals`가 `nightMode`를 받아 야간 시트를 선택하고, `createBattleRuntime`에서 `map.id === 'city-night'`일 때만 야간 모드를 켠다. 주간 맵은 기존 시트를 계속 사용한다.
+- 야간·주간 전투 화면을 각각 1280×720으로 로드하고, 야간 PNG 두 경로의 HTTP 200 응답과 `city-night` 텍스처 선택을 확인했다.
+- TypeScript, Vitest 48/48, 변경 런타임 파일 ESLint, production build가 통과했다.
+
+## 2026-08-26 — BG DEBUG·모선 속도·군중 높이 조정
+
+- BG DEBUG 패널이 배틀 진입 시 기본으로 닫히고 `BG DEBUG` 버튼만 보이도록 변경했다.
+- 모선 수평 이동 최대 속도와 가속·감속을 `34 → 17` 월드 유닛 기준으로 절반 조정했다.
+- 도주 군중의 기준 Y를 현재 위치보다 2 월드 유닛 위로 올렸다. 브라우저 snapshot에서 군중 `worldY=-15.27`을 확인했다.
+- 속도 변경에 맞춰 모바일·전체 흐름 검증의 이동 시간과 관성 허용값을 갱신했다.
+- TypeScript, Vitest 48/48, production build가 통과했다. 전체 lint는 기존 `BattleScreen`의 `setState-in-effect` 오류 1건과 `<img>` 경고 2건이 남아 있다.

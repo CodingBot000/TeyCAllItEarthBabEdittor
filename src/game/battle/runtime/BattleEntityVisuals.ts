@@ -26,6 +26,7 @@ const FIGHTER_SMOKE_MAX_TOTAL = 60;
 const FIGHTER_HIT_FLASH_DURATION = 0.14;
 const FIGHTER_EXPLOSION_DURATION = 0.62;
 const FIGHTER_EXPLOSION_FRAMES = [1, 5, 8, 9, 10, 11];
+const GROUND_HIT_FLASH_DURATION = 0.18;
 
 type GroundSpriteKey = 'DEFENDER' | 'RADAR' | 'AIRBASE' | 'POWER';
 export type GroundUnitGroup = GroundSpriteKey | 'SAM';
@@ -90,6 +91,7 @@ interface FighterExplosion {
   material: StandardMaterial;
   texture: Texture;
   elapsed: number;
+  scale: number;
 }
 
 interface GroundVisual {
@@ -107,6 +109,9 @@ interface GroundVisual {
   destroyed: boolean;
   labelAnchor?: Mesh;
   labelPanel?: Rectangle;
+  hitFlash: Mesh;
+  previousHealth: number;
+  hitElapsed: number;
 }
 
 export interface BattleEntityVisualSnapshot {
@@ -491,11 +496,11 @@ export class BattleEntityVisuals {
       const progress = Math.min(1, effect.elapsed / FIGHTER_EXPLOSION_DURATION);
       setAtlasFrame(effect.texture, 4, 4, FIGHTER_EXPLOSION_FRAMES[Math.min(FIGHTER_EXPLOSION_FRAMES.length - 1, Math.floor(progress * FIGHTER_EXPLOSION_FRAMES.length))]);
       effect.sprite.visibility = Math.max(0, 1 - progress);
-      effect.sprite.scaling.setAll(0.8 + progress * 2.8);
+      effect.sprite.scaling.setAll(effect.scale * (0.8 + progress * 2.8));
       effect.core.visibility = Math.max(0, 1 - progress);
-      effect.core.scaling.setAll(0.45 + progress * 1.8);
+      effect.core.scaling.setAll(effect.scale * (0.45 + progress * 1.8));
       effect.ring.visibility = Math.max(0, 0.9 - progress);
-      effect.ring.scaling.setAll(0.35 + progress * 2.2);
+      effect.ring.scaling.setAll(effect.scale * (0.35 + progress * 2.2));
       if (progress >= 1) {
         this.disposeFighterExplosion(effect);
         this.fighterExplosions.splice(index, 1);
@@ -584,6 +589,10 @@ export class BattleEntityVisuals {
   }
 
   private createFighterExplosion(position: Vector3): void {
+    this.createExplosionEffect(position, 1);
+  }
+
+  private createExplosionEffect(position: Vector3, scale: number): void {
     const explosionTexture = this.fighterExplosionTexture.clone();
     const spriteMaterial = new StandardMaterial(`battle-fighter-explosion-material-${this.fighterExplosions.length}`, this.scene);
     spriteMaterial.diffuseColor = Color3.White();
@@ -594,18 +603,18 @@ export class BattleEntityVisuals {
     spriteMaterial.transparencyMode = Engine.ALPHA_ADD;
     spriteMaterial.diffuseTexture = explosionTexture;
     spriteMaterial.emissiveTexture = explosionTexture;
-    const sprite = MeshBuilder.CreatePlane('battle-fighter-explosion', { size: 3.8 }, this.scene);
+    const sprite = MeshBuilder.CreatePlane('battle-ground-or-fighter-explosion', { size: 3.8 * scale }, this.scene);
     sprite.billboardMode = Mesh.BILLBOARDMODE_ALL;
     sprite.position = position.clone();
     sprite.material = spriteMaterial;
-    const core = MeshBuilder.CreateSphere('battle-fighter-explosion-core', { diameter: 0.9, segments: 10 }, this.scene);
+    const core = MeshBuilder.CreateSphere('battle-ground-or-fighter-explosion-core', { diameter: 0.9 * scale, segments: 10 }, this.scene);
     core.position = position.clone();
     core.material = this.fighterExplosionMaterial;
-    const ring = MeshBuilder.CreateTorus('battle-fighter-explosion-ring', { diameter: 1.8, thickness: 0.12, tessellation: 20 }, this.scene);
+    const ring = MeshBuilder.CreateTorus('battle-ground-or-fighter-explosion-ring', { diameter: 1.8 * scale, thickness: 0.12 * scale, tessellation: 20 }, this.scene);
     ring.position = position.clone();
     ring.material = this.fighterExplosionMaterial;
     [sprite, core, ring].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
-    this.fighterExplosions.push({ sprite, core, ring, material: spriteMaterial, texture: explosionTexture, elapsed: 0 });
+    this.fighterExplosions.push({ sprite, core, ring, material: spriteMaterial, texture: explosionTexture, elapsed: 0, scale });
   }
 
   private disposeFighterExplosion(effect: FighterExplosion): void {
@@ -677,12 +686,24 @@ export class BattleEntityVisuals {
       labelPanel.linkWithMesh(labelAnchor);
       labelPanel.linkOffsetY = -48;
     }
-    const visual = { id, kind, group, root, body, healthFill, healthTrack, maximumHealth, isSam, spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel };
+    const hitFlash = MeshBuilder.CreateSphere(`${root.name}-hit-flash`, { diameter: isSam ? 5.2 : 3.4, segments: 12 }, this.scene);
+    hitFlash.parent = root;
+    hitFlash.position.y = isSam ? GROUND_SAM_BODY_LOCAL_Y : kind === 'FACILITY' ? 1.4 : 0.9;
+    hitFlash.material = this.fighterHitMaterial;
+    hitFlash.renderingGroupId = 3;
+    hitFlash.isPickable = false;
+    hitFlash.visibility = 0;
+    const visual = { id, kind, group, root, body, healthFill, healthTrack, maximumHealth, isSam, spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel, hitFlash, previousHealth: maximumHealth, hitElapsed: 0 };
     this.groundVisuals.set(id, visual);
     return visual;
   }
 
   private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean): void {
+    if (health < visual.previousHealth - 0.001 && !visual.destroyed) visual.hitElapsed = GROUND_HIT_FLASH_DURATION;
+    if (destroyed && !visual.destroyed) {
+      this.createExplosionEffect(visual.root.getAbsolutePosition().clone(), visual.isSam ? 1.15 : 0.9);
+    }
+    visual.previousHealth = health;
     const override = this.groundPositionOverrides.get(visual.group);
     this.applyGroundPosition(visual, x, override ?? (visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y));
     visual.root.setEnabled(!destroyed);
@@ -697,6 +718,8 @@ export class BattleEntityVisuals {
     visual.healthTrack.visibility = destroyed ? 0 : 0.76;
     visual.healthFill.visibility = destroyed ? 0 : 0.92;
     visual.body.visibility = destroyed ? 0 : 0.92;
+    visual.hitElapsed = Math.max(0, visual.hitElapsed - 1 / 60);
+    visual.hitFlash.visibility = destroyed ? 0 : Math.max(0, Math.sin((visual.hitElapsed / GROUND_HIT_FLASH_DURATION) * Math.PI) * 0.88);
     if (visual.isSam) {
       visual.body.material = this.samMaterial;
       visual.body.visibility = destroyed ? 0 : disabled ? 0.5 : 0.92;

@@ -40,7 +40,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
   const [pointDefenseDisabled, setPointDefenseDisabled] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [abortConfirmationOpen, setAbortConfirmationOpen] = useState(false);
-  const [backgroundDebugOpen, setBackgroundDebugOpen] = useState(true);
+  const [backgroundDebugOpen, setBackgroundDebugOpen] = useState(false);
   const [backgroundLayerY, setBackgroundLayerY] = useState<BackgroundLayerYValues>(() => ({ ...INITIAL_BACKGROUND_LAYER_Y }));
   const [backgroundCopyStatus, setBackgroundCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [unitPositions, setUnitPositions] = useState<UnitPositionValues>({});

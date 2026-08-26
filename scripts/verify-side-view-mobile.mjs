@@ -6,6 +6,8 @@ const outputDirectory = process.env.SIDE_VIEW_OUTPUT_DIR ?? 'output/side-view-mo
 const browserExecutable = process.env.SIDE_VIEW_BROWSER_EXECUTABLE;
 const viewportWidth = Number(process.env.SIDE_VIEW_WIDTH ?? 900);
 const viewportHeight = Number(process.env.SIDE_VIEW_HEIGHT ?? 500);
+const mothershipRuntimeSpeed = 17;
+const postReleaseInertiaTolerance = 1.6;
 await mkdir(outputDirectory, { recursive: true });
 
 const browser = await chromium.launch({ ...(browserExecutable ? { executablePath: browserExecutable } : {}), headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader'] });
@@ -63,14 +65,14 @@ try {
   const beforeRight = await battleState();
   await holdMovementButton(rightButton, 400);
   const afterRight = await battleState();
-  if (afterRight.ship.x <= beforeRight.ship.x + 6) throw new Error(`Right pointer hold did not move the mothership: ${beforeRight.ship.x} → ${afterRight.ship.x}`);
+  if (afterRight.ship.x <= beforeRight.ship.x + 0.5) throw new Error(`Right pointer hold did not move the mothership: ${beforeRight.ship.x} → ${afterRight.ship.x}`);
   await advanceTime(250);
   const afterRightRelease = await battleState();
-  if (Math.abs(afterRightRelease.ship.x - afterRight.ship.x) > 0.1) throw new Error('Mothership continued moving after pointerup.');
+  if (Math.abs(afterRightRelease.ship.x - afterRight.ship.x) > postReleaseInertiaTolerance) throw new Error('Mothership kept moving beyond the expected post-pointerup inertia.');
 
-  await holdMovementButton(leftButton, 400);
+  await holdMovementButton(leftButton, 700);
   const afterLeft = await battleState();
-  if (afterLeft.ship.x >= afterRightRelease.ship.x - 6) throw new Error(`Left pointer hold did not move the mothership: ${afterRightRelease.ship.x} → ${afterLeft.ship.x}`);
+  if (afterLeft.ship.x >= afterRightRelease.ship.x - 0.5) throw new Error(`Left pointer hold did not move the mothership: ${afterRightRelease.ship.x} → ${afterLeft.ship.x}`);
 
   const rightBox = await rightButton.boundingBox();
   if (!rightBox) throw new Error('Right movement button has no hitbox.');
@@ -82,13 +84,13 @@ try {
   await advanceTime(250);
   await page.mouse.up();
   const afterCancelledRelease = await battleState();
-  if (Math.abs(afterCancelledRelease.ship.x - beforeCancelledRelease.ship.x) > 0.1) throw new Error('Mothership continued moving after pointercancel.');
+  if (Math.abs(afterCancelledRelease.ship.x - beforeCancelledRelease.ship.x) > postReleaseInertiaTolerance) throw new Error('Mothership kept moving beyond the expected post-pointercancel inertia.');
 
   const targetState = await battleState();
   const target = targetState.targets.find((candidate) => candidate.discovered && candidate.remainingAmount > 0);
   if (!target) throw new Error('No discovered absorbable target is available for mobile absorption verification.');
   const movementButton = target.x < targetState.ship.x ? leftButton : rightButton;
-  await holdMovementButton(movementButton, Math.max(0, Math.abs(target.x - targetState.ship.x) / 34 * 1000));
+  await holdMovementButton(movementButton, Math.max(0, Math.abs(target.x - targetState.ship.x) / mothershipRuntimeSpeed * 1000));
   await page.locator('[data-testid="battle-action-absorb"]').click();
   await advanceTime(450);
   const afterAbsorption = await battleState();

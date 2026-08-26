@@ -16,6 +16,7 @@ import {
 } from '@babylonjs/core';
 import { BALANCE } from '../../domain/balance';
 import type { CombatState } from '../../domain/types';
+import { BattleAbsorptionVfx, type BattleAbsorptionVfxSnapshot } from './BattleAbsorptionVfx';
 import { GROUND_ABSORPTION_TARGET_Y, GROUND_ATTACK_TARGET_Y } from './battleVisualCoordinates';
 
 type HeavyAbility = 'emp' | 'plasma';
@@ -87,23 +88,6 @@ interface PlasmaEffect {
   pulseRing: Mesh;
   shockRing: Mesh;
   arcs: PlasmaArcVisual[];
-}
-
-interface AbsorptionVisual {
-  beam: Mesh;
-  core: Mesh;
-  funnel: Mesh;
-  ring: Mesh;
-  rods: AbsorptionRod[];
-  target: Vector3;
-}
-
-interface AbsorptionRod {
-  body: Mesh;
-  core: Mesh;
-  angle: number;
-  radius: number;
-  phase: number;
 }
 
 interface AirDefenseVisual {
@@ -179,10 +163,6 @@ const MAX_ABILITY_EFFECTS = 8;
 const MAX_AIR_DEFENSE_EFFECTS = 3;
 const MAX_GROUND_SWARM_IMPACTS = 12;
 const ABILITY_DURATION = 1.8;
-const BEAM_RADIUS = 6.5;
-const BEAM_RANGE = 22;
-const ABSORPTION_ROD_COUNT = 28;
-const ABSORPTION_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const SAM_MISSILE_SPRITE_URL = '/assets/runtime/sprites/sam-missile-white-jet-web.png';
 const SAM_MISSILE_SPRITE_SCALE = 1.95;
 const SAM_MISSILE_TRAIL_MAX_PARTICLES = 9;
@@ -291,10 +271,8 @@ export class BattleCombatVfx {
   private readonly plasmaArcGlowMaterial: StandardMaterial;
   private readonly plasmaArcCoreMaterial: StandardMaterial;
   private readonly plasmaOrbCoreMaterial: StandardMaterial;
-  private readonly beamMaterial: StandardMaterial;
-  private readonly beamCoreMaterial: StandardMaterial;
-  private readonly beamFunnelMaterial: StandardMaterial;
-  private readonly beamRingMaterial: StandardMaterial;
+  private readonly absorptionVfx: BattleAbsorptionVfx;
+  private readonly absorptionSourcePosition = new Vector3();
   private readonly samProjectileTexture: Texture;
   private readonly samProjectileSpriteMaterial: StandardMaterial;
   private readonly samMissileTrailMaterial: StandardMaterial;
@@ -336,7 +314,6 @@ export class BattleCombatVfx {
   }));
   private searchNextBurstIn = 1.2;
   private searchMotionPatternIndex = 0;
-  private absorption: AbsorptionVisual | null = null;
   private hullShakeElapsed = HULL_SHAKE_DURATION;
   private hullShakePhase = 0;
   private overdriveDistortionIntensity = 0;
@@ -359,6 +336,7 @@ export class BattleCombatVfx {
       mesh instanceof Mesh
       && (mesh.name === 'mothership-reactor-glow' || mesh.name.startsWith('mothership-underside-emitter-'))
     )).sort((left, right) => left.name.localeCompare(right.name)) ?? [];
+    this.absorptionVfx = new BattleAbsorptionVfx(scene);
     this.shieldImpactTexture = new Texture('/assets/runtime/vfx/shield-impact.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.vfxTexture = new Texture('/assets/runtime/vfx/vfx-atlas.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.explosionTexture = new Texture('/assets/runtime/vfx/mothership-explosion-5x5.webp', scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
@@ -391,15 +369,6 @@ export class BattleCombatVfx {
     this.plasmaOrbCoreMaterial.alpha = 0.82;
     this.plasmaOrbCoreMaterial.alphaMode = Engine.ALPHA_COMBINE;
     this.plasmaOrbCoreMaterial.disableDepthWrite = true;
-    this.beamMaterial = this.material('battle-abduction-beam', new Color3(0.2, 0.85, 0.76), new Color3(0.15, 0.95, 0.8));
-    this.beamMaterial.alpha = 0.34;
-    this.beamCoreMaterial = this.material('battle-abduction-beam-core', new Color3(0.72, 1, 0.94), new Color3(0.35, 1, 0.92));
-    this.beamCoreMaterial.alpha = 0.86;
-    this.beamFunnelMaterial = this.material('battle-abduction-beam-funnel', new Color3(0.12, 0.76, 0.66), new Color3(0.08, 0.72, 0.58));
-    this.beamFunnelMaterial.alpha = 0.2;
-    this.beamFunnelMaterial.alphaMode = Engine.ALPHA_ADD;
-    this.beamFunnelMaterial.disableDepthWrite = true;
-    this.beamRingMaterial = this.material('battle-abduction-beam-target', new Color3(0.4, 1, 0.85), new Color3(0.18, 1, 0.82));
     this.samProjectileTexture = new Texture(SAM_MISSILE_SPRITE_URL, scene, true, true, Texture.NEAREST_SAMPLINGMODE);
     this.samProjectileTexture.hasAlpha = true;
     this.samProjectileTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
@@ -680,51 +649,24 @@ export class BattleCombatVfx {
   }
 
   toggleAbsorption(target = new Vector3(0, GROUND_ABSORPTION_TARGET_Y, 0)): boolean {
-    const next = !this.absorption;
+    const next = !this.absorptionVfx.isRequestedActive();
     this.setAbsorption(next, target);
     return next;
   }
 
   setAbsorption(active: boolean, target = new Vector3(0, GROUND_ABSORPTION_TARGET_Y, 0)): void {
     if (!active) {
-      if (!this.absorption) return;
-      this.absorption.beam.dispose();
-      this.absorption.core.dispose();
-      this.absorption.funnel.dispose();
-      this.absorption.ring.dispose();
-      this.absorption.rods.forEach((rod) => { rod.body.dispose(); rod.core.dispose(); });
-      this.absorption = null;
+      this.absorptionVfx.end();
       return;
     }
-    if (this.absorption) {
-      this.absorption.target.copyFrom(target);
+    const source = this.absorptionSource();
+    if (this.absorptionVfx.isRequestedActive()) {
+      this.absorptionVfx.setTarget(source, target);
       return;
     }
-    const beam = MeshBuilder.CreateCylinder('battle-abduction-beam', { diameter: 0.56, height: 1, tessellation: 24 }, this.scene);
-    beam.material = this.beamMaterial;
-    const core = MeshBuilder.CreateCylinder('battle-abduction-beam-core', { diameter: 0.17, height: 1, tessellation: 18 }, this.scene);
-    core.material = this.beamCoreMaterial;
-    const funnel = MeshBuilder.CreateCylinder('battle-abduction-beam-funnel', { diameterTop: BEAM_RADIUS * 2, diameterBottom: 0.56, height: 1, tessellation: 48 }, this.scene);
-    funnel.material = this.beamFunnelMaterial;
-    const ring = MeshBuilder.CreateTorus('battle-abduction-beam-target', { diameter: BEAM_RADIUS * 2.05, thickness: 0.24, tessellation: 40 }, this.scene);
-    ring.material = this.beamRingMaterial;
-    const rods = Array.from({ length: ABSORPTION_ROD_COUNT }, (_, index) => {
-      const inner = index < ABSORPTION_ROD_COUNT * 0.48;
-      const radius = inner
-        ? seededUnit(index + 31) * 2.25
-        : 2.35 + seededUnit(index + 67) * (BEAM_RADIUS - 2.35);
-      const angle = index * ABSORPTION_GOLDEN_ANGLE + seededUnit(index + 101) * 0.42;
-      const diameter = inner
-        ? 0.18 + seededUnit(index + 131) * 0.4
-        : 0.1 + seededUnit(index + 151) * 0.18;
-      const body = MeshBuilder.CreateCylinder(`battle-abduction-rod-${index}`, { diameter, height: 1, tessellation: 8 }, this.scene);
-      const rodCore = MeshBuilder.CreateCylinder(`battle-abduction-rod-core-${index}`, { diameter: diameter * 0.28, height: 1, tessellation: 6 }, this.scene);
-      body.material = this.beamMaterial;
-      rodCore.material = this.beamCoreMaterial;
-      return { body, core: rodCore, angle, radius, phase: seededUnit(index + 181) * Math.PI * 2 };
-    });
-    [beam, core, funnel, ring, ...rods.flatMap((rod) => [rod.body, rod.core])].forEach((mesh) => { mesh.renderingGroupId = 3; mesh.isPickable = false; });
-    this.absorption = { beam, core, funnel, ring, rods, target: target.clone() };
+    this.searchBeamVisuals.splice(0).forEach((effect) => this.disposeSearchBeam(effect));
+    this.searchNextBurstIn = Math.max(this.searchNextBurstIn, 0.8);
+    this.absorptionVfx.begin(source, target);
   }
 
   private createCollisionOverlay(name: string, material: StandardMaterial): Mesh {
@@ -772,6 +714,10 @@ export class BattleCombatVfx {
     return this.overdriveDistortion.autoClear;
   }
 
+  getAbsorptionSnapshot(): BattleAbsorptionVfxSnapshot {
+    return this.absorptionVfx.getSnapshot();
+  }
+
   resetCollisionOverlayScale(): void {
     this.collisionHullOverlayScale = 1;
     this.collisionShieldOverlayScale = 1;
@@ -790,7 +736,7 @@ export class BattleCombatVfx {
     this.updateMissileTrails(dt);
     this.updateGroundSwarmImpacts(dt);
     this.updateSearchBeams(dt);
-    this.updateAbsorption(elapsed);
+    this.absorptionVfx.update(dt, elapsed, this.absorptionSource());
   }
 
   dispose(): void {
@@ -826,15 +772,9 @@ export class BattleCombatVfx {
       effect.impact.dispose();
       effect.explosion?.dispose(false, true);
     });
-    if (this.absorption) {
-      this.absorption.beam.dispose();
-      this.absorption.core.dispose();
-      this.absorption.funnel.dispose();
-      this.absorption.ring.dispose();
-      this.absorption.rods.forEach((rod) => { rod.body.dispose(); rod.core.dispose(); });
-    }
+    this.absorptionVfx.dispose();
     this.overdriveDistortion.dispose();
-    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.plasmaArcGlowMaterial, this.plasmaArcCoreMaterial, this.plasmaOrbCoreMaterial, this.beamMaterial, this.beamCoreMaterial, this.beamFunnelMaterial, this.beamRingMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.samMissileJetGlowMaterial, this.samMissileJetCoreMaterial, this.collisionHullOverlayMaterial, this.collisionShieldOverlayMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.searchBeamMaterial, this.searchGroundRingMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
+    [this.shieldBubbleMaterial, this.shieldRingMaterial, this.shieldCoreMaterial, this.hullFlashMaterial, this.hullSmokeMaterial, this.hullDebrisMaterial, this.empMaterial, this.plasmaMaterial, this.plasmaArcGlowMaterial, this.plasmaArcCoreMaterial, this.plasmaOrbCoreMaterial, this.samProjectileSpriteMaterial, this.samMissileTrailMaterial, this.samMissileJetGlowMaterial, this.samMissileJetCoreMaterial, this.collisionHullOverlayMaterial, this.collisionShieldOverlayMaterial, this.fighterProjectileMaterial, this.airDefenseMaterial, this.airDefenseCoreMaterial, this.pointDefenseMaterial, this.pointDefenseCoreMaterial, this.searchBeamMaterial, this.searchGroundRingMaterial, this.groundSwarmMaterial, this.groundSwarmCoreMaterial].forEach((material) => material.dispose());
     this.samProjectileTexture.dispose();
     this.collisionHullOverlay.dispose();
     this.collisionShieldOverlay.dispose();
@@ -1042,7 +982,9 @@ export class BattleCombatVfx {
   }
 
   private triggerAirDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, visualTarget?: Vector3): void {
-    this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial, false, visualTarget);
+    // Air-defense hits need a visible impact at the fighter, not only the beam
+    // line. The endpoint explosion is localized to the resolved fighter muzzle.
+    this.triggerDefenseLaserShot('battle-air-defense-laser', origin, target, targetAltitude, this.airDefenseMaterial, this.airDefenseCoreMaterial, true, visualTarget);
   }
 
   private triggerPointDefenseShot(origin: { x: number; z: number }, target: { x: number; z: number }, targetAltitude: number, visualTarget?: Vector3): void {
@@ -1194,6 +1136,7 @@ export class BattleCombatVfx {
 
   private updateSearchBeams(dt: number): void {
     if (this.searchSourceMeshes.length === 0) return;
+    if (this.absorptionVfx.isRequestedActive()) return;
     if (this.searchBeamVisuals.length === 0) {
       this.searchNextBurstIn -= dt;
       if (this.searchNextBurstIn <= 0) this.startSearchBurst();
@@ -1259,35 +1202,6 @@ export class BattleCombatVfx {
   private disposeSearchBeam(effect: SearchBeamVisual): void {
     effect.beam.dispose();
     effect.groundRing.dispose();
-  }
-
-  private updateAbsorption(elapsed: number): void {
-    const absorption = this.absorption;
-    const ship = this.shipPosition();
-    if (!absorption) return;
-    const target = absorption.target;
-    const beamStart = ship.add(new Vector3(0, -0.5, 0));
-    alignCylinder(absorption.beam, beamStart, target);
-    alignCylinder(absorption.core, beamStart, target);
-    const progress = Math.min(1, Math.max(0, (elapsed % 0.85) / 0.85));
-    const funnelEnd = beamStart.add(target.subtract(beamStart).scale(Math.max(0.02, progress)));
-    alignCylinder(absorption.funnel, beamStart, funnelEnd);
-    absorption.funnel.scaling.x = progress;
-    absorption.funnel.scaling.z = progress;
-    absorption.funnel.visibility = progress;
-    absorption.ring.position = target;
-    absorption.ring.scaling.setAll(0.92 + Math.sin(elapsed * 7) * 0.08);
-    for (const rod of absorption.rods) {
-      const direction = new Vector3(Math.cos(rod.angle), 0, Math.sin(rod.angle));
-      const rodStart = beamStart.add(direction.scale(0.12 + rod.radius * 0.015));
-      const rodEnd = target.add(direction.scale(rod.radius));
-      alignCylinder(rod.body, rodStart, rodEnd);
-      alignCylinder(rod.core, rodStart, rodEnd);
-      const pulse = 0.88 + Math.sin(elapsed * 9 + rod.phase) * 0.12;
-      const centralDensity = 1 - Math.min(1, rod.radius / BEAM_RADIUS);
-      rod.body.visibility = (0.22 + centralDensity * 0.64) * pulse;
-      rod.core.visibility = (0.18 + centralDensity * 0.64) * pulse;
-    }
   }
 
   private syncGroundSwarm(state: Readonly<CombatState>): void {
@@ -1554,6 +1468,12 @@ export class BattleCombatVfx {
 
   private shipPosition(): Vector3 {
     return this.mothershipRoot.getAbsolutePosition().clone();
+  }
+
+  private absorptionSource(): Vector3 {
+    this.absorptionSourcePosition.copyFrom(this.mothershipRoot.getAbsolutePosition());
+    this.absorptionSourcePosition.y -= 0.5;
+    return this.absorptionSourcePosition;
   }
 
   private material(name: string, diffuse: Color3, emissive: Color3): StandardMaterial {
