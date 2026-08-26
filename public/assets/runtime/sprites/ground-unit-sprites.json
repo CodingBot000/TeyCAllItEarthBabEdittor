@@ -1,5 +1,6 @@
 {
   "source": "art-source/battlescene/maps/city-night/ground-units-bundle-raw.png",
+  "shadow": "assets/battlescene/shared/units/ground-unit-shadow.svg",
   "outputs": [
     {
       "file": "ground-defender-mobile-side.png",

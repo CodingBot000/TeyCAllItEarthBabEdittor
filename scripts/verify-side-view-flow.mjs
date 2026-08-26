@@ -29,9 +29,9 @@ try {
 
   await activate(page.getByRole('button', { name: /대한민국.*KR/ }));
   await activate(page.getByRole('button', { name: '서울', exact: true }));
-  const cityAction = page.locator('.city-panel .panel-actions button');
+  const cityAction = page.locator('.city-panel .city-inline-action');
   const cityActionText = await cityAction.textContent();
-  if (!cityActionText?.includes('노드로 이동')) throw new Error(`Expected move action, received: ${cityActionText}`);
+  if (!cityActionText?.includes('도시 상공 진입')) throw new Error(`Expected city entry action, received: ${cityActionText}`);
   await cityAction.click();
   await page.locator('.loadout-screen').waitFor({ state: 'visible', timeout: 10000 });
   await page.getByRole('button', { name: '과충전 셀 추가' }).click();
@@ -47,15 +47,23 @@ try {
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function');
 
   const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text?.() ?? '{}'));
-  const target = initial.targets.find((candidate) => candidate.discovered && candidate.remainingAmount > 0) ?? initial.targets.find((candidate) => candidate.remainingAmount > 0);
+  const target = initial.targets.filter((candidate) => candidate.discovered && candidate.remainingAmount > 0
+    && candidate.status === 'AVAILABLE' && !candidate.id.startsWith('ambient:'))
+    .sort((a, b) => Math.abs(a.x - initial.ship.x) - Math.abs(b.x - initial.ship.x))[0];
   if (!target) throw new Error('No absorbable target was generated.');
   const poolBefore = launchedCampaign.cities.seoul?.sideViewResources?.pools?.[target.kind]?.remainingAmount;
   if (!Number.isFinite(poolBefore)) throw new Error(`No persisted pool exists for ${target.kind}.`);
-  const movementMs = Math.max(0, Math.abs(target.x - initial.ship.x) / mothershipRuntimeSpeed * 1000);
+  const movementDistance = Math.abs(target.x - initial.ship.x);
+  // Acceleration and braking are both 17 units/s². Include the coast-to-stop
+  // phase, and use a triangular velocity profile for short movements.
+  const movementMs = (movementDistance < mothershipRuntimeSpeed
+    ? Math.sqrt(movementDistance / mothershipRuntimeSpeed)
+    : movementDistance / mothershipRuntimeSpeed) * 1000;
   const directionKey = target.x < initial.ship.x ? 'ArrowLeft' : 'ArrowRight';
   await page.keyboard.down(directionKey);
   await page.evaluate((milliseconds) => window.advanceTime?.(milliseconds), movementMs);
   await page.keyboard.up(directionKey);
+  await page.evaluate(() => window.advanceTime?.(1100));
   await page.locator('[data-testid="battle-action-absorb"]').click();
   await page.evaluate(() => window.advanceTime?.(450));
   await page.screenshot({ path: `${outputDirectory}/03-absorption.png`, fullPage: true });

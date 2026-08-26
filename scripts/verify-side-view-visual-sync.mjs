@@ -44,6 +44,15 @@ try {
   const groundEntityIds = state.groundEntities.map((entity) => `${entity.kind}:${entity.id}`).sort();
   const groundVisualIds = state.visuals.ground.map((visual) => `${visual.kind}:${visual.id}`).sort();
   if (JSON.stringify(groundEntityIds) !== JSON.stringify(groundVisualIds)) throw new Error(`Ground visual IDs diverged: ${JSON.stringify({ groundEntityIds, groundVisualIds })}`);
+  for (const entity of state.groundEntities.filter((unit) => unit.aiMode)) {
+    const visual = state.visuals.ground.find((unit) => unit.id === entity.id);
+    if (Math.abs(entity.x - visual.x) > 0.003 || entity.facingX !== visual.facingX) throw new Error(`SAM pose diverged: ${entity.id}`);
+    if (entity.muzzle && (Math.abs(entity.muzzle.x - visual.muzzle.x) > 0.003 || Math.abs(entity.muzzle.y - 16.5 - visual.muzzle.y) > 0.003)) throw new Error(`SAM socket diverged: ${entity.id}`);
+  }
+  for (const missile of state.missiles.filter((item) => item.coordinateSpace === 'SIDE_VIEW_COMBAT')) {
+    const visual = state.projectileVisuals.find((item) => item.id === missile.id);
+    if (!visual || Math.abs(visual.x - missile.position.x) > 0.001 || Math.abs(visual.y - missile.y + 16.5) > 0.001) throw new Error(`Combat projectile diverged: ${missile.id}`);
+  }
   await page.screenshot({ path: `${outputDirectory}/visual-sync.png`, fullPage: true });
   if (errors.length > 0) throw new Error(`Browser errors:\n${errors.join('\n')}`);
   await writeFile(`${outputDirectory}/result.json`, JSON.stringify({

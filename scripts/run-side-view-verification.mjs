@@ -86,6 +86,7 @@ try {
   await runBrowserScript('scripts/verify-side-view-mobile.mjs', devServer.url, `${outputRoot}/mobile-640`, { SIDE_VIEW_WIDTH: '640', SIDE_VIEW_HEIGHT: '360' });
   await runBrowserScript('scripts/verify-side-view-abort.mjs', devServer.url, `${outputRoot}/abort`);
   await runBrowserScript('scripts/verify-side-view-visual-sync.mjs', devServer.url, `${outputRoot}/visual-sync`);
+  await runBrowserScript('scripts/verify-ground-unit-positioning.mjs', devServer.url, `${outputRoot}/ground-positioning`);
   await runBrowserScript('scripts/verify-absorption-beam-v2.mjs', devServer.url, `${outputRoot}/absorption-v2`);
   await runBrowserScript('scripts/verify-side-view-biome-art.mjs', devServer.url, `${outputRoot}/biome-art`);
   await stopServer(devServer.child);

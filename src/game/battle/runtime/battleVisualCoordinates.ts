@@ -4,12 +4,12 @@
  * drift away from the sprite when the ground layout is tuned.
  */
 export const GROUND_ENTITY_ROOT_Y = -18.5;
-export const GROUND_SAM_ROOT_Y = -16.5;
+import { GROUND_SAM_ROOT_Y } from '../../domain/sideViewSpatialRules';
+export { GROUND_SAM_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL } from '../../domain/sideViewSpatialRules';
 export const GROUND_SAM_BODY_LOCAL_Y = 2;
 export const GROUND_SAM_BODY_HEIGHT = 8;
 // The SAM sprite's launcher tip is the authoritative visual launch socket.
 // These coordinates are local to the SAM body plane/root.
-export const GROUND_SAM_ATTACK_SPAWN_LOCAL = { x: -0.9, y: 4.6, z: -1 };
 const GROUND_SAM_VISIBLE_BOTTOM_PADDING = 0.75;
 const GROUND_SAM_HEALTH_BAR_GAP = 0.17;
 

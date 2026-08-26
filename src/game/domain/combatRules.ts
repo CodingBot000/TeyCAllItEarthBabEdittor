@@ -1,4 +1,9 @@
 import { BALANCE } from './balance';
+import { ellipsoidMetric, mothershipContactVolume, segmentIntersectsEllipsoid } from './combatGeometry';
+import type { SideViewSpatialContext } from './sideViewSpatialRules';
+import { tickSideViewGroundUnits } from './units/sideViewUnitAdapters';
+import { SAM_COMBAT_PROFILE } from './units/unitCombatProfiles';
+import type { ShotSolution } from './units/unitCombatTypes';
 import { deriveCombatModifiers } from './campaignRules';
 import { createControlNodes, createDeployedCohorts, createGroundDefenders, tickCohorts, updateControlNodes } from './cohortRules';
 import { occupationRequirements, resolveMissionOutcome } from './missionRules';
@@ -102,6 +107,7 @@ export function fighterSegmentKeepOutIntersection(previous: Vec3, next: Vec3, ce
 export interface CombatTickOptions {
   unitInvincibilityEnabled?: boolean;
   disablePointDefense?: boolean;
+  sideViewSpatial?: SideViewSpatialContext;
 }
 
 export const EMPTY_MISSION_CARGO: MissionCargo = {
@@ -153,6 +159,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     const saved = cityState.facilities[facility.id];
     return {
       ...facility,
+      position: { ...facility.position },
       maxHealth: facility.health,
       health: saved?.destroyed ? 0 : facility.health * (saved?.healthRatio ?? 1),
       disabledUntil: 0,
@@ -201,6 +208,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     persistentAbsorbables: { ...cityState.absorbables },
     absorbableTargets,
     facilities,
+    groundUnitAi: {},
     deployedCohorts: createDeployedCohorts(campaign),
     groundDefenders: createGroundDefenders(preset.groundDefenders, defenseMultiplier, cityState.conquest.resistance),
     controlNodes: createControlNodes(preset.controlNodes),
@@ -720,7 +728,8 @@ function refreshTargetStatus(state: CombatState, target: AbsorbableTargetState):
 }
 
 export function tickCombat(state: CombatState, dt: number, options: CombatTickOptions = {}): void {
-  if (state.result !== 'ACTIVE') return;
+  if (state.result !== 'ACTIVE') { state.groundUnitAi = {}; return; }
+  if (!Number.isFinite(dt) || dt <= 0) return;
   const step = Math.min(dt, 0.25);
   state.elapsedSeconds += step;
   state.mothershipHits = state.mothershipHits.filter((hit) => state.elapsedSeconds - hit.occurredAt <= 2.5);
@@ -734,11 +743,12 @@ export function tickCombat(state: CombatState, dt: number, options: CombatTickOp
   }
   state.mothership.shieldRegenDelay = Math.max(0, state.mothership.shieldRegenDelay - step);
   if (state.mothership.shieldRegenDelay === 0) state.mothership.shield = clamp(state.mothership.shield + BALANCE.mothership.shieldRegen * step, 0, state.mothership.maxShield);
-  moveMothership(state, step);
+  if (state.battleMode !== 'SIDE_VIEW') moveMothership(state, step);
   tickBeamHeat(state, step);
   if (state.activeAbility === 'beam') tickBeam(state, step);
   tickAlert(state, step);
   tickWaves(state);
+  if (state.battleMode === 'SIDE_VIEW') tickSideViewGroundUnits(state, step, options.sideViewSpatial);
   tickSamSites(state, step);
   tickMissiles(state, step);
   tickEnemies(state, step);
@@ -753,6 +763,8 @@ export function tickCombat(state: CombatState, dt: number, options: CombatTickOp
     state.endReason = 'MOTHERSHIP_DISABLED';
   }
   if (state.mothership.extractionStatus === 'COMPLETE') state.result = resolveMissionOutcome(state);
+  for (const facility of state.facilities) if (facility.destroyed || facility.health <= 0) delete state.groundUnitAi[facility.id];
+  if (state.result !== 'ACTIVE') state.groundUnitAi = {};
 }
 
 export function tickBeamHeat(state: CombatState, deltaSeconds: number): void {
@@ -930,19 +942,41 @@ function tickWaves(state: CombatState): void {
 
 function tickSamSites(state: CombatState, dt: number): void {
   for (const facility of state.facilities) {
-    if (facility.kind !== 'SAM' || facility.destroyed || facility.disabledUntil > state.elapsedSeconds) continue;
+    if (facility.kind !== 'SAM') continue;
     const cooldown = Math.max(1.5, (BALANCE.defense.missileInterval - state.localAlert / 45) / (state.defenseMultiplier * state.enemyPressureMultiplier));
     const remainingBurst = state.facilityBurstRemaining[facility.id] ?? 0;
+    const ai = state.battleMode === 'SIDE_VIEW' ? state.groundUnitAi[facility.id] : undefined;
+    const disabled = facility.disabledUntil > state.elapsedSeconds;
+    const eligible = !facility.destroyed && facility.health > 0 && !disabled
+      && (state.battleMode !== 'SIDE_VIEW' || ai?.canFire === true);
+    if (state.battleMode === 'SIDE_VIEW' && !eligible && remainingBurst > 0) {
+      state.facilityBurstRemaining[facility.id] = 0;
+      state.facilityCooldowns[facility.id] = cooldown;
+      if (ai) ai.canFire = false;
+      continue;
+    }
+    if (facility.destroyed || facility.health <= 0 || disabled) continue;
     const nextCooldown = Math.max(0, (state.facilityCooldowns[facility.id] ?? 0) - dt);
     state.facilityCooldowns[facility.id] = nextCooldown <= 0.000001 ? 0 : nextCooldown;
-    if (state.facilityCooldowns[facility.id] > 0) continue;
-    spawnHostileProjectile(state, 'sam', facility.id, facility.position, 3.5, BALANCE.defense.missileSpeed * state.defenseMultiplier, (BALANCE.defense.missileDamage + state.localAlert * 0.25) * state.defenseMultiplier);
+    if (!eligible || state.facilityCooldowns[facility.id] > 0) {
+      if (ai && eligible) { ai.canFire = false; ai.blockedReason = 'COOLDOWN'; }
+      continue;
+    }
+    const muzzle = ai?.muzzle;
+    const shot = ai?.shot.allowed ? ai.shot : undefined;
+    spawnHostileProjectile(state, 'sam', facility.id, muzzle ?? facility.position, muzzle?.y ?? 3.5,
+      BALANCE.defense.missileSpeed * state.defenseMultiplier, (BALANCE.defense.missileDamage + state.localAlert * 0.25) * state.defenseMultiplier, shot);
+    if (ai && shot && muzzle) {
+      ai.lastLaunchAngle = shot.launchAngleRadians;
+      ai.lastLaunchPosition = { ...muzzle };
+      ai.canFire = false; ai.blockedReason = 'COOLDOWN';
+    }
     if (remainingBurst > 0) {
       state.facilityBurstRemaining[facility.id] = 0;
       state.facilityCooldowns[facility.id] = cooldown;
     } else {
-      state.facilityBurstRemaining[facility.id] = 1;
-      state.facilityCooldowns[facility.id] = 0.3;
+      state.facilityBurstRemaining[facility.id] = SAM_COMBAT_PROFILE.weapon.burstCount - 1;
+      state.facilityCooldowns[facility.id] = SAM_COMBAT_PROFILE.weapon.burstInterval;
     }
   }
 }
@@ -1230,18 +1264,35 @@ function wrapAngle(angle: number): number {
 function tickMissiles(state: CombatState, dt: number): void {
   for (const missile of state.missiles) {
     const previousPosition = { x: missile.position.x, y: missile.y, z: missile.position.z };
+    const firstStep = missile.age === 0;
     missile.age += dt;
     missile.target = { ...state.mothership.position };
     missile.targetY = BALANCE.mothership.baseAltitude;
+    const contact = mothershipContactVolume(state, missile.source === 'sam' ? BALANCE.defense.samProjectileRadius : BALANCE.defense.fighterProjectileRadius);
+    if (missile.coordinateSpace === 'SIDE_VIEW_COMBAT' && missile.aimOffset) {
+      const offset = missile.aimOffset;
+      const metric = (offset.x / contact.radii.x) ** 2 + (offset.y / contact.radii.y) ** 2 + (offset.z / contact.radii.z) ** 2;
+      // Refit a shield-selected local aim point after shield depletion.
+      const scale = metric > 1 ? 0.999 / Math.sqrt(metric) : 1;
+      missile.aimOffset = { x: offset.x * scale, y: offset.y * scale, z: offset.z * scale };
+      missile.target.x += missile.aimOffset.x;
+      missile.targetY += missile.aimOffset.y;
+      missile.target.z += missile.aimOffset.z;
+    }
     const dx = missile.target.x - missile.position.x;
     const dy = missile.targetY - missile.y;
     const dz = missile.target.z - missile.position.z;
     const length = Math.max(0.001, Math.hypot(dx, dy, dz));
     const travel = Math.min(length, missile.speed * dt);
-    missile.position.x += (dx / length) * travel;
-    missile.y += (dy / length) * travel;
-    missile.position.z += (dz / length) * travel;
-    if (hostileProjectileIntersectsMothership(missile, state) || missile.age > 8) {
+    const direction = firstStep && missile.launchDirection ? missile.launchDirection : { x: dx / length, y: dy / length, z: dz / length };
+    missile.position.x += direction.x * travel;
+    missile.y += direction.y * travel;
+    missile.position.z += direction.z * travel;
+    const currentPosition = { ...missile.position, y: missile.y };
+    const hit = missile.coordinateSpace === 'SIDE_VIEW_COMBAT'
+      ? segmentIntersectsEllipsoid(previousPosition, currentPosition, contact)
+      : hostileProjectileIntersectsMothership(missile, state);
+    if (hit || missile.age > 8) {
       if (missile.age <= 8) {
         applyMothershipProjectileDamage(state, missile.damage, missile.source, {
           x: previousPosition.x - state.mothership.position.x,
@@ -1256,16 +1307,10 @@ function tickMissiles(state: CombatState, dt: number): void {
 }
 
 function hostileProjectileIntersectsMothership(missile: CombatState['missiles'][number], state: CombatState): boolean {
-  const shielded = state.mothership.shield > 0;
   const projectileRadius = missile.source === 'sam'
     ? BALANCE.defense.samProjectileRadius
     : BALANCE.defense.fighterProjectileRadius;
-  const horizontalRadius = (shielded ? BALANCE.mothership.shieldHitRadius : BALANCE.mothership.hullHitRadius) + projectileRadius;
-  const verticalRadius = (shielded ? BALANCE.mothership.shieldHitHalfHeight : BALANCE.mothership.hullHitHalfHeight) + projectileRadius;
-  const dx = missile.position.x - state.mothership.position.x;
-  const dy = missile.y - BALANCE.mothership.baseAltitude;
-  const dz = missile.position.z - state.mothership.position.z;
-  return (dx * dx + dz * dz) / (horizontalRadius * horizontalRadius) + (dy * dy) / (verticalRadius * verticalRadius) <= 1;
+  return ellipsoidMetric({ ...missile.position, y: missile.y }, mothershipContactVolume(state, projectileRadius)) <= 1;
 }
 
 function runPointDefense(state: CombatState): void {
@@ -1307,20 +1352,25 @@ function eventRandom(seed: number, sequence: number, entityId: string): number {
   return ((value ^ (value >>> 16)) >>> 0) / 0x1_0000_0000;
 }
 
-function spawnHostileProjectile(state: CombatState, source: 'sam' | 'fighter', sourceId: string, position: Vec2, y: number, speed: number, damage: number): void {
+function spawnHostileProjectile(state: CombatState, source: 'sam' | 'fighter', sourceId: string, position: Vec2, y: number, speed: number, damage: number, shot?: Extract<ShotSolution, { allowed: true }>): void {
   state.missiles.push({
     id: `${source}-projectile-${state.nextEntityId++}`,
     source,
     sourceId,
-    launchPosition: { ...position },
+    launchPosition: { x: position.x, z: position.z },
     launchY: y,
-    position: { ...position },
+    position: { x: position.x, z: position.z },
     y,
     target: { ...state.mothership.position },
     targetY: BALANCE.mothership.baseAltitude,
     speed,
     damage,
     age: 0,
+    ...(shot ? {
+      coordinateSpace: 'SIDE_VIEW_COMBAT' as const, launchedAt: state.elapsedSeconds,
+      launchDirection: { ...shot.launchDirection }, launchAngleRadians: shot.launchAngleRadians,
+      aimOffset: { x: shot.aimPoint.x - state.mothership.position.x, y: shot.aimPoint.y - BALANCE.mothership.baseAltitude, z: shot.aimPoint.z - state.mothership.position.z },
+    } : {}),
   });
 }
 

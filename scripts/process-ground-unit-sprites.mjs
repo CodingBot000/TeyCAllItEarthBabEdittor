@@ -4,6 +4,7 @@ import sharp from 'sharp';
 
 const projectRoot = path.resolve(new URL('..', import.meta.url).pathname);
 const sourcePath = path.join(projectRoot, 'art-source/battlescene/maps/city-night/ground-units-bundle-raw.png');
+const shadowSourcePath = path.join(projectRoot, 'assets/battlescene/shared/units/ground-unit-shadow.svg');
 const outputRoot = path.join(projectRoot, 'public/assets/runtime/sprites');
 const cellSize = 627;
 const padding = 4;
@@ -15,6 +16,7 @@ const units = [
 ];
 
 await fs.mkdir(outputRoot, { recursive: true });
+await fs.copyFile(shadowSourcePath, path.join(outputRoot, 'ground-unit-shadow.svg'));
 const { data, info } = await sharp(sourcePath).raw().toBuffer({ resolveWithObject: true });
 const outputs = [];
 
@@ -25,8 +27,9 @@ for (const unit of units) {
   outputs.push({ file: unit.name, width: cell.width, height: cell.height, bottomTrimmed: true });
 }
 
-await fs.writeFile(path.join(outputRoot, 'ground-unit-sprites.json'), `${JSON.stringify({ source: path.relative(projectRoot, sourcePath), outputs }, null, 2)}\n`);
-console.log(JSON.stringify({ source: path.relative(projectRoot, sourcePath), outputs }, null, 2));
+const manifest = { source: path.relative(projectRoot, sourcePath), shadow: path.relative(projectRoot, shadowSourcePath), outputs };
+await fs.writeFile(path.join(outputRoot, 'ground-unit-sprites.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+console.log(JSON.stringify(manifest, null, 2));
 
 function extractCell(unit) {
   const left = unit.column * cellSize;

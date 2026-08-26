@@ -9,7 +9,6 @@ import {
   Scene,
   SceneSerializer,
   StandardMaterial,
-  Texture,
   TransformNode,
   UniversalCamera,
   VertexData,
@@ -31,10 +30,6 @@ const BACKGROUND_TILE_WIDTH = 120;
 const BACKGROUND_REPEAT = BACKGROUND_WORLD_WIDTH / BACKGROUND_TILE_WIDTH;
 const NEAR_LAYER_SCALE = 0.7;
 const NEAR_LAYER_PLANE_HEIGHT = 60;
-const FIGHTER_SPRITE_URL = 'assets/battlescene/shared/units/fighter-8way.webp';
-const FIGHTER_ATLAS_COLUMNS = 4;
-const FIGHTER_ATLAS_ROWS = 2;
-const FIGHTER_SPRITE_SIZE = 5.4;
 const MOTHERSHIP_ATLAS_ASSET = 'mothership-saucer-atlas.png';
 const BACKGROUND_PLANE_HEIGHTS = {
   SkyRoot: 202.5,
@@ -121,68 +116,17 @@ childNode('DroneSpawnSocketCenter', droneSockets).position.set(2.3, 5.1, 0);
 childNode('DroneSpawnSocketRight', droneSockets).position.set(6, 3.8, 0);
 childNode('MothershipVfxSockets', visualRoot);
 
-const fighterRoot = childNode('FighterPoolRoot', airRoot);
-const droneRoot = childNode('DronePoolRoot', airRoot);
-const droneMaterial = createMaterial('DronePrototypeMaterial', new Color3(0.9, 0.55, 0.24));
-for (let index = 0; index < 3; index += 1) {
-  const fighter = MeshBuilder.CreatePlane('FighterPrototype' + (index + 1), { size: 1 }, scene);
-  fighter.parent = fighterRoot;
-  fighter.position.set(-20 + index * 17, 14 + (index % 2) * 5, 1.5 + index);
-  fighter.scaling.set(FIGHTER_SPRITE_SIZE, FIGHTER_SPRITE_SIZE, 1);
-  fighter.billboardMode = Mesh.BILLBOARDMODE_ALL;
-  fighter.isPickable = false;
-  const fighterMaterial = new StandardMaterial('FighterPrototypeMaterial' + (index + 1), scene);
-  fighterMaterial.diffuseColor = Color3.White();
-  fighterMaterial.emissiveColor = new Color3(0.24, 0.32, 0.38);
-  fighterMaterial.disableLighting = true;
-  fighterMaterial.backFaceCulling = false;
-  fighterMaterial.useAlphaFromDiffuseTexture = true;
-  fighterMaterial.transparencyMode = 2;
-  const fighterTexture = new Texture(FIGHTER_SPRITE_URL, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
-  const fighterFrame = index * 2;
-  const fighterUScale = 1 / FIGHTER_ATLAS_COLUMNS;
-  const fighterVScale = 1 / FIGHTER_ATLAS_ROWS;
-  fighterTexture.uScale = fighterUScale;
-  fighterTexture.vScale = fighterVScale;
-  fighterTexture.uOffset = (fighterFrame % FIGHTER_ATLAS_COLUMNS) * fighterUScale;
-  fighterTexture.vOffset = Math.floor(fighterFrame / FIGHTER_ATLAS_COLUMNS) * fighterVScale;
-  fighterTexture.hasAlpha = true;
-  fighterMaterial.diffuseTexture = fighterTexture;
-  fighterMaterial.emissiveTexture = fighterTexture;
-  fighterMaterial.metadata = {
-    textureUrl: FIGHTER_SPRITE_URL,
-    hasAlpha: true,
-    useAlphaFromDiffuseTexture: true,
-    textureUScale: fighterUScale,
-    textureVScale: fighterVScale,
-    textureUOffset: fighterTexture.uOffset,
-    textureVOffset: fighterTexture.vOffset,
-    textureWrapU: 0,
-    textureWrapV: 0,
-  };
-  textureMaterials.set(fighterMaterial.id, fighterMaterial.metadata);
-  fighter.material = fighterMaterial;
-  const drone = MeshBuilder.CreateSphere('DronePrototype' + (index + 1), { diameter: 2.2, segments: 12 }, scene);
-  drone.parent = droneRoot;
-  drone.position.set(-10 + index * 16, -1 + (index % 2) * 6, -1);
-  drone.material = droneMaterial;
-}
+// Keep the runtime pool and lane contract nodes available for the dynamic
+// visual systems. Prototype meshes do not belong in the shipped/editor scene:
+// fighters, drones, and ground units are created from CombatState at runtime.
+childNode('FighterPoolRoot', airRoot);
+childNode('DronePoolRoot', airRoot);
 
 const groundRoot = childNode('GroundBattleRoot', sceneRootNode);
 const laneDefinitions = childNode('GroundLaneDefinitions', groundRoot);
-const laneMaterial = createMaterial('GroundPrototypeMaterial', new Color3(0.52, 0.4, 0.3));
 for (const [index, x] of [-36, -8, 24].entries()) {
   const anchor = childNode('GroundLaneAnchor' + (index + 1), laneDefinitions);
   anchor.position.set(x, -7, 0);
-  const turret = MeshBuilder.CreateBox('GroundTurretPrototype' + (index + 1), { width: 8, height: 2.2, depth: 3.2 }, scene);
-  turret.parent = anchor;
-  turret.position.y = 2;
-  turret.material = laneMaterial;
-  const barrel = MeshBuilder.CreateCylinder('GroundBarrelPrototype' + (index + 1), { diameter: 0.7, height: 5, tessellation: 12 }, scene);
-  barrel.parent = anchor;
-  barrel.position.set(1, 4.1, -0.2);
-  barrel.rotation.z = Math.PI / 2;
-  barrel.material = laneMaterial;
 }
 childNode('WorldVfxRoot', sceneRootNode);
 childNode('BattleDebugRoot', sceneRootNode);

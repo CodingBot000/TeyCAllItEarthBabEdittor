@@ -1,5 +1,30 @@
 Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Development/game/webgame/TheyCallItEarth/ 여기서 사용한 모선 을 그대로 가져와서 적용해봐
 
+## 2026-08-26 — 지상 사격 위치 AI 구현 완료
+
+- 요청: `GROUND_UNIT_ATTACK_POSITIONING_AI_PLAN.md`에 따라 공통 AI와 실제 FACILITY/SAM 이동 전투를 구현한다.
+- 기준선: 기존 Vitest 57개와 typecheck 통과. 전체 lint는 기존 BattleScreen set-state-in-effect 오류 1건과 img 경고 2건.
+- 공통 공간 변환(전투 Y - 16.5), 17 기준속도, 좌우 소켓 pose, 실제 실드/선체 접촉체적을 분리했다. Editor GroundBattleRoot의 변환은 항등, SAM 소켓의 실제 Z는 1.1 - 1 = 0.1임을 확인했다.
+- 각도/타원 단면/거리 교차와 좌우 위치 구간, 접근·이격·재배치·진입·대기 AI를 추가했다. 새 순수 규칙 테스트 27개 통과.
+- SAM 발사 직전 AI 실행, 연사 재검사/취소, EMP 정지, 초기 발사 방향/좌표 보존, 선분 충돌을 연결했다. 일반 RAF와 advanceTime을 공통 60Hz 적분기로 통일했다.
+- 다른 작업에서 추가 중인 GroundShadow 및 그림자 에셋 변경은 보존한다.
+- 최종 typecheck, Vitest 95/95, production build, 변경 파일 ESLint, diff check 통과. 전체 lint는 위 기존 1오류/2경고만 남아 있다.
+- 전용 `test:e2e:ground-positioning` 통과: 1280×720/900×500/640×360, 좌우 발사, 속도·소켓·탄 좌표, 접근/이격/반대편 재배치/카메라/리사이즈/공간 부족/EMP/일시정지/파괴. 오류 0건, 결과는 `output/ground-unit-positioning`.
+- 기본 16:9 레이아웃에서는 세로 viewport만으로 월드 가시 폭이 줄지 않는다. 공간 부족은 테스트 페이지에만 실제 캔버스 폭 360px CSS를 적용해 검증한다. 제품 CSS와 숫자 AI 경계는 변경하지 않았다.
+- 기존 visual-sync, mobile 900/640, abort, failure, full-flow 브라우저 회귀 통과. 결과는 `output/ground-positioning-regression`.
+- 최종 production-debug 검증도 통과했다(debug query 무시/저장 유지/오류 0). 직접 시작한 3011 임시 서버는 종료했고 기존 3000 서버는 유지했다.
+- 기존 full-flow의 낡은 도시 버튼 선택자/문구, abort의 잘못된 VICTORY 기대를 현재 UI에 맞췄다. 흡수 전 이동은 현재 가속/감속을 계산해 정지 후 수행하도록 검증 스크립트를 보정했다.
+- 이번 기능의 남은 TODO는 없다. 차량끼리 겹치지 않게 하는 점유/충돌 정책과 다른 유닛 적용은 계획상 후속 범위다.
+
+## 2026-08-26 — 파괴 이미지 파편 VFX 추가
+
+- 기존 폭발 플립북·코어·링은 유지하고, 파괴되는 전투기와 지상 유닛의 현재 2D 텍스처 프레임을 5×2 총 10개 독립 Plane으로 분할했다.
+- 각 파편은 원본 UV 영역과 좌우 반전을 유지하며 결정적인 속도/회전값, 중력, 페이드, 1.15초 수명을 적용한다. 매 파괴 시 별도 파편 텍스처와 재질을 정리해 누수를 방지한다.
+- `render_game_to_text`의 `visuals.effects`에 `explosionCount`, `shatterCount`, `shatterPieceCount`를 추가했다.
+- 실제 Babylon 브라우저에서 지상 유닛 파괴 시 `explosionCount=1`, `shatterPieceCount=10`, 전투기 파괴 후 각 효과가 동시에 살아 있고 파편 20개(각 대상 10개)인 상태를 확인했다.
+- Node NullEngine은 `OffscreenCanvas`가 없어 GUI 포함 렌더 테스트에 사용할 수 없었으므로, 브라우저 E2E 진단으로 대체했다. 해당 검증은 콘솔/페이지/네트워크 오류 0건으로 통과했다.
+- 최종 검증은 `npm run check`(typecheck, Vitest 95/95, production build), 변경 파일 ESLint, `git diff --check`, 표준 develop-web-game 클라이언트까지 통과했다. 실제 캡처는 `output/ground-unit-positioning/ground-shatter.png`, `fighter-shatter.png`에 보존했다.
+
 ## 2026-08-24
 
 - 원본 모선은 GLB가 아니라 `src/rendering/babylon/tactical/MothershipVisual.ts`에서 Babylon 메시를 절차적으로 조립하는 구현임을 확인했다.
@@ -736,3 +761,80 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 3초가 지나면 손상 방공호 이미지로 전환되고, 다음 프레임부터 인간 흡수가 시작된다. 흡수가 중단되면 파괴 진행도는 유지된다.
 - WebP 에셋 3종을 768px/512px 폭으로 최적화해 `public/assets/runtime/sprites/`에 추가했다.
 - 도메인 상태 전환 테스트와 River Metropolis 브라우저 검증에서 방공호 표시, 3초 보호 구간, 파괴 후 흡수, 콘솔 오류 0건을 확인했다.
+
+## 2026-08-26 — 디브리핑 요약 문구 정리
+
+- `서울 표시 완료`와 `표적 보관량 저장 완료`처럼 시스템 내부 상태를 노출하던 문구를 삭제했다.
+- `방어 거점 N개 손실`을 공격자 관점의 `방어 거점 N개 파괴`로 변경했다.
+- `코어 충전`을 `코어 회수/충전`으로 변경하고 영어 문구도 동일한 의미로 맞췄다.
+
+## 2026-08-26 — 임무 준비 화면 재구성
+
+- 임무 준비 화면을 단순 텍스트 나열에서 도시 상태·출격 자원·임무 방식·지상 병력·특수 능력 설정 패널로 재구성했다.
+- `압박 방식을 선택하세요`를 `임무 방식을 선택하세요`로 정리하고, 임무 상태를 `상태 / 미접촉`으로 분리 표시했다.
+- 습격/점령을 명확한 선택 버튼 카드로 만들고, 왼쪽에 큰 임무명과 오른쪽에 제목/설명을 배치했다.
+- 상단 도시 정보는 4개 수치 패널, 자원 정보는 4개 컴팩트 패널로 정리했다. 임무 방식은 전체 폭, 병력·과충전은 2열로 배치해 세로 높이를 줄였다.
+- 1280×720·900×500에서 한 화면 내 표시를 확인했고, 640×360에서도 카드 구조와 텍스트가 깨지지 않음을 확인했다. Playwright 콘솔 오류 0건, 변경 TSX 정적 검사 통과, `git diff --check` 통과.
+
+## 2026-08-26 — 임무 준비 정보·임무 선택 배치 개선
+
+- 전력/기술/방공/저항 정보를 왼쪽 2×2 카드 하나로 통합하고, 코어/이동/셀/출격 후 잔량을 오른쪽 2×2 카드 하나로 통합했다.
+- 두 카드의 내부 칸별 테두리를 제거하고 카드 테두리만 유지해 구분선을 줄이면서 수치 글씨를 키웠다.
+- 임무 방식 영역은 왼쪽에 큰 `상태 / 미접촉` 라벨과 제목을, 오른쪽에 습격/점령 선택 버튼을 가로로 배치했다.
+- 1280×720·900×500·640×360 hot-reload 화면에서 새 배치와 반응형 구조를 확인했다. Playwright 콘솔 오류 0건, 변경 TSX 정적 검사와 `git diff --check` 통과. 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 임무 준비 수치 가로 정렬
+
+- 도시 정보/출격 자원 두 카드의 각 2×2 항목을 세로 라벨-값 구조에서 가로 `항목 — 값` 구조로 변경했다.
+- 1280×720에서는 항목 12px·값 18px, 900×500에서는 항목 10px·값 16px로 표시해 가독성을 높였다.
+- 1280×720·900×500 화면에서 카드 전체가 화면 안에 유지되는 것을 확인했다. 변경 파일 정적 검사와 `git diff --check` 통과, 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 임무 준비 수치 간격 압축
+
+- 도시/자원 카드의 항목과 값을 `space-between`으로 양끝에 배치하던 규칙을 제거했다.
+- 항목과 값 사이 간격을 6px로 고정하고 카드·행 간 여백도 줄여, 남는 가로 공간을 없애면서 글씨가 가까이 읽히도록 조정했다.
+- 1280×720·900×500 hot-reload 화면에서 컴팩트 배치와 화면 내 표시를 확인했다. 변경 파일 정적 검사와 `git diff --check` 통과, 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 병력·과충전 정보 가독성 확대
+
+- 지상 병력 행의 체크 표시, 병력명, 전력/응집도/통제력 수치를 크게 확대했다.
+- 과충전 셀 제목과 설명을 크게 확대해 한눈에 읽히도록 조정했다.
+- 유효한 구성에서 반복적으로 표시되던 `장비 구성 유효` 문구를 제거하고, 잘못된 구성일 때만 오류 사유를 표시하도록 변경했다.
+- 확정 버튼은 성공 상태에서도 오른쪽 정렬을 유지한다. 900×500 화면과 콘솔 오류 0건을 hot-reload로 확인했으며 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 임무 준비 보조 정보 글씨 확대
+
+- `투하 수용량`, `지휘 대역폭`, `강습 전용` 라벨을 11px, 값을 16px로 확대했다.
+- `과충전 셀` 제목을 19px, 설명을 11px로 유지해 화면의 주요 정보와 같은 가독성 수준으로 맞췄다.
+- 유효 상태의 `장비 구성 유효` 문구는 계속 숨기고 오류 상태에서만 사유를 표시한다. 1280×720 hot-reload 화면, 콘솔 오류 0건, 변경 파일 정적 검사와 `git diff --check`를 확인했다.
+
+## 2026-08-26 — 임무 준비 상태·단계 라벨 확대
+
+- `상태 / 미접촉`을 12px/30px로 확대하고 `01 / 02 / 03` 단계 라벨을 15px로 확대했다.
+- 1280×720 hot-reload 화면에서 확인했으며 화면 높이는 유지했다. 빌드는 실행하지 않았다.
+
+## 2026-08-26 — 지상 차량·구조물 공통 그림자
+
+- 차량과 구조물의 실제 실루엣을 추적하지 않는 단일 투명 SVG 그림자 에셋 `ground-unit-shadow.svg`를 추가했다.
+- 그림자 재질과 텍스처는 Babylon Scene 단위로 공유하고, 각 그림자 Mesh는 본체의 가로 폭 × `1.08`로 X 스케일만 조정한다. 높이는 `0.58`로 고정한다.
+- 빛이 완전 수직으로 떨어지지 않는 느낌을 위해 본체 바닥선보다 `0.06` 아래, X축 `+0.3`만큼 치우쳐 배치했다.
+- `BattleEntityVisuals`의 DEFENDER/SAM/RADAR/AIRBASE/POWER와 `BattleAbsorbableRegions`의 VEHICLE/ORGANIC/MACHINERY/POWER/DATA/RELIC에 동일 규칙을 적용했다.
+- 파괴·고갈·미발견·비표시 대상은 그림자도 함께 숨기며, 군중·코호트·투사체 같은 애니메이션 VFX에는 고정 그림자를 추가하지 않았다.
+- 원본 에셋은 `assets/battlescene/shared/units/ground-unit-shadow.svg`, 런타임 복사본은 `public/assets/runtime/sprites/ground-unit-shadow.svg`이며 `process-ground-unit-sprites.mjs`가 동기화한다.
+- 1280×720 DAY/NIGHT, 900×500, 640×360 전투 캡처에서 그림자 표시와 콘솔 오류 0건을 확인했다. 변경 파일 ESLint, production build, `git diff --check`가 통과했다.
+- 전체 타입검사는 기존 미커밋 지상공격 AI 테스트의 `HOLD` 비교 오류 때문에 실패하며, 전체 Vitest도 기존 SAM 발사 테스트 3건이 실패한다. 이번 그림자 변경 파일의 정적 검사와 production build에는 영향이 없다.
+
+## 2026-08-26 — 화면 배치 유닛 사용 경로 점검
+
+- `assets/battlescene.scene`의 `FighterPrototype1~3`, `DronePrototype1~3`, `GroundTurretPrototype1~3`, `GroundBarrelPrototype1~3`은 에디터 회색상자 잔재로 확인했다. 일반 런타임은 `hideDebugPrototypes`로 숨기며, `battle-debug=1`에서만 화면에 남는다.
+- 실제 전투기·SAM·지상 시설/경비대는 `CombatState` 기반 런타임 visual pool과 별도 스프라이트를 사용한다.
+- `BattleInfectedAssaultVfx`와 감염 강습 버튼은 현재 전투 상태·피해·코호트에 연결되지 않은 순수 시각 효과다.
+- 코호트 유형은 현재 `ASSAULT`만 생성·편성·배치되며, `SABOTEUR`·`HARVEST`는 저장 스키마/표시만 있고 선택 시 `COHORT TYPE LOCKED`로 거부된다.
+- Vitest 95/95, 지상 유닛 브라우저 검증, 표준 web-game 캡처를 확인했다. 이 점검에서는 코드 수정 없이 보고만 남겼다.
+
+## 2026-08-26 — 에디터 회색상자 잔재 제거
+
+- 요청에 따라 감염강습 구현은 그대로 보존하고, 에디터 전용 `FighterPrototype`, `DronePrototype`, `GroundTurretPrototype`, `GroundBarrelPrototype` 메시 12개와 관련 기하 산출물을 제거했다.
+- `scripts/create-battle-editor-scene.mjs`가 앞으로 해당 회색상자를 생성하지 않도록 수정했으며, `FighterPoolRoot`, `DronePoolRoot`, `GroundBattleRoot`, 레인 앵커 계약 노드는 유지했다.
+- 일반/디버그 배틀 씬의 패키징 참조에서 프로토타입 이름이 사라졌고, 감염강습 버튼은 `active=true`, `totalDrops=64`로 계속 동작한다.
+- TypeScript, Vitest 95/95, production build, 지상 유닛 3개 viewport 브라우저 회귀, 표준 web-game 캡처와 `git diff --check`를 통과했다.

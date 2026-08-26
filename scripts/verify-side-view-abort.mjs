@@ -36,7 +36,7 @@ try {
   const savedAfter = await page.evaluate((key) => localStorage.getItem(key), saveKey);
   if (savedAfter !== savedBefore) throw new Error('Debug battle changed the real campaign save.');
   if (await page.locator('.debrief-repair').count() !== 0) throw new Error('Aborted mission incorrectly showed a mothership emergency repair assessment.');
-  if (!await page.getByText('VICTORY').isVisible()) throw new Error('Aborted mission did not resolve through failed debrief.');
+  if (!await page.getByRole('heading', { name: '모선 대파', exact: true }).isVisible()) throw new Error('Aborted mission did not resolve through failed debrief.');
   if (errors.length > 0) throw new Error(`Browser errors:\n${errors.join('\n')}`);
   await writeFile(`${outputDirectory}/result.json`, JSON.stringify({ ok: true, saveUnchanged: savedAfter === savedBefore, errors }, null, 2));
 } catch (error) {

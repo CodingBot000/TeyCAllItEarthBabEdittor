@@ -1,3 +1,5 @@
+import type { GroundPositioningState } from './units/unitCombatTypes';
+
 export type AppScreen =
   | 'BOOT'
   | 'MAIN_MENU'
@@ -617,6 +619,11 @@ export interface MissileState {
   speed: number;
   damage: number;
   age: number;
+  coordinateSpace?: 'SIDE_VIEW_COMBAT';
+  launchedAt?: number;
+  launchDirection?: Vec3;
+  launchAngleRadians?: number;
+  aimOffset?: Vec3;
 }
 
 export interface AirDefenseShotEvent {
@@ -685,6 +692,7 @@ export interface CombatState {
   persistentAbsorbables: Record<string, AbsorbablePersistentState>;
   absorbableTargets: AbsorbableTargetState[];
   facilities: CombatFacilityState[];
+  groundUnitAi: Record<string, GroundPositioningState>;
   deployedCohorts: DeployedCohortState[];
   groundDefenders: GroundDefenderState[];
   controlNodes: ControlNodeState[];

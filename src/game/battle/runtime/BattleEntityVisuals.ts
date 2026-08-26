@@ -1,9 +1,12 @@
 import { Color3, Engine, Material, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, Vector3, type Scene } from '@babylonjs/core';
 import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from '@babylonjs/gui';
 import { BALANCE } from '../../domain/balance';
+import { GROUND_UNIT_ROOT_Z, groundMuzzlePose } from '../../domain/sideViewSpatialRules';
+import type { FacingX } from '../../domain/units/unitCombatTypes';
 import { fighterCombatCenter, fighterKeepOutMetric } from '../../domain/combatRules';
 import type { CombatState, EnemyState, FacilityKind } from '../../domain/types';
 import { GROUND_ENTITY_ROOT_Y, GROUND_SAM_ATTACK_SPAWN_LOCAL, GROUND_SAM_BODY_HEIGHT, GROUND_SAM_BODY_LOCAL_Y, GROUND_SAM_HEALTH_BAR_LOCAL_Y, GROUND_SAM_ROOT_Y } from './battleVisualCoordinates';
+import { acquireGroundShadowMaterial, createGroundShadowMesh, placeGroundShadow, syncGroundShadow, type GroundShadowMaterialHandle } from './GroundShadow';
 
 const FIGHTER_SPRITE_URL = '/assets/runtime/sprites/fighter-side-4way.webp';
 const GROUND_SAM_SPRITE_URL = '/assets/runtime/sprites/ground-sam-mobile-side-elevated.png';
@@ -26,6 +29,11 @@ const FIGHTER_SMOKE_MAX_TOTAL = 60;
 const FIGHTER_HIT_FLASH_DURATION = 0.14;
 const FIGHTER_EXPLOSION_DURATION = 0.62;
 const FIGHTER_EXPLOSION_FRAMES = [1, 5, 8, 9, 10, 11];
+const SHATTER_PIECE_COUNT = 10;
+const SHATTER_COLUMNS = 5;
+const SHATTER_ROWS = SHATTER_PIECE_COUNT / SHATTER_COLUMNS;
+const SHATTER_DURATION = 1.15;
+const SHATTER_GRAVITY = -4.8;
 const GROUND_HIT_FLASH_DURATION = 0.18;
 
 type GroundSpriteKey = 'DEFENDER' | 'RADAR' | 'AIRBASE' | 'POWER';
@@ -94,12 +102,29 @@ interface FighterExplosion {
   scale: number;
 }
 
+interface ShatterPiece {
+  mesh: Mesh;
+  velocity: Vector3;
+  rotationVelocity: Vector3;
+  age: number;
+}
+
+interface ShatterEffect {
+  pieces: ShatterPiece[];
+  elapsed: number;
+  duration: number;
+}
+
 interface GroundVisual {
   id: string;
   kind: 'DEFENDER' | 'FACILITY';
   group: GroundUnitGroup;
   root: TransformNode;
   body: Mesh;
+  shadow: Mesh;
+  sourceTexture: Texture;
+  bodyWidth: number;
+  bodyHeight: number;
   bodyBaseScaleX: number;
   healthFill: Mesh;
   healthTrack: Mesh;
@@ -118,7 +143,8 @@ interface GroundVisual {
 
 export interface BattleEntityVisualSnapshot {
   fighters: Array<{ id: string; x: number; y: number; z: number; bank: number; pitch: number; relativeDistance3D: number; keepOutMetric: number; keepOutCorrected: boolean; flightMode: EnemyState['flightMode']; behindMothership: boolean; occluded: boolean; trailVisible: boolean; smokePuffCount: number }>;
-  ground: Array<{ id: string; kind: 'DEFENDER' | 'FACILITY'; group: GroundUnitGroup; x: number; y: number; z: number; destroyed: boolean }>;
+  ground: Array<{ id: string; kind: 'DEFENDER' | 'FACILITY'; group: GroundUnitGroup; x: number; y: number; z: number; destroyed: boolean; facingX: number; muzzle: { x: number; y: number; z: number } | null }>;
+  effects: { explosionCount: number; shatterCount: number; shatterPieceCount: number };
 }
 
 export class BattleEntityVisuals {
@@ -140,10 +166,12 @@ export class BattleEntityVisuals {
   private readonly healthFillMaterial: StandardMaterial;
   private readonly samTexture: Texture;
   private readonly samMaterial: StandardMaterial;
+  private readonly groundShadowMaterial: GroundShadowMaterialHandle;
   private readonly groundSpriteTextures = new Map<GroundSpriteKey, Texture>();
   private readonly groundSpriteMaterials = new Map<GroundSpriteKey, StandardMaterial>();
   private readonly groundLabelUi: AdvancedDynamicTexture;
   private readonly fighterExplosions: FighterExplosion[] = [];
+  private readonly shatterEffects: ShatterEffect[] = [];
 
   constructor(private readonly scene: Scene, fighterRoot: TransformNode, groundRoot: TransformNode, private readonly mothershipRoot: TransformNode) {
     this.root = new TransformNode('BattleEntityVisualsRoot', scene);
@@ -182,6 +210,7 @@ export class BattleEntityVisuals {
     this.healthTrackMaterial = this.material('battle-entity-health-track', new Color3(0.14, 0.16, 0.18));
     this.healthFillMaterial = this.material('battle-entity-health-fill', new Color3(0.36, 1, 0.64));
     this.groundLabelUi = AdvancedDynamicTexture.CreateFullscreenUI('BattleGroundLabelsUi', true, scene);
+    this.groundShadowMaterial = acquireGroundShadowMaterial(scene);
     this.samTexture = new Texture(GROUND_SAM_SPRITE_URL, scene, true, true, Texture.TRILINEAR_SAMPLINGMODE);
     this.samTexture.hasAlpha = true;
     this.samTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
@@ -210,7 +239,7 @@ export class BattleEntityVisuals {
     }
     for (const [id, visual] of this.fighterVisuals) {
       if (activeFighterIds.has(id)) continue;
-      this.createFighterExplosion(visual.root.getAbsolutePosition().clone());
+      this.createFighterExplosion(visual.root.getAbsolutePosition().clone(), visual);
       this.disposeFighter(visual);
       this.fighterVisuals.delete(id);
     }
@@ -226,12 +255,13 @@ export class BattleEntityVisuals {
       const id = `facility:${facility.id}`;
       activeGroundIds.add(id);
       const visual = this.groundVisuals.get(id) ?? this.createGround(id, 'FACILITY', this.groundVisualRoot, facility.maxHealth, facility.kind);
-      this.syncGround(visual, facility.position.x, state.mothership.position.x, facility.health, facility.destroyed, facility.disabledUntil > state.elapsedSeconds);
+      this.syncGround(visual, facility.position.x, state.mothership.position.x, facility.health, facility.destroyed, facility.disabledUntil > state.elapsedSeconds, state.groundUnitAi[facility.id]?.facingX);
     }
     for (const [id, visual] of this.groundVisuals) {
       if (activeGroundIds.has(id)) continue;
       visual.labelPanel?.dispose();
       visual.labelAnchor?.dispose(false, true);
+      visual.shadow.dispose();
       visual.root.dispose(false, true);
       this.groundVisuals.delete(id);
     }
@@ -255,6 +285,11 @@ export class BattleEntityVisuals {
         trailVisible: visual.trailActive,
         smokePuffCount: visual.smokePuffs.length,
       })).sort((a, b) => a.id.localeCompare(b.id)),
+      effects: {
+        explosionCount: this.fighterExplosions.length,
+        shatterCount: this.shatterEffects.length,
+        shatterPieceCount: this.shatterEffects.reduce((count, effect) => count + effect.pieces.length, 0),
+      },
       ground: [...this.groundVisuals.values()].map((visual) => ({
         id: visual.id.replace(/^(defender|facility):/, ''),
         kind: visual.kind,
@@ -263,6 +298,12 @@ export class BattleEntityVisuals {
         y: round(visual.root.position.y),
         z: round(visual.root.position.z),
         destroyed: visual.destroyed,
+        facingX: Math.sign(visual.body.scaling.x),
+        muzzle: visual.attackSpawn ? (() => {
+          visual.attackSpawn.computeWorldMatrix(true);
+          const point = visual.attackSpawn.getAbsolutePosition();
+          return { x: round(point.x), y: round(point.y), z: round(point.z) };
+        })() : null,
       })).sort((a, b) => a.id.localeCompare(b.id)),
     };
   }
@@ -276,6 +317,7 @@ export class BattleEntityVisuals {
 
   resetGroundUnitPositions(): void {
     this.groundPositionOverrides.clear();
+    for (const visual of this.groundVisuals.values()) this.applyGroundPosition(visual, visual.root.position.x, visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y);
   }
 
   getGroundAttackSpawnPosition(facilityId: string): Vector3 | null {
@@ -298,6 +340,7 @@ export class BattleEntityVisuals {
     this.groundVisuals.forEach((visual) => {
       visual.labelPanel?.dispose();
       visual.labelAnchor?.dispose(false, true);
+      visual.shadow.dispose();
       visual.root.dispose(false, true);
     });
     this.groundVisuals.clear();
@@ -307,7 +350,9 @@ export class BattleEntityVisuals {
     this.groundSpriteTextures.forEach((texture) => texture.dispose());
     this.groundSpriteMaterials.clear();
     this.groundSpriteTextures.clear();
+    this.groundShadowMaterial.release();
     this.fighterExplosions.splice(0).forEach((effect) => this.disposeFighterExplosion(effect));
+    this.shatterEffects.splice(0).forEach((effect) => this.disposeShatterEffect(effect));
     [this.fighterFallbackMaterial, this.fighterTrailMaterial, this.fighterCoreTrailMaterial, this.fighterSmokeMaterial, this.fighterHitMaterial, this.fighterExplosionMaterial, this.healthTrackMaterial, this.healthFillMaterial, this.samMaterial].forEach((material) => material.dispose());
     this.fighterSmokeTexture.dispose();
     this.samTexture.dispose();
@@ -508,6 +553,24 @@ export class BattleEntityVisuals {
         this.fighterExplosions.splice(index, 1);
       }
     }
+    for (let index = this.shatterEffects.length - 1; index >= 0; index -= 1) {
+      const effect = this.shatterEffects[index];
+      effect.elapsed += dt;
+      const progress = Math.min(1, effect.elapsed / effect.duration);
+      for (const piece of effect.pieces) {
+        piece.age += dt;
+        piece.velocity.y += SHATTER_GRAVITY * dt;
+        piece.mesh.position.addInPlace(piece.velocity.scale(dt));
+        piece.mesh.rotation.x += piece.rotationVelocity.x * dt;
+        piece.mesh.rotation.y += piece.rotationVelocity.y * dt;
+        piece.mesh.rotation.z += piece.rotationVelocity.z * dt;
+        piece.mesh.visibility = Math.max(0, 1 - progress * progress);
+      }
+      if (progress >= 1) {
+        this.disposeShatterEffect(effect);
+        this.shatterEffects.splice(index, 1);
+      }
+    }
   }
 
   private extendFighterTrail(visual: FighterVisual, position: Vector3): void {
@@ -590,8 +653,12 @@ export class BattleEntityVisuals {
     visual.trailLastPosition = null;
   }
 
-  private createFighterExplosion(position: Vector3): void {
+  private createFighterExplosion(position: Vector3, visual?: FighterVisual): void {
     this.createExplosionEffect(position, 1);
+    if (visual) {
+      const bounds = visual.sprite.getBoundingInfo().boundingBox.extendSize;
+      this.createShatterEffect(visual.sprite, visual.texture, bounds.x * 2, bounds.y * 2, visual.sprite.scaling.x < 0);
+    }
   }
 
   private createExplosionEffect(position: Vector3, scale: number): void {
@@ -619,12 +686,97 @@ export class BattleEntityVisuals {
     this.fighterExplosions.push({ sprite, core, ring, material: spriteMaterial, texture: explosionTexture, elapsed: 0, scale });
   }
 
+  /** Breaks the final rendered 2D frame into ten independent texture pieces.
+   * The original explosion sprite/core/ring is still created separately above. */
+  private createShatterEffect(body: Mesh, sourceTexture: Texture, bodyWidth: number, bodyHeight: number, mirrored: boolean): void {
+    body.computeWorldMatrix(true);
+    const bodyWorld = body.getWorldMatrix();
+    const localWidth = body.getBoundingInfo().boundingBox.extendSize.x * 2;
+    const localHeight = body.getBoundingInfo().boundingBox.extendSize.y * 2;
+    const baseUScale = sourceTexture.uScale;
+    const baseVScale = sourceTexture.vScale;
+    const baseUOffset = sourceTexture.uOffset;
+    const baseVOffset = sourceTexture.vOffset;
+    const pieces: ShatterPiece[] = [];
+    const center = body.absolutePosition.clone();
+    const seed = Math.abs(Math.round((center.x * 37 + center.y * 101 + center.z * 17) * 1000)) + this.shatterEffects.length * 19;
+
+    for (let row = 0; row < SHATTER_ROWS; row += 1) {
+      for (let column = 0; column < SHATTER_COLUMNS; column += 1) {
+        const texture = sourceTexture.clone();
+        texture.wrapU = Texture.CLAMP_ADDRESSMODE;
+        texture.wrapV = Texture.CLAMP_ADDRESSMODE;
+        texture.uScale = baseUScale / SHATTER_COLUMNS;
+        texture.vScale = baseVScale / SHATTER_ROWS;
+        texture.uOffset = baseUOffset + baseUScale * column / SHATTER_COLUMNS;
+        texture.vOffset = baseVOffset + baseVScale * row / SHATTER_ROWS;
+
+        const mesh = MeshBuilder.CreatePlane(`battle-shatter-piece-${this.shatterEffects.length}-${row}-${column}`, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+        mesh.material = this.createShatterMaterial(texture);
+        mesh.renderingGroupId = 3;
+        mesh.isPickable = false;
+        const localCenter = new Vector3(
+          -localWidth / 2 + (column + 0.5) * localWidth / SHATTER_COLUMNS,
+          -localHeight / 2 + (row + 0.5) * localHeight / SHATTER_ROWS,
+          0,
+        );
+        mesh.position.copyFrom(Vector3.TransformCoordinates(localCenter, bodyWorld));
+        mesh.scaling.set(bodyWidth / SHATTER_COLUMNS, bodyHeight / SHATTER_ROWS, 1);
+        if (mirrored) mesh.scaling.x *= -1;
+        if (body.rotationQuaternion) mesh.rotationQuaternion = body.rotationQuaternion.clone();
+        else mesh.rotation.copyFrom(body.rotation);
+
+        const radial = mesh.position.subtract(center);
+        if (radial.lengthSquared() < 0.0001) radial.set(randomSigned(seed, column, 0), 0, randomSigned(seed, column, 1));
+        radial.normalize();
+        const speed = 2.1 + randomUnit(seed, row * SHATTER_COLUMNS + column, 0) * 2.6;
+        const velocity = radial.scale(speed);
+        velocity.y += 1.5 + randomUnit(seed, row * SHATTER_COLUMNS + column, 1) * 2.2;
+        velocity.z += randomSigned(seed, row * SHATTER_COLUMNS + column, 2) * 0.7;
+        pieces.push({
+          mesh,
+          velocity,
+          rotationVelocity: new Vector3(
+            randomSigned(seed, row * SHATTER_COLUMNS + column, 3) * 5,
+            randomSigned(seed, row * SHATTER_COLUMNS + column, 4) * 5,
+            randomSigned(seed, row * SHATTER_COLUMNS + column, 5) * 7,
+          ),
+          age: 0,
+        });
+      }
+    }
+    this.shatterEffects.push({ pieces, elapsed: 0, duration: SHATTER_DURATION });
+  }
+
+  private createShatterMaterial(texture: Texture): StandardMaterial {
+    const material = new StandardMaterial(`battle-shatter-material-${this.shatterEffects.length}-${texture.uniqueId}`, this.scene);
+    material.diffuseColor = Color3.White();
+    material.emissiveColor = Color3.White();
+    material.disableLighting = true;
+    material.backFaceCulling = false;
+    material.useAlphaFromDiffuseTexture = true;
+    material.transparencyMode = Engine.ALPHA_COMBINE;
+    material.diffuseTexture = texture;
+    material.emissiveTexture = texture;
+    return material;
+  }
+
   private disposeFighterExplosion(effect: FighterExplosion): void {
     effect.sprite.dispose();
     effect.core.dispose();
     effect.ring.dispose();
     effect.material.dispose();
     effect.texture.dispose();
+  }
+
+  private disposeShatterEffect(effect: ShatterEffect): void {
+    for (const piece of effect.pieces) {
+      const material = piece.mesh.material;
+      const texture = material instanceof StandardMaterial ? material.diffuseTexture : null;
+      piece.mesh.dispose();
+      material?.dispose();
+      texture?.dispose();
+    }
   }
 
   private createGround(id: string, kind: GroundVisual['kind'], parent: TransformNode, maximumHealth: number, facilityKind?: FacilityKind): GroundVisual {
@@ -647,8 +799,12 @@ export class BattleEntityVisuals {
     body.position.set(0, isSam ? GROUND_SAM_BODY_LOCAL_Y : spriteDimensions ? spriteDimensions.height / 2 : kind === 'FACILITY' ? 1.4 : 0.9, isSam ? -1 : 0);
     body.renderingGroupId = 3;
     body.isPickable = false;
+    const bodyWidth = spriteDimensions?.width ?? (isSam ? 8 : 1);
+    const bodyHeight = spriteDimensions?.height ?? (isSam ? GROUND_SAM_BODY_HEIGHT : 1);
     if (isSam) body.material = this.samMaterial;
     else if (spriteKey) body.material = this.groundSpriteMaterial(spriteKey);
+    const shadow = createGroundShadowMesh(`${root.name}-shadow`, this.scene, root, this.groundShadowMaterial.material);
+    placeGroundShadow(shadow, bodyWidth, body.position.y - bodyHeight / 2);
     const healthTrack = MeshBuilder.CreateBox(`${root.name}-health-track`, { width: 4.4, height: 0.22, depth: 0.08 }, this.scene);
     healthTrack.parent = root;
     healthTrack.position.set(0, isSam ? GROUND_SAM_HEALTH_BAR_LOCAL_Y : kind === 'FACILITY' ? 3.35 : 2.45, -0.2);
@@ -695,23 +851,33 @@ export class BattleEntityVisuals {
     hitFlash.renderingGroupId = 3;
     hitFlash.isPickable = false;
     hitFlash.visibility = 0;
-    const visual = { id, kind, group, root, body, bodyBaseScaleX: Math.abs(body.scaling.x), healthFill, healthTrack, maximumHealth, isSam, isDirectional: isSam || spriteKey === 'DEFENDER', spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel, hitFlash, previousHealth: maximumHealth, hitElapsed: 0 };
+    const visual: GroundVisual = { id, kind, group, root, body, shadow, bodyBaseScaleX: Math.abs(body.scaling.x), healthFill, healthTrack, maximumHealth, isSam, isDirectional: isSam || spriteKey === 'DEFENDER', spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel, hitFlash, previousHealth: maximumHealth, hitElapsed: 0,
+      sourceTexture: isSam ? this.samTexture : this.groundSpriteTextures.get(spriteKey ?? 'POWER')!,
+      bodyWidth,
+      bodyHeight,
+    };
     this.groundVisuals.set(id, visual);
     return visual;
   }
 
-  private syncGround(visual: GroundVisual, x: number, mothershipX: number, health: number, destroyed: boolean, disabled: boolean): void {
+  private syncGround(visual: GroundVisual, x: number, mothershipX: number, health: number, destroyed: boolean, disabled: boolean, aiFacingX?: FacingX): void {
     if (health < visual.previousHealth - 0.001 && !visual.destroyed) visual.hitElapsed = GROUND_HIT_FLASH_DURATION;
-    if (destroyed && !visual.destroyed) {
-      this.createExplosionEffect(visual.root.getAbsolutePosition().clone(), visual.isSam ? 1.15 : 0.9);
-    }
-    visual.previousHealth = health;
     const override = this.groundPositionOverrides.get(visual.group);
     this.applyGroundPosition(visual, x, override ?? (visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y));
     if (visual.isDirectional) {
-      visual.body.scaling.x = facingScaleX(visual.bodyBaseScaleX, x, mothershipX);
+      visual.body.scaling.x = aiFacingX ? visual.bodyBaseScaleX * aiFacingX : facingScaleX(visual.bodyBaseScaleX, x, mothershipX);
+      if (visual.attackSpawn) {
+        const local = groundMuzzlePose({ x: 0, y: 0, z: 0 }, GROUND_SAM_ATTACK_SPAWN_LOCAL, Math.sign(visual.body.scaling.x) as FacingX);
+        visual.attackSpawn.position.set(local.x, local.y, local.z);
+      }
     }
+    if (destroyed && !visual.destroyed) {
+      this.createExplosionEffect(visual.root.getAbsolutePosition().clone(), visual.isSam ? 1.15 : 0.9);
+      this.createShatterEffect(visual.body, visual.sourceTexture, visual.bodyWidth, visual.bodyHeight, visual.body.scaling.x < 0);
+    }
+    visual.previousHealth = health;
     visual.root.setEnabled(!destroyed);
+    syncGroundShadow(visual.shadow, !destroyed, disabled ? 0.52 : undefined);
     if (visual.labelAnchor && visual.labelPanel) {
       visual.labelAnchor.position.x = x;
       visual.labelPanel.isVisible = !destroyed;
@@ -738,7 +904,7 @@ export class BattleEntityVisuals {
   }
 
   private applyGroundPosition(visual: GroundVisual, x: number, y: number): void {
-    visual.root.position.set(x, y, 1.1);
+    visual.root.position.set(x, y, GROUND_UNIT_ROOT_Z);
     if (visual.labelAnchor) {
       visual.labelAnchor.position.x = x;
       visual.labelAnchor.position.y = y + GROUND_SAM_BODY_LOCAL_Y + 4.8;
@@ -798,6 +964,17 @@ function setAtlasFrame(texture: Texture, columns: number, rows: number, frame: n
   texture.vScale = 1 / rows;
   texture.uOffset = (frame % columns) / columns;
   texture.vOffset = Math.floor(frame / columns) / rows;
+}
+
+function randomUnit(seed: number, index: number, channel: number): number {
+  let value = (seed ^ Math.imul(index + 1, 0x45d9f3b) ^ Math.imul(channel + 1, 0x119de1f3)) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b) >>> 0;
+  return ((value ^ (value >>> 16)) >>> 0) / 0x1_0000_0000;
+}
+
+function randomSigned(seed: number, index: number, channel: number): number {
+  return randomUnit(seed, index, channel) * 2 - 1;
 }
 
 function round(value: number): number {

@@ -3,14 +3,31 @@ import { CITIES } from '../../data/cities';
 import { TACTICAL_PRESETS } from '../../data/tacticalPresets';
 import { createNewCampaign, stageMissionResult } from '../../domain/campaignRules';
 import { BALANCE } from '../../domain/balance';
-import { fighterCombatCenter, fighterKeepOutMetric, fighterSegmentKeepOutIntersection, projectFighterOutsideKeepOut, tickCombat } from '../../domain/combatRules';
-import { resolveRecoveredCohorts } from '../../domain/cohortRules';
+import { fighterCombatCenter, fighterKeepOutMetric, fighterSegmentKeepOutIntersection, projectFighterOutsideKeepOut, tickCombat as domainTickCombat, type CombatTickOptions } from '../../domain/combatRules';
+import { createDeployedCohorts, resolveRecoveredCohorts, tickCohorts } from '../../domain/cohortRules';
+import { mothershipContactVolume } from '../../domain/combatGeometry';
+import type { CombatState } from '../../domain/types';
 import { COASTAL_GAMEPLAY_PROFILE } from './BattleGameplayProfile';
 import { createPlannedBattleSetup } from './battleSetupRules';
 import { generateAbsorbableClusters } from './generateAbsorbableClusters';
 import { tickGroundSwarm } from './groundSwarmRules';
 import { ABSORBABLE_KINDS } from './sideViewResourcePools';
 import { abortSideViewBattle, beginSideViewExtraction, createSideViewBattleSession, discoverNearbySideViewTargets, tickSideViewBattle } from './sideViewBattleRules';
+
+const spatialFixture = { worldBounds: { minX: -132, maxX: 132 }, visibleBounds: { minX: -120, maxX: 120 }, groundRootY: -16.5, groundRootZ: 1.1 };
+function tickCombat(state: CombatState, dt: number, options: CombatTickOptions = {}) {
+  domainTickCombat(state, dt, { sideViewSpatial: spatialFixture, ...options });
+}
+function samFixture(x = -50) {
+  const campaign = createNewCampaign(7412);
+  const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+  const session = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
+  const state = session.combatState;
+  const sam = state.facilities.find((facility) => facility.kind === 'SAM')!;
+  state.facilities = [sam]; state.enemies = []; state.lastWaveAlert = 100;
+  sam.position.x = x; state.facilityCooldowns[sam.id] = 0;
+  return { ...session, state, sam };
+}
 
 describe('side-view battle gameplay', () => {
   it('generates deterministic, spaced clusters across the initial and offscreen regions', () => {
@@ -227,14 +244,21 @@ describe('side-view battle gameplay', () => {
     const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
     const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
     const sam = combatState.facilities.find((facility) => facility.kind === 'SAM')!;
-    sam.position = { x: 0, z: 0 };
+    sam.position = { x: -50, z: 0 };
     combatState.facilityCooldowns[sam.id] = 0;
 
     tickCombat(combatState, 0.01);
 
     const missile = combatState.missiles.find((candidate) => candidate.source === 'sam' && candidate.sourceId === sam.id);
-    expect(missile?.launchPosition).toEqual(sam.position);
-    expect(missile?.launchY).toBe(3.5);
+    expect(missile?.launchPosition.x).toBeCloseTo(-50.9, 8);
+    expect(missile?.launchPosition.z).toBeCloseTo(0.1, 8);
+    expect(missile?.launchY).toBe(4.6);
+    expect(missile?.launchAngleRadians).toBeGreaterThanOrEqual(20 * Math.PI / 180);
+    expect(missile?.launchAngleRadians).toBeLessThanOrEqual(40 * Math.PI / 180);
+    const launch = { ...missile!.launchPosition };
+    sam.position.x = 70;
+    tickCombat(combatState, 0.01);
+    expect(missile!.launchPosition).toEqual(launch);
   });
 
   it('fires two SAM missiles 0.3 seconds apart before restoring the normal cooldown', () => {
@@ -242,6 +266,7 @@ describe('side-view battle gameplay', () => {
     const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
     const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
     const sam = combatState.facilities.find((facility) => facility.kind === 'SAM')!;
+    sam.position.x = -50;
     combatState.facilityCooldowns[sam.id] = 0;
 
     tickCombat(combatState, 0.01);
@@ -318,12 +343,12 @@ describe('side-view battle gameplay', () => {
     expect(combatState.missiles[0]?.age).toBeCloseTo(0.01, 5);
   });
 
-  it('allows active SAMs to fire beyond the ship range and missile-count threshold', () => {
+  it('does not impose a missile-count cap on a geometrically eligible SAM', () => {
     const campaign = createNewCampaign(7413);
     const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
     const { combatState } = createSideViewBattleSession(campaign, city, campaign.cities[city.id], TACTICAL_PRESETS[city.tacticalPresetId]);
     const sam = combatState.facilities.find((facility) => facility.kind === 'SAM')!;
-    sam.position = { x: 90, z: 0 };
+    sam.position = { x: 70, z: 0 };
     combatState.facilityCooldowns[sam.id] = 0;
     combatState.missiles = Array.from({ length: 16 }, (_, index) => ({
       id: `filler-${index}`,
@@ -343,6 +368,114 @@ describe('side-view battle gameplay', () => {
     tickCombat(combatState, 0.01);
 
     expect(combatState.missiles.some((missile) => missile.source === 'sam' && missile.sourceId === sam.id)).toBe(true);
+  });
+
+  it('retreats from directly underneath, approaches from too far away, and fires only after stopping', () => {
+    for (const x of [0, -110]) {
+      const { state, sam } = samFixture(x);
+      tickCombat(state, 1 / 60, { disablePointDefense: true });
+      expect(state.missiles).toHaveLength(0);
+      expect(Math.abs(sam.position.x - x)).toBeCloseTo(11.9 / 60, 8);
+      expect(state.facilityCooldowns[sam.id]).toBe(0);
+      for (let i = 0; i < 900 && state.missiles.length === 0; i += 1) tickCombat(state, 1 / 60, { disablePointDefense: true });
+      expect(state.missiles).toHaveLength(1);
+      expect(state.groundUnitAi[sam.id].mode).toBe('HOLD');
+    }
+  });
+
+  it('fails closed without a side-view spatial context and leaves legacy firing intact', () => {
+    const { state, sam } = samFixture();
+    domainTickCombat(state, 0.1);
+    expect(state.missiles).toHaveLength(0);
+    expect(sam.position.x).toBe(-50);
+    expect(state.groundUnitAi[sam.id].blockedReason).toBe('MISSING_SPATIAL_CONTEXT');
+    state.battleMode = 'LEGACY_TACTICAL';
+    domainTickCombat(state, 0.1);
+    expect(state.missiles[0].launchY).toBe(3.5);
+    expect(state.missiles[0].coordinateSpace).toBeUndefined();
+  });
+
+  it.each(['target', 'view', 'emp'] as const)('cancels pending burst on %s loss and uses a normal cooldown', (loss) => {
+    const { state, sam } = samFixture();
+    tickCombat(state, 0.01, { disablePointDefense: true });
+    expect(state.facilityBurstRemaining[sam.id]).toBe(1);
+    if (loss === 'target') state.mothership.position.x = sam.position.x;
+    if (loss === 'emp') sam.disabledUntil = state.elapsedSeconds + 2;
+    tickCombat(state, 0.1, { disablePointDefense: true, sideViewSpatial: loss === 'view'
+      ? { ...spatialFixture, visibleBounds: { minX: 0, maxX: 100 } } : spatialFixture });
+    expect(state.facilityBurstRemaining[sam.id]).toBe(0);
+    expect(state.facilityCooldowns[sam.id]).toBeGreaterThanOrEqual(1.5);
+    expect(state.missiles.filter((missile) => missile.sourceId === sam.id)).toHaveLength(1);
+    const cooldown = state.facilityCooldowns[sam.id]; const x = sam.position.x;
+    if (loss === 'emp') {
+      const facing = state.groundUnitAi[sam.id].facingX;
+      tickCombat(state, 0.25, { disablePointDefense: true });
+      expect(state.facilityCooldowns[sam.id]).toBe(cooldown);
+      expect(sam.position.x).toBe(x);
+      expect(state.groundUnitAi[sam.id].facingX).toBe(facing);
+      sam.disabledUntil = 0;
+    }
+    state.mothership.position.x = 0;
+    tickCombat(state, 0.01, { disablePointDefense: true });
+    expect(state.missiles.filter((missile) => missile.sourceId === sam.id)).toHaveLength(1);
+  });
+
+  it('uses current shield/hull geometry and preserves the legal initial direction and launch snapshot', () => {
+    const { state, sam } = samFixture(-30);
+    tickCombat(state, 0.01, { disablePointDefense: true });
+    const missile = state.missiles[0];
+    expect(missile).toBeDefined();
+    const measuredAngle = Math.atan2(missile.y - missile.launchY, Math.abs(missile.position.x - missile.launchPosition.x));
+    expect(measuredAngle).toBeCloseTo(missile.launchAngleRadians!, 8);
+    const launch = JSON.stringify({ ...missile.launchPosition, y: missile.launchY });
+    state.mothership.shield = 0; state.mothership.shieldRegenDelay = 5;
+    expect(mothershipContactVolume(state, 0.25).radii.y).toBeCloseTo(2.35, 8);
+    tickCombat(state, 0.01, { disablePointDefense: true });
+    const hull = mothershipContactVolume(state, 0.25);
+    const shot = state.groundUnitAi[sam.id].shot;
+    expect(shot.allowed && shot.targetKind).toBe('HULL');
+    const offset = missile.aimOffset!;
+    expect((offset.x / hull.radii.x) ** 2 + (offset.y / hull.radii.y) ** 2 + (offset.z / hull.radii.z) ** 2).toBeLessThanOrEqual(1 + 1e-9);
+    sam.destroyed = true; sam.health = 0;
+    tickCombat(state, 0.01, { disablePointDefense: true });
+    expect(state.groundUnitAi[sam.id]).toBeUndefined();
+    expect(JSON.stringify({ ...missile.launchPosition, y: missile.launchY })).toBe(launch);
+    expect(state.missiles).toContain(missile);
+  });
+
+  it('cleans AI on battle end and keeps shared presets, resource vehicles and control nodes stationary', () => {
+    const original = JSON.stringify(TACTICAL_PRESETS);
+    const { state } = samFixture(0);
+    const resources = state.absorbableTargets.map((target) => ({ ...target.center }));
+    const nodes = state.controlNodes.map((node) => ({ ...node.position }));
+    for (let i = 0; i < 60; i += 1) tickCombat(state, 1 / 60);
+    expect(JSON.stringify(TACTICAL_PRESETS)).toBe(original);
+    expect(state.absorbableTargets.map((target) => target.center)).toEqual(resources);
+    expect(state.controlNodes.map((node) => node.position)).toEqual(nodes);
+    abortSideViewBattle(state);
+    expect(state.groundUnitAi).toEqual({});
+    const x = state.facilities[0].position.x;
+    tickCombat(state, 1);
+    expect(state.facilities[0].position.x).toBe(x);
+  });
+
+  it('makes drones and assault cohorts track the current moving facility position', () => {
+    const { state, sam, profile } = samFixture(0);
+    state.groundSwarmProjectiles = [{ id: 'moving-target-test', targetId: sam.id, startX: -20, targetX: 0, progress: 0.99, duration: 1, arcHeight: 3, weavePhase: 0, damage: 1 }];
+    tickCombat(state, 0.1);
+    tickGroundSwarm(state, profile, 0.1);
+    expect(state.groundSwarmImpacts[0].x).toBe(sam.position.x);
+    const campaign = createNewCampaign(7412);
+    campaign.cohorts = { 'test-cohort': { id: 'test-cohort', type: 'ASSAULT', strength: 100, cohesion: 100, control: 100, experience: 0, status: 'RESERVE', assignedCityId: null, createdAtBattle: 0 } };
+    const city = CITIES.find((candidate) => candidate.id === 'seoul')!;
+    campaign.plannedMission = { id: 'test-mission', cityId: city.id, missionType: 'RAID', cohortIds: ['test-cohort'], overchargeCells: 0, travelChargeCost: 0, cellChargeCost: 0, createdAtMinutes: 0, battleSetup: createPlannedBattleSetup(campaign, city, 'test-mission') };
+    state.deployedCohorts = createDeployedCohorts(campaign);
+    const cohort = state.deployedCohorts[0];
+    expect(cohort).toBeDefined();
+    cohort.deployed = true; cohort.order = 'ASSAULT'; cohort.targetEntityId = sam.id;
+    sam.position.x = 25;
+    tickCohorts(state, 0.1, true);
+    expect(cohort.targetPosition?.x).toBe(25);
   });
 
   it('builds the side-view encounter from the 2D biome catalog instead of 3D preset geometry', () => {

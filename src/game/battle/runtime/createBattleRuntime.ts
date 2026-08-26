@@ -16,6 +16,9 @@ import {
 } from '@babylonjs/core';
 import { loadScene } from 'babylonjs-editor-tools';
 import { BALANCE } from '../../domain/balance';
+import { createFixedStepper, GROUND_SAM_ROOT_Y, GROUND_UNIT_ROOT_Z, MOTHERSHIP_SIDE_VIEW_MAX_SPEED, SIDE_VIEW_COMBAT_Y_OFFSET } from '../../domain/sideViewSpatialRules';
+import { SAM_COMBAT_PROFILE } from '../../domain/units/unitCombatProfiles';
+import type { GroundPositioningState } from '../../domain/units/unitCombatTypes';
 import { scriptsMap } from '../../../scripts';
 import { activateAbility, applyMothershipProjectileDamage, fighterCombatCenter, fighterKeepOutMetric, startBeamOnTarget, stopBeam, tickCombat } from '../../domain/combatRules';
 import type { AbilityId, AbsorbableKind, CommandResult, CombatState, ExtractionStatus, ShelterBreachState } from '../../domain/types';
@@ -44,10 +47,9 @@ const CLOUD_DRIFT_SPEED = 0.0015;
 const GROUND_LAYER_UI_LIFT_PIXELS = 72;
 const CAMERA_Y = 5;
 const CAMERA_Z = -92;
-const MOTHERSHIP_Y = 16.5;
+const MOTHERSHIP_Y = BALANCE.mothership.baseAltitude - SIDE_VIEW_COMBAT_Y_OFFSET;
 const CINEMATIC_EVASION_DURATION = 1.25;
 const CINEMATIC_CRASH_DURATION = MOTHERSHIP_DESTRUCTION_TIMING.durationSeconds;
-const MOTHERSHIP_SIDE_VIEW_MAX_SPEED = 17;
 const MOTHERSHIP_SIDE_VIEW_ACCELERATION = MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
 const MOTHERSHIP_SIDE_VIEW_DECELERATION = MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
 const MOTHERSHIP_DIRECTION_TURN_RADIANS = 0.14;
@@ -169,7 +171,9 @@ export interface BattleRuntimeSnapshot {
   };
   cohorts: Array<{ id: string; x: number; strength: number; cohesion: number; order: CombatState['deployedCohorts'][number]['order']; deployed: boolean; recoverable: boolean }>;
   enemies: Array<{ id: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; altitude: number; relativeDistance3D: number; keepOutMetric: number; keepOutCorrected: boolean; flightMode: CombatState['enemies'][number]['flightMode']; health: number }>;
-  groundEntities: Array<{ id: string; kind: 'DEFENDER' | 'FACILITY'; x: number; health: number; destroyed: boolean; disabled: boolean }>;
+  groundEntities: Array<{ id: string; kind: 'DEFENDER' | 'FACILITY'; x: number; health: number; destroyed: boolean; disabled: boolean; aiMode?: GroundPositioningState['mode'] } & Partial<GroundPositioningState>>;
+  missiles: CombatState['missiles'];
+  projectileVisuals: ReturnType<BattleCombatVfx['getProjectileSnapshot']>;
   visuals: BattleEntityVisualSnapshot;
 }
 
@@ -260,7 +264,6 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const fighterPoolRoot = getOrCreateNode(scene, 'FighterPoolRoot');
   const dronePoolRoot = getOrCreateNode(scene, 'DronePoolRoot');
   const groundBattleRoot = getOrCreateNode(scene, 'GroundBattleRoot');
-  if (options.debugControls !== true) hideDebugPrototypes(scene);
   const absorbableRegions = new BattleAbsorbableRegions(scene, options.language);
   const fleeingCrowdVisuals = new BattleFleeingCrowdVisuals(scene, map.id === 'city-night');
   const cohortVisuals = new BattleCohortVisuals(scene);
@@ -287,6 +290,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   let invincibilityEnabled = true;
   let unitInvincibilityEnabled = true;
   let pointDefenseDisabled = false;
+  let samRootY = GROUND_SAM_ROOT_Y;
   camera.position.x = cameraX;
   camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
   const applyBackgroundLayerPositions = () => {
@@ -304,9 +308,11 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     applyBackgroundLayerPositions();
   };
   const setGroundUnitGroupPosition = (group: GroundUnitGroup, y: number): void => {
+    if (group === 'SAM') samRootY = y;
     entityVisuals.setGroundUnitGroupPosition(group, y);
   };
   const resetGroundUnitPositions = (): void => {
+    samRootY = GROUND_SAM_ROOT_Y;
     entityVisuals.resetGroundUnitPositions();
   };
   const setCollisionOverlayVisible = (visible: boolean): void => {
@@ -555,8 +561,11 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       }),
       groundEntities: [
         ...combatState.groundDefenders.map((defender) => ({ id: defender.id, kind: 'DEFENDER' as const, x: round(defender.position.x, 3), health: round(defender.health, 2), destroyed: defender.health <= 0, disabled: defender.disabledUntil > combatState.elapsedSeconds })),
-        ...combatState.facilities.map((facility) => ({ id: facility.id, kind: 'FACILITY' as const, x: round(facility.position.x, 3), health: round(facility.health, 2), destroyed: facility.destroyed, disabled: facility.disabledUntil > combatState.elapsedSeconds })),
+        ...combatState.facilities.map((facility) => ({ id: facility.id, kind: 'FACILITY' as const, x: round(facility.position.x, 3), health: round(facility.health, 2), destroyed: facility.destroyed, disabled: facility.disabledUntil > combatState.elapsedSeconds,
+          ...combatState.groundUnitAi[facility.id], aiMode: combatState.groundUnitAi[facility.id]?.mode })),
       ],
+      missiles: combatState.missiles.map((missile) => ({ ...missile, position: { ...missile.position }, launchPosition: { ...missile.launchPosition } })),
+      projectileVisuals: combatVfx.getProjectileSnapshot(),
       visuals: entityVisuals.getSnapshot(),
     };
   };
@@ -578,6 +587,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       combatState.endReason = 'MOTHERSHIP_DISABLED';
     }
     if (kind === 'CRASH') {
+      if (combatState) combatState.groundUnitAi = {};
       combatVfx.dispose();
       mothershipDestructionVfx.start({
         position: mothershipGameplayRoot.position.clone(),
@@ -599,6 +609,29 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (debugControls && key === '2') {
       event.preventDefault();
       triggerCombatHit('HULL');
+    }
+    if (debugControls && key === '3' && combatState) {
+      event.preventDefault();
+      const facility = combatState.facilities.find((candidate) => !candidate.destroyed && candidate.health > 0);
+      if (facility) {
+        facility.health = 0;
+        facility.destroyed = true;
+        emitSnapshot(true);
+      }
+    }
+    if (debugControls && key === '4' && combatState) {
+      event.preventDefault();
+      const fighter = combatState.enemies.find((candidate) => candidate.health > 0);
+      if (!fighter) {
+        combatState.localAlert = 100;
+        combatState.lastWaveAlert = -1;
+        emitSnapshot(true);
+        return;
+      }
+      if (fighter) {
+        fighter.health = 0;
+        emitSnapshot(true);
+      }
     }
     if (key === 'n') {
       event.preventDefault();
@@ -639,7 +672,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   window.addEventListener('blur', resetMovementInputs);
 
   const simulateStep = (deltaSeconds: number) => {
-    if (paused) return;
+    if (paused || completedCombat) return;
     elapsed += deltaSeconds;
     if (cinematic) {
       if (cinematic.kind === 'CRASH') {
@@ -684,7 +717,9 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     const cameraTravel = Math.max(0, visibleWidth * map.camera.travelScreensFromStart);
     const mothershipTravel = Math.max(52, cameraTravel + visibleWidth * 0.38);
     if (!cinematic) {
+      const previousX = mothershipGameplayRoot.position.x;
       mothershipGameplayRoot.position.x = Scalar.Clamp(mothershipGameplayRoot.position.x + movementVelocity * deltaSeconds, -mothershipTravel, mothershipTravel);
+      movementVelocity = (mothershipGameplayRoot.position.x - previousX) / deltaSeconds;
       const movementRatio = movementVelocity / MOTHERSHIP_SIDE_VIEW_MAX_SPEED;
       mothershipGameplayRoot.rotation.y = moveTowards(
         mothershipGameplayRoot.rotation.y,
@@ -697,13 +732,29 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         (MOTHERSHIP_BANK_RADIANS * deltaSeconds) / MOTHERSHIP_TILT_DURATION_SECONDS,
       );
     }
+    // Commit camera tracking before taking the boundary snapshot for this tick.
+    if (cinematic?.kind !== 'CRASH') {
+      const desiredCameraX = Scalar.Clamp(mothershipGameplayRoot.position.x, -cameraTravel, cameraTravel);
+      cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
+    }
+    camera.position.x = cameraX;
+    camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
     if (combatState && !cinematic) {
       combatState.mothership.position.x = mothershipGameplayRoot.position.x;
       combatState.mothership.position.z = 0;
+      combatState.mothership.velocity.x = movementVelocity;
+      combatState.mothership.velocity.z = 0;
       fleeingCrowdVisuals.sync(combatState, elapsed, true);
       const hullBeforeStep = invincibilityEnabled ? combatState.mothership.hull : null;
       if (timeMode === 'ENDLESS' && gameplayProfile) combatState.survivalUnlockSeconds += deltaSeconds;
-      tickCombat(combatState, deltaSeconds, { unitInvincibilityEnabled, disablePointDefense: pointDefenseDisabled });
+      const groundHalfWidth = getVisibleWidth(camera, engine, GROUND_UNIT_ROOT_Z + SAM_COMBAT_PROFILE.muzzle.z) / 2;
+      tickCombat(combatState, deltaSeconds, { unitInvincibilityEnabled, disablePointDefense: pointDefenseDisabled,
+        sideViewSpatial: gameplayProfile ? {
+          worldBounds: { minX: gameplayProfile.worldMinX, maxX: gameplayProfile.worldMaxX },
+          visibleBounds: { minX: cameraX - groundHalfWidth, maxX: cameraX + groundHalfWidth },
+          groundRootY: samRootY, groundRootZ: GROUND_UNIT_ROOT_Z,
+        } : undefined,
+      });
       if (gameplayProfile) tickSideViewBattle(combatState, gameplayProfile, deltaSeconds, unitInvincibilityEnabled);
       if (invincibilityEnabled && hullBeforeStep !== null) {
         combatState.mothership.hull = hullBeforeStep;
@@ -728,12 +779,6 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         }
       }
     }
-    if (cinematic?.kind !== 'CRASH') {
-      const desiredCameraX = Scalar.Clamp(mothershipGameplayRoot.position.x, -cameraTravel, cameraTravel);
-      cameraX = Scalar.Lerp(cameraX, desiredCameraX, 1 - Math.pow(0.0005, deltaSeconds));
-    }
-    camera.position.x = cameraX;
-    camera.setTarget(new Vector3(cameraX, CAMERA_Y, 0));
     applyBackgroundLayerPositions();
     cloudTextureOffset = (cloudTextureOffset + deltaSeconds * CLOUD_DRIFT_SPEED) % 1;
     for (const { layer, plane } of backgroundPlanes) {
@@ -745,15 +790,15 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     infectedAssaultVfx.update(deltaSeconds);
     emitSnapshot();
   };
+  const advanceSimulation = createFixedStepper(simulateStep);
   const update = () => {
-    if (!automationStepping) simulateStep(Math.min(engine.getDeltaTime() / 1000, 0.05));
+    if (!automationStepping) advanceSimulation(Math.min(engine.getDeltaTime() / 1000, 0.25));
     if (cinematic?.kind === 'CRASH' && mothershipPurpleGlow) mothershipPurpleGlow.intensity = 0.08;
     else updateMothershipPurpleGlow(mothershipPurpleGlow, elapsed);
   };
   const advanceTime = (milliseconds: number) => {
     automationStepping = true;
-    const steps = Math.max(1, Math.round(Math.max(0, milliseconds) / (1000 / 60)));
-    for (let index = 0; index < steps; index += 1) simulateStep(1 / 60);
+    advanceSimulation(Math.max(0, milliseconds) / 1000);
     scene.render();
     emitSnapshot(true);
   };
@@ -923,7 +968,9 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     cohorts: [],
     enemies: [],
     groundEntities: [],
-    visuals: { fighters: [], ground: [] },
+    missiles: [],
+    projectileVisuals: [],
+    visuals: { fighters: [], ground: [], effects: { explosionCount: 0, shatterCount: 0, shatterPieceCount: 0 } },
   };
 }
 
@@ -1014,12 +1061,6 @@ function setGameplayRenderingGroup(...roots: TransformNode[]): void {
   }
 }
 
-function hideDebugPrototypes(scene: Scene): void {
-  for (const mesh of scene.meshes) {
-    if (/^(FighterPrototype|DronePrototype|GroundTurretPrototype|GroundBarrelPrototype|GroundSamPrototype)/.test(mesh.name)) mesh.setEnabled(false);
-  }
-}
-
 function restoreMothershipRuntimeHierarchy(scene: Scene): { gameplayRoot: TransformNode; visualRoot: TransformNode } {
   const airRoot = getOrCreateNode(scene, 'AirBattleRoot');
   const gameplayRoot = getOrCreateNode(scene, 'MothershipGameplayRoot');
@@ -1065,9 +1106,9 @@ function assignBackgroundMaterial(mesh: AbstractMesh, url: string, scene: Scene,
   mesh.material = material;
 }
 
-function getVisibleWidth(camera: UniversalCamera, engine: Engine): number {
+function getVisibleWidth(camera: UniversalCamera, engine: Engine, worldZ = 0): number {
   const height = Math.max(1, engine.getRenderHeight());
   const aspect = engine.getRenderWidth() / height;
-  const visibleHeight = 2 * Math.abs(camera.position.z) * Math.tan(camera.fov / 2);
+  const visibleHeight = 2 * Math.abs(worldZ - camera.position.z) * Math.tan(camera.fov / 2);
   return visibleHeight * aspect;
 }

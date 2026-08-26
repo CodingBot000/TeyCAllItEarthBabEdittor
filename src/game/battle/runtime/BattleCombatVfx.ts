@@ -13,8 +13,12 @@ import {
   TransformNode,
   Vector2,
   Vector3,
+  type LinesMesh,
 } from '@babylonjs/core';
 import { BALANCE } from '../../domain/balance';
+import { mothershipContactVolume } from '../../domain/combatGeometry';
+import { combatToWorld } from '../../domain/sideViewSpatialRules';
+import { SAM_COMBAT_PROFILE } from '../../domain/units/unitCombatProfiles';
 import type { CombatState } from '../../domain/types';
 import { BattleAbsorptionVfx, type BattleAbsorptionVfxSnapshot } from './BattleAbsorptionVfx';
 import { GROUND_ABSORPTION_TARGET_Y, GROUND_ATTACK_TARGET_Y } from './battleVisualCoordinates';
@@ -295,6 +299,9 @@ export class BattleCombatVfx {
   private readonly groundSwarmMaterial: StandardMaterial;
   private readonly groundSwarmCoreMaterial: StandardMaterial;
   private readonly projectileMeshes = new Map<string, Mesh>();
+  private groundAttackOverlay: LinesMesh | null = null;
+  private groundAttackOverlayLineCount = 0;
+  private collisionOverlayVisible = false;
   private readonly projectileVisualPositions = new Map<string, Vector3>();
   private readonly projectileLaunchPositions = new Map<string, Vector3>();
   private readonly missileTrailParticles = new Map<string, MissileTrailParticle[]>();
@@ -686,7 +693,9 @@ export class BattleCombatVfx {
   }
 
   private syncCollisionOverlay(state: Readonly<CombatState>): void {
-    const center = this.shipPosition();
+    const contact = mothershipContactVolume(state, BALANCE.defense.samProjectileRadius);
+    const worldCenter = combatToWorld(contact.center);
+    const center = new Vector3(worldCenter.x, worldCenter.y, worldCenter.z);
     const projectileRadius = BALANCE.defense.samProjectileRadius;
     this.collisionHullOverlay.position.copyFrom(center);
     this.collisionHullOverlay.scaling.set(
@@ -704,6 +713,50 @@ export class BattleCombatVfx {
     );
     this.collisionShieldOverlay.scaling.scaleInPlace(this.collisionShieldOverlayScale);
     this.collisionShieldOverlay.visibility = state.mothership.shield > 0 ? 0.7 : 0.08;
+    this.syncGroundAttackOverlay(state);
+  }
+
+  private syncGroundAttackOverlay(state: Readonly<CombatState>): void {
+    if (!this.collisionOverlayVisible) return;
+    const volume = mothershipContactVolume(state, BALANCE.defense.samProjectileRadius);
+    const vector = (p: { x: number; y: number; z: number }) => {
+      const w = combatToWorld(p); return new Vector3(w.x, w.y, w.z);
+    };
+    // Always show an unscaled baseline, independent of the display-only sliders.
+    const lines: Vector3[][] = [];
+    for (const plane of ['xy', 'xz', 'yz'] as const) {
+      lines.push(Array.from({ length: 65 }, (_, i) => {
+        const angle = i / 64 * Math.PI * 2; const p = { ...volume.center };
+        const first = plane[0] as 'x' | 'y'; const second = plane[1] as 'y' | 'z';
+        p[first] += volume.radii[first] * Math.cos(angle); p[second] += volume.radii[second] * Math.sin(angle);
+        return vector(p);
+      }));
+    }
+    for (const ai of Object.values(state.groundUnitAi)) {
+      if (!ai.muzzle) continue;
+      const socket = vector(ai.muzzle);
+      const ends = [SAM_COMBAT_PROFILE.attackShape.minAngleRadians, SAM_COMBAT_PROFILE.attackShape.maxAngleRadians].map((angle) =>
+        socket.add(new Vector3(ai.facingX * Math.cos(angle) * 90, Math.sin(angle) * 90, 0)));
+      lines.push([socket, ends[0]], [socket, ends[1]], [ends[0], ends[1]]);
+      lines.push([socket.add(new Vector3(-0.5, 0, 0)), socket.add(new Vector3(0.5, 0, 0))],
+        [socket.add(new Vector3(0, -0.5, 0)), socket.add(new Vector3(0, 0.5, 0))]);
+      lines.push([socket, ai.shot.allowed ? vector(ai.shot.aimPoint) : socket]);
+      const goal = new Vector3(ai.goalX ?? socket.x, socket.y - SAM_COMBAT_PROFILE.muzzle.y, socket.z);
+      lines.push([goal, goal.add(new Vector3(0, 3, 0))]);
+      for (const x of [ai.allowedBounds?.minX, ai.allowedBounds?.maxX]) {
+        const edge = new Vector3(x ?? socket.x, goal.y, socket.z);
+        lines.push([edge, edge.add(new Vector3(0, 6, 0))]);
+      }
+    }
+    if (this.groundAttackOverlayLineCount !== lines.length) {
+      this.groundAttackOverlay?.dispose(); this.groundAttackOverlay = null;
+    }
+    this.groundAttackOverlay = MeshBuilder.CreateLineSystem('battle-ground-attack-debug', { lines, updatable: true, instance: this.groundAttackOverlay ?? undefined }, this.scene);
+    this.groundAttackOverlayLineCount = lines.length;
+    this.groundAttackOverlay.color = new Color3(0.3, 1, 0.65);
+    this.groundAttackOverlay.renderingGroupId = 3;
+    this.groundAttackOverlay.isPickable = false;
+    this.groundAttackOverlay.setEnabled(true);
   }
 
   setCollisionOverlayScale(kind: 'hull' | 'shield', scale: number): void {
@@ -713,6 +766,8 @@ export class BattleCombatVfx {
   }
 
   setCollisionOverlayVisible(visible: boolean): void {
+    this.collisionOverlayVisible = visible;
+    this.groundAttackOverlay?.setEnabled(visible);
     this.collisionHullOverlay.setEnabled(visible);
     this.collisionShieldOverlay.setEnabled(visible);
   }
@@ -723,6 +778,13 @@ export class BattleCombatVfx {
 
   getAbsorptionSnapshot(): BattleAbsorptionVfxSnapshot {
     return this.absorptionVfx.getSnapshot();
+  }
+
+  getProjectileSnapshot(): Array<{ id: string; x: number; y: number; z: number; launchX: number; launchY: number; launchZ: number }> {
+    return [...this.projectileVisualPositions].map(([id, p]) => {
+      const launch = this.projectileLaunchPositions.get(id) ?? p;
+      return { id, x: p.x, y: p.y, z: p.z, launchX: launch.x, launchY: launch.y, launchZ: launch.z };
+    });
   }
 
   resetCollisionOverlayScale(): void {
@@ -754,6 +816,8 @@ export class BattleCombatVfx {
     this.plasmaEffects.splice(0).forEach((effect) => this.disposePlasmaEffect(effect));
     this.projectileMeshes.forEach((mesh) => mesh.dispose());
     this.projectileMeshes.clear();
+    this.groundAttackOverlay?.dispose();
+    this.groundAttackOverlay = null;
     this.projectileVisualPositions.clear();
     this.projectileLaunchPositions.clear();
     this.missileTrailParticles.forEach((particles) => particles.forEach((particle) => particle.mesh.dispose()));
@@ -1337,9 +1401,12 @@ export class BattleCombatVfx {
       }
       // The root is only the visual path endpoint. Gameplay collision removes
       // the projectile at the shield or hull surface before it reaches here.
-      const targetPosition = this.shipPosition();
+      const direct = missile.coordinateSpace === 'SIDE_VIEW_COMBAT';
+      const targetWorld = combatToWorld({ ...missile.target, y: missile.targetY });
+      const targetPosition = direct ? new Vector3(targetWorld.x, targetWorld.y, targetWorld.z) : this.shipPosition();
       if (!this.projectileLaunchPositions.has(missile.id)) {
-        this.projectileLaunchPositions.set(missile.id, this.projectileVisualOriginResolver?.(missile.source, missile.sourceId) ?? new Vector3(
+        const launchWorld = combatToWorld({ ...missile.launchPosition, y: missile.launchY });
+        this.projectileLaunchPositions.set(missile.id, direct ? new Vector3(launchWorld.x, launchWorld.y, launchWorld.z) : this.projectileVisualOriginResolver?.(missile.source, missile.sourceId) ?? new Vector3(
           targetPosition.x + missile.launchPosition.x - missile.target.x,
           targetPosition.y + (missile.launchY - missile.targetY) * 0.22,
           targetPosition.z + (missile.launchPosition.z - missile.target.z) * 0.12,
@@ -1347,6 +1414,12 @@ export class BattleCombatVfx {
       }
       const launchPosition = this.projectileLaunchPositions.get(missile.id);
       if (launchPosition) {
+        const previous = this.projectileVisualPositions.get(missile.id) ?? launchPosition;
+        if (direct) {
+          const world = combatToWorld({ ...missile.position, y: missile.y });
+          mesh.position.set(world.x, world.y, world.z);
+        } else {
+        // Explicit legacy adapter for projectiles not yet using combat space.
         const launchDistance = Math.max(0.001, Math.hypot(
           missile.launchPosition.x - missile.target.x,
           missile.launchY - missile.targetY,
@@ -1359,9 +1432,10 @@ export class BattleCombatVfx {
         );
         const progress = Math.max(0, Math.min(1, 1 - remainingDistance / launchDistance));
         mesh.position.copyFrom(launchPosition.add(targetPosition.subtract(launchPosition).scale(progress)));
+        }
         // SAM and fighter missiles share the same visible homing path, sprite,
         // jet, and smoke treatment. Their gameplay speed/damage remain distinct.
-        const visualDirection = targetPosition.subtract(mesh.position);
+        const visualDirection = direct ? mesh.position.subtract(previous) : targetPosition.subtract(mesh.position);
         if (visualDirection.lengthSquared() > 0.0001) {
           const visualAngle = Math.atan2(visualDirection.y, visualDirection.x);
           mesh.rotation.set(0, 0, visualAngle);

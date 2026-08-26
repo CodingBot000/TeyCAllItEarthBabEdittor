@@ -7,6 +7,7 @@ import { createPlannedBattleSetup } from './battleSetupRules';
 import { generateAbsorbableClusters } from './generateAbsorbableClusters';
 import { tickGroundSwarm } from './groundSwarmRules';
 import { tickSideViewCohortAi } from './cohortAiRules';
+import { createGroundPositioningState } from '../../domain/units/groundCombatAi';
 import { createSideViewTacticalPreset, sideViewBiomeForProfile } from './sideViewBiomeCatalog';
 
 export interface SideViewBattleSession {
@@ -40,6 +41,8 @@ export function createSideViewBattleSession(
   const preset = createSideViewTacticalPreset(biome, profile, generatedTargets, facilities);
   const combatState = createCombatState(campaign, city, cityState, preset);
   combatState.battleMode = 'SIDE_VIEW';
+  combatState.groundUnitAi = Object.fromEntries(combatState.facilities.filter((facility) => facility.kind === 'SAM' && !facility.destroyed)
+    .map((facility) => [facility.id, createGroundPositioningState(facility.id)]));
   combatState.enemyPressureMultiplier = profile.enemyPressureMultiplier;
   combatState.survivalUnlockSeconds = profile.survivalUnlockSeconds;
   combatState.mothership.position = { x: 0, z: 0 };
@@ -65,6 +68,7 @@ export function tickSideViewBattle(state: CombatState, profile: BattleGameplayPr
   if (state.battleMode !== 'SIDE_VIEW' || state.result !== 'ACTIVE') return;
   discoverNearbySideViewTargets(state, profile);
   tickGroundSwarm(state, profile, dt, unitInvincibilityEnabled);
+  for (const facility of state.facilities) if (facility.destroyed || facility.health <= 0) delete state.groundUnitAi[facility.id];
   tickSideViewCohortAi(state);
   if (state.extractionStatus === 'LOCKED' && state.elapsedSeconds >= state.survivalUnlockSeconds) {
     state.extractionStatus = 'AVAILABLE';
@@ -77,6 +81,7 @@ export function tickSideViewBattle(state: CombatState, profile: BattleGameplayPr
   state.mothership.extractionStatus = 'COMPLETE';
   state.endReason = 'EXTRACTED';
   state.result = resolveMissionOutcome(state);
+  state.groundUnitAi = {};
 }
 
 export function beginSideViewExtraction(state: CombatState): { ok: boolean; reason?: string } {
@@ -95,6 +100,7 @@ export function abortSideViewBattle(state: CombatState): { ok: boolean; reason?:
   if (state.result !== 'ACTIVE') return { ok: false, reason: 'COMBAT IS OVER' };
   if (state.activeAbility === 'beam') stopBeam(state, 'MANUAL');
   state.result = 'FAILED';
+  state.groundUnitAi = {};
   state.endReason = 'ABORTED';
   state.mothership.extractionStatus = 'AVAILABLE';
   state.extractionStatus = 'AVAILABLE';

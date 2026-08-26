@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="96" viewBox="0 0 256 96">
+  <defs>
+    <radialGradient id="ground-shadow" cx="52%" cy="48%" r="50%">
+      <stop offset="0" stop-color="#07131a" stop-opacity=".68"/>
+      <stop offset=".48" stop-color="#07131a" stop-opacity=".48"/>
+      <stop offset=".78" stop-color="#07131a" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#07131a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soften" x="-12%" y="-45%" width="124%" height="190%">
+      <feGaussianBlur stdDeviation="2.6"/>
+    </filter>
+  </defs>
+  <ellipse cx="137" cy="49" rx="108" ry="20" fill="url(#ground-shadow)" filter="url(#soften)"/>
+  <ellipse cx="137" cy="49" rx="83" ry="10" fill="#07131a" opacity=".18"/>
+</svg>

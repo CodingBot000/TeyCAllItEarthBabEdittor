@@ -386,9 +386,22 @@ h1, h2, h3, p { margin-top: 0; }
 .orbit-b { width: 1320px; height: 490px; left: calc(50% - 660px); top: calc(50% - 245px); border-color: rgba(106,200,255,.12); }
 
 .map-screen, .upgrade-screen { height: 100%; min-height: 640px; background: #07151d; }
-.loadout-screen { min-height: 100%; overflow: auto; padding: 38px 24px; background: radial-gradient(circle at 50% 0%, rgba(24,82,91,.34), transparent 46%), #07151d; }
-.loadout-card { width: min(980px, 100%); margin: 0 auto; padding: clamp(28px, 5vw, 58px); border: 1px solid var(--line-strong); background: linear-gradient(145deg, rgba(10,39,49,.98), rgba(4,17,24,.98)); box-shadow: 0 25px 90px rgba(0,0,0,.35); }
-.loadout-city-readout { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 25px; padding: 13px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font: 8px 'Space Mono', monospace; }.loadout-city-readout strong { margin-left: 5px; color: var(--cyan); }
+.loadout-screen { height: 100dvh; min-height: 0; overflow: auto; box-sizing: border-box; padding: 18px 24px; background: radial-gradient(circle at 50% 0%, rgba(24,82,91,.34), transparent 46%), #07151d; }
+.loadout-card { width: min(1180px, 100%); min-height: 0; margin: 0 auto; box-sizing: border-box; padding: 24px 30px 20px; border: 1px solid var(--line-strong); background: linear-gradient(145deg, rgba(10,39,49,.98), rgba(4,17,24,.98)); box-shadow: 0 25px 90px rgba(0,0,0,.35); }
+.loadout-header { display: flex; align-items: start; justify-content: space-between; gap: 24px; }.loadout-header h1 { margin: 0; color: #f1fbfa; font-size: clamp(34px, 4vw, 50px); line-height: .9; letter-spacing: -.02em; }.loadout-copy { max-width: 520px; margin: 12px 0 0; color: #90b1b6; font-size: 14px; line-height: 1.25; }
+.loadout-info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.loadout-info-card { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 22px; padding: 12px 15px; border: 1px solid var(--line); background: rgba(4,20,27,.62); }
+.loadout-city-readout, .loadout-resource-board { margin-top: 0; padding-top: 12px; padding-bottom: 12px; }
+.loadout-city-readout > span, .loadout-resource-board > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; padding: 4px 0; color: var(--muted); font: 12px/1.15 'Space Mono', monospace; white-space: nowrap; }
+.loadout-city-readout strong, .loadout-resource-board strong { color: var(--cyan); font: 700 18px/1 'Space Mono', monospace; white-space: nowrap; }
+.loadout-resource-board small { color: var(--muted); font: 12px/1.15 'Space Mono', monospace; white-space: nowrap; }.loadout-resource-board strong { color: #e5f8f5; }.loadout-resource-board strong.is-danger { color: var(--red); }
+.loadout-sections-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(300px, .88fr); gap: 10px; margin-top: 12px; }.loadout-section { min-width: 0; margin-top: 0; padding: 14px; border: 1px solid var(--line); background: rgba(5,23,30,.58); }.loadout-section-mission { grid-column: 1 / -1; }.loadout-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }.loadout-section-heading h2 { margin: 5px 0 0; color: #f1fbfa; font-size: clamp(19px, 2.2vw, 26px); line-height: .95; letter-spacing: .01em; }.loadout-city-state, .loadout-capacity { display: inline-flex; align-items: baseline; gap: 7px; flex: 0 0 auto; padding: 7px 9px; border: 1px solid rgba(125,231,212,.28); background: rgba(125,231,212,.05); color: var(--muted); font: 8px 'Space Mono', monospace; }.loadout-city-state small { color: var(--muted); font: inherit; }.loadout-city-state strong, .loadout-capacity { color: var(--cyan); font: 700 9px 'Space Mono', monospace; }
+.mission-section-layout { display: grid; grid-template-columns: auto minmax(220px, .7fr) minmax(390px, 1.3fr); align-items: center; gap: 16px; }
+.mission-section-title { min-width: 0; }.mission-section-title h2 { margin: 5px 0 0; color: #f1fbfa; font-size: clamp(20px, 2.2vw, 27px); line-height: .95; letter-spacing: .01em; }
+.mission-status { align-self: center; display: grid; justify-items: start; gap: 5px; padding: 0 14px 0 0; border: 0; border-right: 1px solid rgba(125,231,212,.22); background: transparent; }.mission-status small { color: var(--muted); font: 10px/1 'Space Mono', monospace; }.mission-status strong { color: var(--cyan); font: 700 clamp(20px, 2.2vw, 27px)/.95 'Space Mono', monospace; }
+.mission-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }.mission-type-card { min-width: 0; min-height: 82px; display: grid; grid-template-columns: minmax(60px, .3fr) minmax(0, 1fr); align-items: start; gap: 10px; padding: 12px; border: 1px solid var(--line); background: linear-gradient(145deg, rgba(15,45,54,.78), rgba(7,25,33,.76)); color: #bad8d9; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }.mission-type-card:hover:not(:disabled) { border-color: var(--line-strong); background: linear-gradient(145deg, rgba(18,55,64,.9), rgba(8,29,37,.86)); transform: translateY(-1px); }.mission-type-card.selected { border-color: var(--cyan); background: linear-gradient(145deg, rgba(22,74,78,.86), rgba(7,34,40,.84)); box-shadow: inset 3px 0 var(--cyan), 0 0 20px rgba(125,231,212,.08); }.mission-type-card.locked { border-color: rgba(239,119,133,.34); background: linear-gradient(145deg, rgba(55,27,35,.58), rgba(20,17,26,.72)); color: #927c84; cursor: not-allowed; }.mission-type-card:disabled:not(.locked) { cursor: not-allowed; opacity: .68; }.mission-type-card-name { align-self: start; color: var(--cyan); font: 700 clamp(24px, 3vw, 34px)/.9 'Barlow Condensed', 'Arial Narrow', sans-serif; letter-spacing: .06em; }.mission-type-card.selected .mission-type-card-name { color: #c9fff3; }.mission-type-card.locked .mission-type-card-name { color: #d58b98; }.mission-type-card-copy { min-width: 0; display: grid; gap: 5px; align-content: start; }.mission-type-card-copy strong { color: #f1fbfa; font-size: clamp(13px, 1.25vw, 17px); line-height: 1.05; }.mission-type-card-copy small { color: var(--muted); font: 8px/1.3 'Space Mono', monospace; letter-spacing: .01em; }.mission-type-card.locked .mission-type-card-copy strong, .mission-type-card.locked .mission-type-card-copy small { color: #9b8189; }
+.cohort-loadout-list { display: grid; gap: 6px; margin-top: 10px; max-height: 108px; overflow: auto; }.cohort-loadout-row { width: 100%; min-height: 62px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid rgba(125,231,212,.14); background: rgba(8,31,40,.62); color: #cce8e7; text-align: left; }.cohort-loadout-row.selected { border-color: var(--cyan); background: rgba(125,231,212,.12); }.cohort-loadout-row:disabled { cursor: not-allowed; opacity: .62; }.cohort-check { color: var(--cyan); font-size: 25px; }.cohort-loadout-row strong, .cohort-loadout-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.cohort-loadout-row strong { font-size: 16px; line-height: 1.05; }.cohort-loadout-row small { margin-top: 5px; color: var(--muted); font: 11px/1.15 'Space Mono', monospace; }.cohort-loadout-row em { color: var(--amber); font: normal 10px 'Space Mono', monospace; }.loadout-empty { min-height: 36px; display: flex; align-items: center; gap: 7px; padding: 8px; border: 1px dashed rgba(125,231,212,.2); color: var(--muted); font: 8px/1.25 'Space Mono', monospace; }.loadout-empty .status-dot { flex: 0 0 auto; }.loadout-limits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }.loadout-limits > span { display: grid; gap: 3px; padding: 6px 7px; background: rgba(4,20,27,.64); color: var(--muted); font: 7px 'Space Mono', monospace; }.loadout-limits strong { color: var(--cyan); font-size: 9px; }.cell-selector { min-height: 82px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-top: 12px; padding: 12px; border: 1px solid rgba(125,231,212,.14); background: rgba(4,20,27,.64); }.cell-selector > div:first-child { display: grid; gap: 7px; }.cell-selector strong { color: #f1fbfa; font-size: 19px; }.cell-selector small { color: var(--muted); font: 11px/1.3 'Space Mono', monospace; }.cell-stepper { display: flex; align-items: center; gap: 9px; }.cell-stepper button { width: 34px; height: 34px; border: 1px solid var(--line-strong); background: rgba(125,231,212,.06); color: var(--cyan); font-size: 22px; }.cell-stepper button:disabled { color: var(--muted); opacity: .5; }.cell-stepper > strong { min-width: 30px; color: var(--cyan); text-align: center; font: 700 18px 'Space Mono', monospace; }
+.loadout-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }.loadout-validation { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--cyan); font: 8px 'Space Mono', monospace; }.loadout-actions { display: flex; align-items: center; justify-content: end; gap: 8px; margin-left: auto; }.loadout-actions .primary-button, .loadout-actions .secondary-button { padding: 10px 14px; font-size: 10px; }
 .asset-preview-screen { height: 100%; min-height: 640px; overflow: hidden; background: #061119; color: var(--ink); }
 .megacity-demo-screen { height: 100%; min-height: 640px; overflow: hidden; background: #061119; color: var(--ink); }
 .asset-preview-header { height: 74px; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 22px; padding: 0 24px; border-bottom: 1px solid var(--line); background: rgba(4,15,21,.94); position: relative; z-index: 4; }
@@ -740,6 +753,162 @@ h1, h2, h3, p { margin-top: 0; }
 @media (max-width: 720px) { .loadout-screen { padding: 12px; }.loadout-card { padding: 22px 16px 18px; }.loadout-header { display: block; }.loadout-header > .small-button { margin-top: 18px; }.loadout-header h1 { font-size: 42px; }.loadout-copy { font-size: 14px; }.loadout-resource-board { grid-template-columns: 1fr 1fr; margin-top: 22px; }.loadout-resource-board > span { padding: 10px; }.loadout-resource-board strong { font-size: 13px; }.loadout-section { margin-top: 22px; padding-top: 18px; }.loadout-section-heading h2 { font-size: 23px; }.mission-type-grid { grid-template-columns: 1fr; }.mission-type-card { min-height: 108px; padding: 13px; }.mission-type-card strong { margin-top: 8px; font-size: 15px; }.mission-type-card small { font-size: 11px; }.loadout-footer { display: block; margin-top: 22px; }.loadout-actions { justify-content: stretch; margin-top: 12px; }.loadout-actions button { flex: 1; }.cell-selector { align-items: start; }.cell-selector small { font-size: 11px; }.loadout-limits { gap: 9px; } }
 
 @media (max-width: 720px) { .menu-center { width: calc(100vw - 40px); }.menu-card h1 { font-size: clamp(42px, 12vw, 76px); }.menu-subtitle { margin-top: 20px; font-size: 15px; }.menu-actions { left: 16px; bottom: 92px; gap: 7px; max-width: calc(100vw - 32px); }.menu-actions button { padding: 11px 12px; font-size: 10px; }.menu-card > .text-button { left: 16px; bottom: 38px; } }
+
+@media (max-width: 720px) {
+  .loadout-screen { padding: 10px; }
+  .loadout-card { padding: 18px 14px 16px; }
+  .loadout-header { gap: 14px; }
+  .loadout-header h1 { font-size: 32px; }
+  .loadout-copy { font-size: 12px; }
+  .loadout-city-readout { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 14px; padding: 8px 0; }
+  .loadout-city-readout > span { padding: 8px; font-size: 7px; }
+  .loadout-city-readout strong { font-size: 12px; }
+  .loadout-resource-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .loadout-resource-board > span { padding: 8px; }
+  .loadout-resource-board small { font-size: 7px; }
+  .loadout-resource-board strong { font-size: 12px; }
+  .loadout-sections-grid { grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
+  .loadout-section-mission { grid-column: auto; }
+  .loadout-section { padding: 12px; }
+  .loadout-section-heading h2 { font-size: 19px; }
+  .loadout-city-state, .loadout-capacity { padding: 6px 8px; font-size: 7px; }
+  .mission-type-grid { grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
+  .mission-type-card { min-height: 78px; grid-template-columns: 68px minmax(0, 1fr); gap: 10px; padding: 11px; }
+  .mission-type-card-name { font-size: 28px; }
+  .mission-type-card-copy { gap: 5px; }
+  .mission-type-card-copy strong { font-size: 14px; }
+  .mission-type-card-copy small { font-size: 8px; }
+  .cohort-loadout-list { max-height: 100px; }
+  .cell-selector { min-height: 62px; gap: 8px; padding: 10px; }
+  .cell-selector strong { font-size: 13px; }
+  .cell-selector small { font-size: 7px; }
+  .loadout-footer { align-items: stretch; flex-direction: column; gap: 10px; }
+  .loadout-actions { justify-content: stretch; }
+  .loadout-actions button { flex: 1; }
+}
+
+@media (min-width: 500px) and (max-width: 720px) and (orientation: landscape) {
+  .loadout-screen { padding: 3px 8px; }
+  .loadout-card { padding: 12px 14px 10px; }
+  .loadout-header { display: flex; align-items: start; gap: 16px; }
+  .loadout-header > .small-button { margin-top: 0; }
+  .loadout-header h1 { font-size: 28px; }
+  .loadout-copy { max-width: 420px; margin-top: 6px; font-size: 9px; }
+  .loadout-city-readout { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 10px; padding: 6px 0; }
+  .loadout-city-readout > span { display: grid; gap: 3px; padding: 6px; font-size: 5px; }
+  .loadout-city-readout strong { font-size: 9px; }
+  .loadout-resource-board { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .loadout-resource-board > span { gap: 3px; padding: 6px; }
+  .loadout-resource-board small { font-size: 5px; }
+  .loadout-resource-board strong { font-size: 9px; }
+  .loadout-sections-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 6px; margin-top: 6px; }
+  .loadout-section-mission { grid-column: 1 / -1; }
+  .loadout-section { padding: 7px; }
+  .loadout-section-heading { gap: 6px; }
+  .loadout-section-heading h2 { font-size: 16px; }
+  .loadout-city-state, .loadout-capacity { gap: 4px; padding: 4px 6px; font-size: 5px; }
+  .loadout-city-state strong, .loadout-capacity { font-size: 6px; }
+  .mission-type-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+  .mission-type-card { min-height: 58px; grid-template-columns: 54px minmax(0, 1fr); gap: 6px; padding: 7px; }
+  .mission-type-card-name { font-size: 22px; }
+  .mission-type-card-copy { gap: 3px; }
+  .mission-type-card-copy strong { font-size: 10px; }
+  .mission-type-card-copy small { font-size: 6px; }
+  .cohort-loadout-list { max-height: 32px; margin-top: 5px; }
+  .cohort-loadout-row { padding: 4px 5px; }
+  .cohort-check { font-size: 12px; }
+  .cohort-loadout-row strong { font-size: 7px; }
+  .cohort-loadout-row small { margin-top: 1px; font-size: 5px; }
+  .cohort-loadout-row em { font-size: 5px; }
+  .loadout-empty { min-height: 22px; padding: 5px; font-size: 6px; }
+  .loadout-limits { gap: 3px; margin-top: 5px; }
+  .loadout-limits > span { gap: 2px; padding: 4px; font-size: 5px; }
+  .loadout-limits strong { font-size: 7px; }
+  .cell-selector { min-height: 42px; gap: 6px; margin-top: 6px; padding: 6px; }
+  .cell-selector > div:first-child { gap: 3px; }
+  .cell-selector strong { font-size: 10px; }
+  .cell-selector small { font-size: 5px; }
+  .cell-stepper { gap: 4px; }
+  .cell-stepper button { width: 24px; height: 24px; font-size: 15px; }
+  .cell-stepper > strong { min-width: 18px; font-size: 10px; }
+  .loadout-footer { flex-direction: row; align-items: center; gap: 8px; margin-top: 6px; padding-top: 6px; }
+  .loadout-validation { font-size: 6px; }
+  .loadout-actions { gap: 5px; }
+  .loadout-actions button { flex: 0 0 auto; }
+  .loadout-actions .primary-button, .loadout-actions .secondary-button { padding: 6px 8px; font-size: 7px; }
+}
+
+@media (max-height: 760px) and (min-width: 721px) {
+  .loadout-screen { padding: 10px 18px; }
+  .loadout-card { padding: 18px 24px 14px; }
+  .loadout-header h1 { font-size: 38px; }
+  .loadout-copy { margin-top: 8px; font-size: 12px; }
+  .loadout-city-readout { margin-top: 14px; padding: 8px 0; }
+  .loadout-city-readout > span { padding: 7px 9px; font-size: 7px; }
+  .loadout-city-readout strong { font-size: 12px; }
+  .loadout-resource-board > span { padding: 8px 9px; }
+  .loadout-resource-board small { font-size: 7px; }
+  .loadout-resource-board strong { font-size: 12px; }
+  .loadout-sections-grid { margin-top: 8px; }
+  .loadout-section { padding: 11px; }
+  .loadout-section-heading h2 { font-size: 21px; }
+  .mission-type-grid { margin-top: 9px; }
+  .mission-type-card { min-height: 82px; padding: 11px 12px; }
+  .mission-type-card-name { font-size: 30px; }
+  .mission-type-card-copy strong { font-size: 15px; }
+  .mission-type-card-copy small { font-size: 8px; }
+  .cohort-loadout-list { max-height: 74px; }
+  .cell-selector { min-height: 62px; margin-top: 9px; padding: 9px; }
+  .cell-selector small { font-size: 7px; }
+  .loadout-footer { margin-top: 8px; padding-top: 8px; }
+  .loadout-actions .primary-button, .loadout-actions .secondary-button { padding: 8px 12px; }
+}
+
+@media (max-height: 600px) and (min-width: 721px) {
+  .loadout-screen { padding: 2px 10px; }
+  .loadout-card { padding: 12px 18px 10px; }
+  .loadout-header h1 { font-size: 32px; }
+  .loadout-copy { margin-top: 6px; font-size: 10px; }
+  .loadout-city-readout { margin-top: 10px; padding: 5px 0; }
+  .loadout-city-readout > span { padding: 5px 7px; font-size: 6px; }
+  .loadout-city-readout strong { font-size: 10px; }
+  .loadout-resource-board { gap: 6px; }
+  .loadout-resource-board > span { padding: 6px 7px; }
+  .loadout-resource-board small { font-size: 6px; }
+  .loadout-resource-board strong { font-size: 10px; }
+  .loadout-sections-grid { gap: 6px; margin-top: 6px; }
+  .loadout-section { padding: 8px; }
+  .loadout-section-heading h2 { font-size: 18px; }
+  .loadout-city-state, .loadout-capacity { padding: 5px 6px; font-size: 6px; }
+  .loadout-city-state strong, .loadout-capacity { font-size: 7px; }
+  .mission-type-grid { gap: 6px; margin-top: 6px; }
+  .mission-type-card { min-height: 62px; gap: 8px; padding: 8px 9px; }
+  .mission-type-card-name { font-size: 24px; }
+  .mission-type-card-copy { gap: 4px; }
+  .mission-type-card-copy strong { font-size: 12px; }
+  .mission-type-card-copy small { font-size: 7px; }
+  .cohort-loadout-list { max-height: 44px; margin-top: 6px; }
+  .cohort-loadout-row { padding: 5px 6px; }
+  .cohort-check { font-size: 13px; }
+  .cohort-loadout-row strong { font-size: 8px; }
+  .cohort-loadout-row small { margin-top: 2px; font-size: 6px; }
+  .cohort-loadout-row em { font-size: 6px; }
+  .loadout-empty { min-height: 26px; padding: 6px; font-size: 7px; }
+  .loadout-limits { gap: 4px; margin-top: 6px; }
+  .loadout-limits > span { padding: 4px 5px; font-size: 6px; }
+  .loadout-limits strong { font-size: 8px; }
+  .cell-selector { min-height: 48px; gap: 8px; margin-top: 6px; padding: 7px; }
+  .cell-selector > div:first-child { gap: 4px; }
+  .cell-selector strong { font-size: 11px; }
+  .cell-selector small { font-size: 6px; }
+  .cell-stepper { gap: 6px; }
+  .cell-stepper button { width: 26px; height: 26px; font-size: 17px; }
+  .cell-stepper > strong { min-width: 20px; font-size: 12px; }
+  .loadout-footer { gap: 8px; margin-top: 6px; padding-top: 6px; }
+  .loadout-validation { font-size: 7px; }
+  .loadout-actions { gap: 6px; }
+  .loadout-actions .primary-button, .loadout-actions .secondary-button { padding: 7px 9px; font-size: 8px; }
+}
 
 /* Input and QA overlays added after the first responsive pass. */
 .tactical-canvas { touch-action: none; cursor: grab; }
@@ -1200,3 +1369,200 @@ h1, h2, h3, p { margin-top: 0; }
 .battle-time-toggle { min-width: 78px; }
 .battle-time-toggle.is-normal { border-color: rgba(244, 184, 90, .62); background: rgba(47, 31, 8, .82); color: #f4b85a; }
 .battle-time-toggle.is-endless { border-color: rgba(125, 231, 212, .62); background: rgba(7, 45, 40, .82); color: #7de7d4; }
+
+/* Keep loadout metrics compact: values stay beside their labels instead of being pushed to the card edge. */
+.loadout-info-grid { gap: 4px; margin-top: 8px; }
+.loadout-info-card { gap: 2px 12px; padding: 7px 10px; }
+.loadout-city-readout > span, .loadout-resource-board > span { justify-content: flex-start; gap: 6px; padding: 1px 0; line-height: 1; }
+.loadout-sections-grid { gap: 6px; margin-top: 8px; }
+.loadout-section { padding: 10px; }
+.loadout-footer { margin-top: 8px; padding-top: 8px; }
+
+@media (max-width: 720px) {
+  .loadout-info-grid { gap: 4px; margin-top: 8px; }
+  .loadout-info-card { gap: 2px 8px; padding: 7px 9px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { gap: 5px; padding: 1px 0; }
+}
+
+/* Mission setup layout: two compact info cards and a horizontal mission chooser. */
+@media (max-width: 720px) {
+  .loadout-info-grid { grid-template-columns: 1fr; gap: 6px; margin-top: 12px; }
+  .loadout-info-card { gap: 6px 14px; padding: 8px 10px; }
+  .loadout-city-readout, .loadout-resource-board { margin-top: 0; padding: 8px 10px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { font-size: 8px; }
+  .loadout-city-readout strong, .loadout-resource-board strong { font-size: 13px; }
+  .loadout-resource-board small { font-size: 8px; }
+  .mission-section-layout { grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: 8px; }
+  .mission-section-title h2 { font-size: 20px; }
+  .mission-status { padding-right: 8px; }
+  .mission-status small { font-size: 8px; }
+  .mission-status strong { font-size: 20px; }
+  .mission-section-layout > .mission-type-grid { grid-column: 1 / -1; }
+}
+
+@media (min-width: 500px) and (max-width: 720px) and (orientation: landscape) {
+  .loadout-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+  .loadout-info-card { gap: 4px 12px; padding: 7px 9px; }
+  .loadout-city-readout, .loadout-resource-board { margin-top: 0; padding: 7px 9px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { font-size: 7px; }
+  .loadout-city-readout strong, .loadout-resource-board strong { font-size: 11px; }
+  .loadout-resource-board small { font-size: 7px; }
+  .mission-section-layout { grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: 8px; }
+  .mission-section-title h2 { font-size: 17px; }
+  .mission-status { padding-right: 8px; }
+  .mission-status small { font-size: 6px; }
+  .mission-status strong { font-size: 18px; }
+  .mission-section-layout > .mission-type-grid { grid-column: 1 / -1; }
+}
+
+@media (max-height: 760px) and (min-width: 721px) {
+  .loadout-info-grid { gap: 8px; margin-top: 12px; }
+  .loadout-info-card { gap: 5px 16px; padding: 9px 12px; }
+  .loadout-city-readout, .loadout-resource-board { margin-top: 0; padding: 9px 12px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; }
+  .loadout-city-readout strong, .loadout-resource-board strong { font-size: 18px; }
+  .loadout-resource-board small { font-size: 12px; }
+  .mission-section-layout { grid-template-columns: auto minmax(200px, .72fr) minmax(380px, 1.28fr); gap: 10px; }
+  .mission-section-title h2 { font-size: 21px; }
+  .mission-status { padding-right: 10px; }
+  .mission-status small { font-size: 8px; }
+  .mission-status strong { font-size: 21px; }
+  .mission-type-card { min-height: 72px; padding: 10px; }
+  .mission-type-card-name { font-size: 29px; }
+  .mission-type-card-copy strong { font-size: 14px; }
+  .mission-type-card-copy small { font-size: 7px; }
+}
+
+@media (max-height: 600px) and (min-width: 721px) {
+  .loadout-info-grid { gap: 5px; margin-top: 8px; }
+  .loadout-info-card { gap: 3px 12px; padding: 6px 9px; }
+  .loadout-city-readout, .loadout-resource-board { margin-top: 0; padding: 6px 9px; }
+  .loadout-city-readout > span, .loadout-resource-board > span { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 10px; }
+  .loadout-city-readout strong, .loadout-resource-board strong { font-size: 16px; }
+  .loadout-resource-board small { font-size: 10px; }
+  .mission-section-layout { grid-template-columns: auto minmax(165px, .68fr) minmax(350px, 1.32fr); gap: 8px; }
+  .mission-section-title h2 { font-size: 18px; }
+  .mission-status { padding-right: 8px; }
+  .mission-status small { font-size: 6px; }
+  .mission-status strong { font-size: 18px; }
+  .mission-type-card { min-height: 58px; padding: 7px 8px; }
+  .mission-type-card-name { font-size: 23px; }
+  .mission-type-card-copy strong { font-size: 11px; }
+  .mission-type-card-copy small { font-size: 6px; }
+}
+
+/* Final metric alignment override: keep each value close to its label. */
+.loadout-info-grid { gap: 4px; }
+.loadout-info-card { gap: 2px 12px; }
+.loadout-city-readout, .loadout-resource-board { margin-top: 0; }
+.loadout-city-readout > span, .loadout-resource-board > span { display: flex; align-items: baseline; justify-content: flex-start; gap: 6px; padding: 1px 0; line-height: 1; }
+
+/* Ground-unit choices use a compact 2-column grid; two entries never need a scrollbar. */
+.cohort-loadout-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; overflow: visible; }
+.cohort-loadout-row { min-width: 0; }
+
+@media (max-width: 420px) {
+  .cohort-loadout-list { grid-template-columns: 1fr; }
+}
+
+/* Loadout readability floor: avoid tiny auxiliary text in the setup screen. */
+.loadout-card .mission-type-card-copy small { font-size: 11px; line-height: 1.3; }
+.loadout-card .loadout-city-state, .loadout-card .loadout-capacity { font-size: 10px; }
+.loadout-card .loadout-city-state strong, .loadout-card .loadout-capacity { font-size: 12px; }
+.loadout-card .loadout-empty { font-size: 10px; line-height: 1.3; }
+.loadout-card .loadout-limits > span { gap: 4px; padding: 7px 8px; font-size: 11px; line-height: 1.15; }
+.loadout-card .loadout-limits strong { font-size: 16px; }
+.loadout-card .loadout-validation { font-size: 11px; }
+
+/* Keep the two detail panels readable after responsive compact rules. */
+.cohort-loadout-list { max-height: 108px; }
+.cohort-loadout-row { min-height: 62px; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; }
+.cohort-check { font-size: 25px; }
+.cohort-loadout-row strong { font-size: 16px; line-height: 1.05; }
+.cohort-loadout-row small { margin-top: 5px; font-size: 11px; line-height: 1.15; }
+.cohort-loadout-row em { font-size: 10px; }
+.cell-selector { min-height: 82px; gap: 14px; margin-top: 12px; padding: 12px; }
+.cell-selector > div:first-child { gap: 7px; }
+.cell-selector strong { font-size: 19px; }
+.cell-selector small { font-size: 11px; line-height: 1.3; }
+.cell-stepper { gap: 9px; }
+.cell-stepper button { width: 34px; height: 34px; font-size: 22px; }
+.cell-stepper > strong { min-width: 30px; font-size: 18px; }
+
+@media (max-height: 600px) and (min-width: 721px) {
+  .cohort-loadout-list { max-height: 74px; }
+  .cohort-loadout-row { min-height: 54px; padding: 8px 10px; }
+  .cohort-check { font-size: 21px; }
+  .cohort-loadout-row strong { font-size: 14px; }
+  .cohort-loadout-row small { margin-top: 4px; font-size: 9px; }
+  .cohort-loadout-row em { font-size: 9px; }
+  .cell-selector { min-height: 66px; padding: 9px; }
+  .cell-selector strong { font-size: 16px; }
+  .cell-selector small { font-size: 9px; }
+  .cell-stepper button { width: 30px; height: 30px; font-size: 19px; }
+  .cell-stepper > strong { font-size: 16px; }
+}
+
+@media (max-width: 720px) {
+  .cohort-loadout-list { max-height: 108px; }
+  .cohort-loadout-row { min-height: 58px; padding: 9px 10px; }
+  .cohort-check { font-size: 22px; }
+  .cohort-loadout-row strong { font-size: 14px; }
+  .cohort-loadout-row small { margin-top: 4px; font-size: 9px; }
+  .cohort-loadout-row em { font-size: 9px; }
+  .cell-selector { min-height: 72px; padding: 10px; }
+  .cell-selector strong { font-size: 16px; }
+  .cell-selector small { font-size: 9px; }
+  .cell-stepper button { width: 31px; height: 31px; font-size: 20px; }
+  .cell-stepper > strong { font-size: 16px; }
+}
+
+/* Final cohort layout override: show reserves as a 2-column grid without a clipped scroll box. */
+.cohort-loadout-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; overflow: visible; }
+@media (max-width: 420px) {
+  .cohort-loadout-list { grid-template-columns: 1fr; }
+}
+
+/* Align metric titles and values into stable columns inside each 2×2 card. */
+.loadout-city-readout > span, .loadout-resource-board > span { display: grid; grid-template-columns: 82px max-content; align-items: baseline; justify-content: start; gap: 6px; }
+
+@media (max-width: 720px) {
+  .loadout-city-readout > span, .loadout-resource-board > span { grid-template-columns: 70px max-content; gap: 5px; }
+}
+
+@media (min-width: 500px) and (max-width: 720px) and (orientation: landscape) {
+  .loadout-city-readout > span, .loadout-resource-board > span { grid-template-columns: 62px max-content; gap: 4px; }
+}
+
+@media (max-height: 600px) and (min-width: 721px) {
+  .loadout-city-readout > span, .loadout-resource-board > span { grid-template-columns: 70px max-content; gap: 5px; }
+}
+
+/* Ground-unit capacity readouts: enlarge the three operational values together. */
+.loadout-card .loadout-limits > span { gap: 6px; font-size: 15px; line-height: 1.1; }
+.loadout-card .loadout-limits strong { font-size: 22px; }
+
+@media (max-height: 600px) and (min-width: 721px) {
+  .loadout-card .loadout-limits > span { font-size: 14px; }
+  .loadout-card .loadout-limits strong { font-size: 20px; }
+}
+
+@media (max-width: 720px) {
+  .loadout-card .loadout-limits > span { font-size: 13px; }
+  .loadout-card .loadout-limits strong { font-size: 19px; }
+}
+
+.loadout-card .loadout-enter-button { min-height: 48px; padding: 13px 20px; font-size: 20px; line-height: 1; }
+
+@media (max-width: 720px) {
+  .loadout-card .loadout-enter-button { min-height: 44px; padding: 11px 16px; font-size: 18px; }
+}
+
+/* Mission setup hierarchy: make the current city state and step labels easy to scan. */
+.loadout-card .mission-status small { font-size: 12px; }
+.loadout-card .mission-status strong { font-size: 30px; }
+.loadout-card .panel-kicker { font-size: 15px; line-height: 1.1; }
+.loadout-card .loadout-header .eyebrow { font-size: 15px; }
+.loadout-card .loadout-header > .small-button { padding: 14px 20px; font-size: 17px; }
