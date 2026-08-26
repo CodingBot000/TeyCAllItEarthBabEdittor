@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { CITY_BY_ID } from '../data/cities';
 import type { CampaignState, CombatState } from '../domain/types';
 import type { BattleLaunchRequest } from './BattleGateway';
-import { getBattleDebugOptions, SHOW_IN_BATTLE_DEBUG_CONTROLS } from './gameplay/BattleDebug';
+import { getBattleDebugOptions, SHOW_IN_BATTLE_DEBUG_CONTROLS, SHOW_SHIP_INVINCIBILITY_DEBUG } from './gameplay/BattleDebug';
 import { createSideViewBattleSession } from './gameplay/sideViewBattleRules';
 import { getBattleMapDefinition, loadBattleMapDefinition } from './maps/battleMapCatalog';
 import { TACTICAL_PRESETS } from '../data/tacticalPresets';
@@ -57,6 +57,7 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
     [],
   );
   const backgroundDebugEnabled = SHOW_IN_BATTLE_DEBUG_CONTROLS && (debugOptions.directBattle || debugOptions.fastBattle);
+  const shipInvincibilityDebugEnabled = SHOW_SHIP_INVINCIBILITY_DEBUG && (debugOptions.directBattle || debugOptions.fastBattle || debugOptions.controls);
   const city = CITY_BY_ID[request.cityId];
   const preset = city ? TACTICAL_PRESETS[city.tacticalPresetId] : undefined;
   const session = useMemo(
@@ -396,6 +397,9 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
             {unitInvincibilityEnabled ? t('battle.unitInvincibilityOn') : t('battle.unitInvincibilityOff')}
           </button>
         </> : null}
+        {shipInvincibilityDebugEnabled ? <button className={`battle-invincibility-button ${invincibilityEnabled ? 'is-on' : ''}`} data-testid="battle-invincibility-toggle" type="button" aria-pressed={invincibilityEnabled} disabled={phase !== 'ready'} onClick={toggleInvincibility}>
+          함선 무적 디버그 {invincibilityEnabled ? 'ON' : 'OFF'}
+        </button> : null}
         <button className="battle-exit-button" type="button" disabled={phase !== 'ready'} onClick={() => setAbortConfirmationOpen(true)}>{t('battle.abortMission')}</button>
       </div>
       {snapshot ? <section className="battle-status-hud" aria-label={t('battle.status')}>

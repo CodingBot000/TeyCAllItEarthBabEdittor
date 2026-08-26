@@ -8,6 +8,8 @@ export interface BattleDebugOptions {
 
 /** Temporary product switch for all in-battle debug buttons and panels. */
 export const SHOW_IN_BATTLE_DEBUG_CONTROLS = false;
+/** Keep only the ship invincibility switch available while tuning the battle scene. */
+export const SHOW_SHIP_INVINCIBILITY_DEBUG = true;
 
 export function getBattleDebugOptions(search: string, environment = process.env.NODE_ENV): BattleDebugOptions {
   const enabled = environment !== 'production';
