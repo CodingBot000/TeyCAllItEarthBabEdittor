@@ -20,6 +20,7 @@ import { createFixedStepper, GROUND_SAM_ROOT_Y, GROUND_UNIT_ROOT_Z, MOTHERSHIP_S
 import { SAM_COMBAT_PROFILE } from '../../domain/units/unitCombatProfiles';
 import type { GroundPositioningState } from '../../domain/units/unitCombatTypes';
 import { scriptsMap } from '../../../scripts';
+import { BattleSoundEffects } from '../../audio/BattleSoundEffects';
 import { activateAbility, applyMothershipProjectileDamage, fighterCombatCenter, fighterKeepOutMetric, startBeamOnTarget, stopBeam, tickCombat } from '../../domain/combatRules';
 import type { AbilityId, AbsorbableKind, CommandResult, CombatState, ExtractionStatus, ShelterBreachState } from '../../domain/types';
 import type { BattleMapDefinition } from '../contracts/BattleMapDefinition';
@@ -276,6 +277,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     mothershipVisualRoot ?? undefined,
     camera,
   );
+  const soundEffects = new BattleSoundEffects();
   const mothershipDestructionVfx = new BattleMothershipDestructionSequence(scene);
   mothershipDestructionVfx.setQuality('HIGH');
   setGameplayRenderingGroup(mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
@@ -343,7 +345,10 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     const target = selectAutomaticSideViewAbilityTarget(combatState, ability);
     if (!target) return { ok: false, reason: 'NO VALID TARGET' };
     const result = activateAbility(combatState, ability, target, { unitInvincibilityEnabled });
-    if (result.ok) combatVfx.triggerAbility(ability, new Vector3(target.x, -4.2, target.z));
+    if (result.ok) {
+      combatVfx.triggerAbility(ability, new Vector3(target.x, -4.2, target.z));
+      if (ability === 'emp' || ability === 'plasma') soundEffects.playAbilitySound(ability);
+    }
     emitSnapshot(true);
     return result;
   };
@@ -363,12 +368,14 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     }
     if (combatState.activeAbility === 'beam') {
       stopBeam(combatState, 'MANUAL');
+      soundEffects.setAbsorptionActive(false);
       emitSnapshot(true);
       return { ok: true };
     }
     const target = nearestUsableSideViewTarget(combatState);
     if (!target) return { ok: false, reason: 'MOVE OVER AN ABSORBABLE REGION' };
     const result = startBeamOnTarget(combatState, target.id);
+    if (result.ok) soundEffects.setAbsorptionActive(true);
     emitSnapshot(true);
     return result;
   };
@@ -387,6 +394,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (!combatState) return { ok: false, reason: 'COMBAT STATE UNAVAILABLE' };
     const result = abortSideViewBattle(combatState);
     if (result.ok && !completedCombat) {
+      soundEffects.setAbsorptionActive(false);
       completedCombat = true;
       options.onCombatComplete?.(combatState);
     }
@@ -580,6 +588,8 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (cinematic || kind === 'CRASH' && completedCombat) return;
     movementVelocity = 0;
     cinematic = { kind, elapsed: 0, duration: kind === 'CRASH' ? CINEMATIC_CRASH_DURATION : CINEMATIC_EVASION_DURATION, origin: mothershipGameplayRoot.position.clone(), direction: movementInputs.keyboard < 0 || movementInputs.pointer < 0 ? -1 : 1 };
+    if (kind === 'CRASH') soundEffects.setAbsorptionActive(false);
+    if (kind === 'CRASH') soundEffects.playExplosion();
     if (kind === 'CRASH' && combatState && combatState.result === 'ACTIVE') {
       combatState.mothership.shield = 0;
       applyMothershipProjectileDamage(combatState, combatState.mothership.hull + 100, 'sam', { x: -0.6, y: -0.4, z: -1 }, `crash-hit-${combatState.nextEntityId++}`);
@@ -768,6 +778,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       combatState.mothership.velocity.z = 0;
       entityVisuals.sync(combatState, deltaSeconds);
       combatVfx.syncCombatState(combatState);
+      soundEffects.syncCombatState(combatState);
       absorbableRegions.sync(combatState);
       fleeingCrowdVisuals.sync(combatState, elapsed, false);
       cohortVisuals.sync(combatState, elapsed);
@@ -808,6 +819,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     cohortVisuals.sync(combatState, elapsed);
     entityVisuals.sync(combatState, 0);
     combatVfx.syncCombatState(combatState);
+    soundEffects.syncCombatState(combatState);
   }
   emitSnapshot(true);
   scene.onBeforeRenderObservable.add(update);
@@ -851,6 +863,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       cohortVisuals.dispose();
       entityVisuals.dispose();
       combatVfx.dispose();
+      soundEffects.dispose();
       infectedAssaultVfx.dispose();
       mothershipDestructionVfx.dispose();
       mothershipPurpleGlow?.dispose();
