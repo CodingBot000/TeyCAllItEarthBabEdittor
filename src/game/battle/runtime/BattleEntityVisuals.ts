@@ -100,10 +100,12 @@ interface GroundVisual {
   group: GroundUnitGroup;
   root: TransformNode;
   body: Mesh;
+  bodyBaseScaleX: number;
   healthFill: Mesh;
   healthTrack: Mesh;
   maximumHealth: number;
   isSam: boolean;
+  isDirectional: boolean;
   spriteKey: GroundSpriteKey | null;
   attackSpawn?: TransformNode;
   destroyed: boolean;
@@ -218,13 +220,13 @@ export class BattleEntityVisuals {
       const id = `defender:${defender.id}`;
       activeGroundIds.add(id);
       const visual = this.groundVisuals.get(id) ?? this.createGround(id, 'DEFENDER', this.groundVisualRoot, Math.max(1, defender.health));
-      this.syncGround(visual, defender.position.x, defender.health, defender.health <= 0, defender.disabledUntil > state.elapsedSeconds);
+      this.syncGround(visual, defender.position.x, state.mothership.position.x, defender.health, defender.health <= 0, defender.disabledUntil > state.elapsedSeconds);
     }
     for (const facility of state.facilities) {
       const id = `facility:${facility.id}`;
       activeGroundIds.add(id);
       const visual = this.groundVisuals.get(id) ?? this.createGround(id, 'FACILITY', this.groundVisualRoot, facility.maxHealth, facility.kind);
-      this.syncGround(visual, facility.position.x, facility.health, facility.destroyed, facility.disabledUntil > state.elapsedSeconds);
+      this.syncGround(visual, facility.position.x, state.mothership.position.x, facility.health, facility.destroyed, facility.disabledUntil > state.elapsedSeconds);
     }
     for (const [id, visual] of this.groundVisuals) {
       if (activeGroundIds.has(id)) continue;
@@ -693,12 +695,12 @@ export class BattleEntityVisuals {
     hitFlash.renderingGroupId = 3;
     hitFlash.isPickable = false;
     hitFlash.visibility = 0;
-    const visual = { id, kind, group, root, body, healthFill, healthTrack, maximumHealth, isSam, spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel, hitFlash, previousHealth: maximumHealth, hitElapsed: 0 };
+    const visual = { id, kind, group, root, body, bodyBaseScaleX: Math.abs(body.scaling.x), healthFill, healthTrack, maximumHealth, isSam, isDirectional: isSam || spriteKey === 'DEFENDER', spriteKey, attackSpawn, destroyed: false, labelAnchor, labelPanel, hitFlash, previousHealth: maximumHealth, hitElapsed: 0 };
     this.groundVisuals.set(id, visual);
     return visual;
   }
 
-  private syncGround(visual: GroundVisual, x: number, health: number, destroyed: boolean, disabled: boolean): void {
+  private syncGround(visual: GroundVisual, x: number, mothershipX: number, health: number, destroyed: boolean, disabled: boolean): void {
     if (health < visual.previousHealth - 0.001 && !visual.destroyed) visual.hitElapsed = GROUND_HIT_FLASH_DURATION;
     if (destroyed && !visual.destroyed) {
       this.createExplosionEffect(visual.root.getAbsolutePosition().clone(), visual.isSam ? 1.15 : 0.9);
@@ -706,6 +708,9 @@ export class BattleEntityVisuals {
     visual.previousHealth = health;
     const override = this.groundPositionOverrides.get(visual.group);
     this.applyGroundPosition(visual, x, override ?? (visual.isSam ? GROUND_SAM_ROOT_Y : GROUND_ENTITY_ROOT_Y));
+    if (visual.isDirectional) {
+      visual.body.scaling.x = facingScaleX(visual.bodyBaseScaleX, x, mothershipX);
+    }
     visual.root.setEnabled(!destroyed);
     if (visual.labelAnchor && visual.labelPanel) {
       visual.labelAnchor.position.x = x;
@@ -780,6 +785,12 @@ function facilitySpriteKey(kind: FacilityKind | undefined): GroundSpriteKey {
   if (kind === 'RADAR' || kind === 'RESEARCH') return 'RADAR';
   if (kind === 'AIRBASE') return 'AIRBASE';
   return 'POWER';
+}
+
+function facingScaleX(baseScaleX: number, unitX: number, referenceX: number): number {
+  // The source sprites face right. Ground vehicles face toward the mothership.
+  const direction = Math.sign(referenceX - unitX) || 1;
+  return Math.abs(baseScaleX) * direction;
 }
 
 function setAtlasFrame(texture: Texture, columns: number, rows: number, frame: number): void {

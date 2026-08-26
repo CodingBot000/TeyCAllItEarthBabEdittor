@@ -18,7 +18,7 @@ import { loadScene } from 'babylonjs-editor-tools';
 import { BALANCE } from '../../domain/balance';
 import { scriptsMap } from '../../../scripts';
 import { activateAbility, applyMothershipProjectileDamage, fighterCombatCenter, fighterKeepOutMetric, startBeamOnTarget, stopBeam, tickCombat } from '../../domain/combatRules';
-import type { AbilityId, AbsorbableKind, CommandResult, CombatState, ExtractionStatus } from '../../domain/types';
+import type { AbilityId, AbsorbableKind, CommandResult, CombatState, ExtractionStatus, ShelterBreachState } from '../../domain/types';
 import type { BattleMapDefinition } from '../contracts/BattleMapDefinition';
 import type { BattleGameplayProfile } from '../gameplay/BattleGameplayProfile';
 import { battleAbilityAvailability, type AbilityAvailability, type BattleActionId } from '../gameplay/battleAbilityAvailability';
@@ -108,6 +108,7 @@ export interface BattleRuntimeTargetSnapshot {
   status: CombatState['absorbableTargets'][number]['status'];
   remainingAmount: number;
   initialAmount: number;
+  shelterBreach: { state: ShelterBreachState; progress: number } | null;
 }
 
 export interface BattleRuntimeGuidanceTargetSnapshot {
@@ -509,6 +510,9 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
         status: target.status,
         remainingAmount: round(target.remainingAmount, 2),
         initialAmount: target.initialAmount,
+        shelterBreach: target.shelterBreachState
+          ? { state: target.shelterBreachState, progress: round(target.shelterBreachProgress ?? 0, 3) }
+          : null,
       })),
       groundSwarm: {
         activeProjectiles: combatState.groundSwarmProjectiles.length,

@@ -52,5 +52,6 @@ Babylon.js Editor에서 `project.bjseditor`를 열면 마지막 씬이 `assets/b
 - [전투 장면 후속 계획](docs/battlescene/BATTLE_SCENE_IMPLEMENTATION_PLAN.md)
 - [2D 배틀 게임플레이 개발계획](docs/battlescene/BATTLE_2D_GAMEPLAY_DEVELOPMENT_PLAN.md)
 - [2D 배틀 수정 전용 개발계획](docs/battlescene/BATTLE_2D_GAMEPLAY_CORRECTION_PLAN.md)
+- [공통 지상 유닛 사격 위치 AI 및 SAM 이동 전투 개발계획](docs/battlescene/GROUND_UNIT_ATTACK_POSITIONING_AI_PLAN.md)
 
 코드 작업 단위마다 계획서의 실행 현황과 이슈 문서를 함께 갱신한다. 해결되지 않은 이슈도 숨기지 않고 상태·근거·우회책·다음 조치를 기록한 뒤, 독립 작업은 중단하지 않고 계속 진행한다.

@@ -36,6 +36,7 @@ export const BALANCE = {
     range: 22,
     radius: 6.5,
     harvestPerSecond: 5000,
+    shelterBreachSeconds: 3,
     biomassPerPerson: 100,
     tacticalEnergyPerThousand: 14,
     heatPerSecond: 14,

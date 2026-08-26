@@ -1,5 +1,6 @@
 import { createCombatState, refreshAbsorbableTargetStatuses, stopBeam } from '../../domain/combatRules';
 import { resolveMissionOutcome } from '../../domain/missionRules';
+import { isShelterOrganicTarget } from '../../domain/shelterRules';
 import type { AbilityId, AbsorbableTargetState, CampaignState, CityDefinition, CityState, CombatState, TacticalPreset, Vec2 } from '../../domain/types';
 import { gameplayProfileById, gameplayProfileForPreset, type BattleGameplayProfile } from './BattleGameplayProfile';
 import { createPlannedBattleSetup } from './battleSetupRules';
@@ -119,7 +120,7 @@ export function discoverNearbySideViewTargets(state: CombatState, profile: Battl
 
 export function nearestUsableSideViewTarget(state: CombatState): AbsorbableTargetState | null {
   return state.absorbableTargets
-    .filter((target) => target.discovered && target.status === 'AVAILABLE' && target.remainingAmount > 0)
+    .filter((target) => target.discovered && target.remainingAmount > 0 && (target.status === 'AVAILABLE' || (isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED')))
     .map((target) => ({ target, distance: Math.abs(target.center.x - state.mothership.position.x) }))
     .filter(({ target, distance }) => distance <= target.radius + state.modifiers.beamRadiusBonus + 2)
     .sort((a, b) => a.distance - b.distance)[0]?.target ?? null;

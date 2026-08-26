@@ -2,6 +2,7 @@ import { BALANCE } from './balance';
 import { deriveCombatModifiers } from './campaignRules';
 import { createControlNodes, createDeployedCohorts, createGroundDefenders, tickCohorts, updateControlNodes } from './cohortRules';
 import { occupationRequirements, resolveMissionOutcome } from './missionRules';
+import { ensureShelterBreachState, isShelterOrganicTarget } from './shelterRules';
 import { ABSORBABLE_WEIGHT_BY_KIND } from './types';
 import { clampTacticalPosition, TACTICAL_MAP_BOUNDS } from './tacticalBounds';
 import type { AbsorbableKind, AbsorbableTargetState, AbsorptionPreview, AbilityId, BeamHeatState, BeamStopReason, CampaignState, CityDefinition, CityState, CombatFacilityState, CombatState, EnemyAbsorptionStatus, EnemyState, MissionCargo, MissionYieldPerThousand, MothershipHitEvent, PopulationZoneState, TacticalPreset, TacticalRiskForecast, TargetRecommendation, Vec2, Vec3 } from './types';
@@ -164,7 +165,7 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
     const remainingAmount = clamp(saved?.remainingAmount ?? initialAmount, 0, initialAmount);
     const destroyedAmount = clamp(saved?.destroyedAmount ?? 0, 0, initialAmount - remainingAmount);
     const discovered = saved?.discovered === true || distance(initialPosition, target.center) <= BALANCE.scan.autoRevealRange + target.radius;
-    return {
+    const state: AbsorbableTargetState = {
       ...target,
       initialAmount,
       remainingAmount,
@@ -173,6 +174,8 @@ export function createCombatState(campaign: CampaignState, city: CityDefinition,
       discovered,
       status: remainingAmount <= 0 ? (destroyedAmount > 0 ? 'DESTROYED' : 'DEPLETED') : discovered ? 'AVAILABLE' : 'HIDDEN',
     };
+    ensureShelterBreachState(state);
+    return state;
   });
   const state: CombatState = {
     cityId: city.id,
@@ -319,6 +322,7 @@ export function stopBeam(state: CombatState, reason: BeamStopReason = 'MANUAL'):
 export function selectAbsorbableTarget(state: CombatState, targetId: string): { ok: boolean; reason?: string } {
   const target = state.absorbableTargets.find((item) => item.id === targetId);
   if (!target) return { ok: false, reason: 'TARGET NOT FOUND' };
+  ensureShelterBreachState(target);
   const directAccess = isAmbientDirectAccessTarget(target);
   if (!target.discovered && !directAccess) return { ok: false, reason: 'TARGET NOT SCANNED' };
   if (directAccess) target.discovered = true;
@@ -326,7 +330,7 @@ export function selectAbsorbableTarget(state: CombatState, targetId: string): { 
   state.selectedTargetId = target.id;
   if (target.status === 'DEPLETED') return { ok: false, reason: 'TARGET DEPLETED' };
   if (target.status === 'DESTROYED') return { ok: false, reason: 'TARGET DESTROYED' };
-  if (target.status === 'LOCKED') return { ok: false, reason: targetLockReason(target) };
+  if (target.status === 'LOCKED' && !isShelterOrganicTarget(target)) return { ok: false, reason: targetLockReason(target) };
   return { ok: true };
 }
 
@@ -339,9 +343,11 @@ export function startBeamOnTarget(state: CombatState, targetId: string): { ok: b
     return { ok: false, reason: enemyCheck.reason ?? 'ENEMY NOT ABSORBABLE' };
   }
   if (state.mothership.cargoUsed >= state.mothership.maxCargo) return { ok: false, reason: 'CARGO FULL' };
+  const target = state.absorbableTargets.find((item) => item.id === targetId);
+  if (!target) return { ok: false, reason: 'TARGET NOT FOUND' };
+  ensureShelterBreachState(target);
   const selected = selectAbsorbableTarget(state, targetId);
-  if (!selected.ok) return selected;
-  const target = state.absorbableTargets.find((item) => item.id === targetId)!;
+  if (!selected.ok && !(isShelterOrganicTarget(target) && target.status === 'LOCKED')) return selected;
   if (distance(state.mothership.position, target.center) > BALANCE.beam.range + target.radius) return { ok: false, reason: 'OUT OF RANGE' };
   state.activeAbility = 'beam';
   state.activeBeamTargetId = target.id;
@@ -688,6 +694,7 @@ export function refreshAbsorbableTargetStatuses(state: CombatState): void {
 const refreshTargetStatuses = refreshAbsorbableTargetStatuses;
 
 function refreshTargetStatus(state: CombatState, target: AbsorbableTargetState): void {
+  ensureShelterBreachState(target);
   if (target.remainingAmount <= 0.001) {
     target.remainingAmount = 0;
     target.status = target.destroyedAmount >= target.initialAmount - 0.001 ? 'DESTROYED' : 'DEPLETED';
@@ -698,6 +705,10 @@ function refreshTargetStatus(state: CombatState, target: AbsorbableTargetState):
     return;
   }
   if (target.requirement === 'NONE') {
+    if (isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED') {
+      target.status = 'LOCKED';
+      return;
+    }
     target.status = 'AVAILABLE';
     return;
   }
@@ -820,6 +831,23 @@ function tickBeam(state: CombatState, dt: number): void {
     return;
   }
   refreshTargetStatus(state, target);
+  if (target.remainingAmount <= 0) {
+    stopBeam(state, 'TARGET_DEPLETED');
+    return;
+  }
+  if (isShelterOrganicTarget(target) && target.shelterBreachState !== 'DESTROYED') {
+    target.shelterBreachState = 'BREACHING';
+    target.shelterBreachProgress = clamp(
+      (target.shelterBreachProgress ?? 0) + dt / BALANCE.beam.shelterBreachSeconds,
+      0,
+      1,
+    );
+    if (target.shelterBreachProgress < 1 - 0.000001) return;
+    target.shelterBreachProgress = 1;
+    target.shelterBreachState = 'DESTROYED';
+    refreshTargetStatus(state, target);
+    return;
+  }
   if (target.status === 'LOCKED') {
     stopBeam(state, 'TARGET_LOCKED');
     return;

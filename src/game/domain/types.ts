@@ -18,6 +18,7 @@ export type FacilityKind = 'SAM' | 'RADAR' | 'AIRBASE' | 'POWER' | 'RESEARCH';
 export type AbsorbableKind = 'ORGANIC' | 'POWER' | 'VEHICLE' | 'MACHINERY' | 'DATA' | 'RELIC';
 export type AbsorbableRequirement = 'NONE' | 'EMP_WINDOW' | 'FACILITY_DISABLED' | 'PLASMA_OPENING';
 export type AbsorbableStatus = 'HIDDEN' | 'AVAILABLE' | 'LOCKED' | 'DEPLETED' | 'DESTROYED';
+export type ShelterBreachState = 'INTACT' | 'BREACHING' | 'DESTROYED';
 export type BeamHeatState = 'STABLE' | 'WARM' | 'CRITICAL' | 'OVERHEATED';
 export type BeamStopReason = 'MANUAL' | 'MOVED' | 'IMPACTED' | 'ENERGY_DEPLETED' | 'TARGET_DEPLETED' | 'TARGET_LOCKED' | 'TARGET_ATTACKING' | 'OUT_OF_RANGE' | 'CARGO_FULL' | 'EXTRACTION_STARTED' | 'OVERHEATED';
 export type EnemyAbsorptionStatus = 'NEUTRAL' | 'FLEEING' | 'ATTACKING' | 'DISABLED' | 'DESTROYED';
@@ -499,6 +500,8 @@ export interface AbsorbableTargetState extends AbsorbableTargetDefinition {
   destroyedAmount: number;
   discovered: boolean;
   status: AbsorbableStatus;
+  shelterBreachState?: ShelterBreachState;
+  shelterBreachProgress?: number;
 }
 
 export interface AbsorptionPreview {
