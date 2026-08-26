@@ -72,7 +72,7 @@ describe('battle sound effects', () => {
       const audio = new FakeAudio(source);
       audios.push(audio);
       return audio as unknown as HTMLAudioElement;
-    }, true);
+    });
     const absorption = audios[0];
 
     sounds.setAbsorptionActive(true);
@@ -86,52 +86,53 @@ describe('battle sound effects', () => {
     expect(absorption.playCount).toBe(2);
   });
 
-  it('plays one laser sound per multi-target firing event while allowing separate shots to overlap', () => {
-    const audios: FakeAudio[] = [];
-    const sounds = new BattleSoundEffects((source) => {
-      const audio = new FakeAudio(source);
-      audios.push(audio);
-      return audio as unknown as HTMLAudioElement;
-    }, true);
-    const state = createState();
-    state.airDefenseShots = [airDefenseShot('shot-1', 3), airDefenseShot('shot-2', 3)];
-    sounds.syncCombatState(state);
-    const firstLaser = audios.find((audio) => audio.source.includes('sfx-spacship_laser'))!;
-    expect(audios.filter((audio) => audio.source.includes('sfx-spacship_laser')).length).toBe(1);
-    expect(firstLaser.volume).toBe(0.32);
-
-    state.airDefenseShots = [...state.airDefenseShots, airDefenseShot('shot-3', 6)];
-    sounds.syncCombatState(state);
-    expect(audios.filter((audio) => audio.source.includes('sfx-spacship_laser')).length).toBe(2);
-    sounds.dispose();
-  });
-
-  it('plays plasma and EMP once per successful trigger', async () => {
-    const audios: FakeAudio[] = [];
-    const sounds = new BattleSoundEffects((source) => {
-      const audio = new FakeAudio(source);
-      audios.push(audio);
-      return audio as unknown as HTMLAudioElement;
-    }, true);
-
-    sounds.playAbilitySound('plasma');
-    sounds.playAbilitySound('emp');
-    await Promise.resolve();
-
-    const plasma = audios.find((audio) => audio.source.includes('sfx-plasma-sound'))!;
-    const emp = audios.find((audio) => audio.source.includes('sfx-emp-shock'))!;
-    expect(plasma.playCount).toBe(1);
-    expect(emp.playCount).toBe(1);
-    sounds.dispose();
-  });
-
-  it('keeps every battle sound effect silent when disabled by default', async () => {
+  it('keeps air-defense laser sounds silent while that channel is disabled', () => {
     const audios: FakeAudio[] = [];
     const sounds = new BattleSoundEffects((source) => {
       const audio = new FakeAudio(source);
       audios.push(audio);
       return audio as unknown as HTMLAudioElement;
     });
+    const state = createState();
+    state.airDefenseShots = [airDefenseShot('shot-1', 3), airDefenseShot('shot-2', 3)];
+    sounds.syncCombatState(state);
+    expect(audios.filter((audio) => audio.source.includes('sfx-spacship_laser')).length).toBe(0);
+
+    state.airDefenseShots = [...state.airDefenseShots, airDefenseShot('shot-3', 6)];
+    sounds.syncCombatState(state);
+    expect(audios.filter((audio) => audio.source.includes('sfx-spacship_laser')).length).toBe(0);
+    sounds.dispose();
+  });
+
+  it('plays plasma, EMP, and overdrive once per successful trigger', async () => {
+    const audios: FakeAudio[] = [];
+    const sounds = new BattleSoundEffects((source) => {
+      const audio = new FakeAudio(source);
+      audios.push(audio);
+      return audio as unknown as HTMLAudioElement;
+    });
+
+    sounds.playAbilitySound('plasma');
+    sounds.playAbilitySound('emp');
+    sounds.playAbilitySound('overdrive');
+    await Promise.resolve();
+
+    const plasma = audios.find((audio) => audio.source.includes('sfx-plasma-sound'))!;
+    const empSounds = audios.filter((audio) => audio.source.includes('sfx-emp-shock'));
+    expect(plasma.playCount).toBe(1);
+    expect(empSounds).toHaveLength(2);
+    expect(empSounds.every((audio) => audio.playCount === 1)).toBe(true);
+    expect(audios.filter((audio) => audio.source.includes('sfx-spacship_laser'))).toHaveLength(0);
+    sounds.dispose();
+  });
+
+  it('keeps every battle sound effect silent when the master switch is disabled', async () => {
+    const audios: FakeAudio[] = [];
+    const sounds = new BattleSoundEffects((source) => {
+      const audio = new FakeAudio(source);
+      audios.push(audio);
+      return audio as unknown as HTMLAudioElement;
+    }, false);
     const state = createState({
       activeAbility: 'beam',
       airDefenseShots: [airDefenseShot('shot-1', 3)],
@@ -140,6 +141,7 @@ describe('battle sound effects', () => {
     sounds.syncCombatState(state);
     sounds.playAbilitySound('plasma');
     sounds.playAbilitySound('emp');
+    sounds.playAbilitySound('overdrive');
     await Promise.resolve();
 
     expect(audios).toHaveLength(0);

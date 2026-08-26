@@ -21,6 +21,7 @@
     "test:e2e:absorption-v2": "node scripts/verify-absorption-beam-v2.mjs",
     "test:e2e:absorption-virtual-objects": "node scripts/verify-absorption-virtual-objects.mjs",
     "test:e2e:cohort-human-drop": "node scripts/verify-cohort-human-drop.mjs",
+    "test:e2e:selective-battle-audio": "node scripts/verify-selective-battle-audio.mjs",
     "test:e2e:fleeing-crowd-absorption": "node scripts/verify-fleeing-crowd-absorption.mjs",
     "test:e2e:civilian-shelters": "node scripts/verify-civilian-shelters.mjs",
     "test:e2e:fighter-ghosting": "node scripts/verify-fighter-frame-ghosting.mjs",

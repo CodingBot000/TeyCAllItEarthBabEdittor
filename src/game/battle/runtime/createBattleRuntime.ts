@@ -347,6 +347,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     if (!combatState || combatState.result !== 'ACTIVE') return { ok: false, reason: 'COMBAT IS OVER' };
     if (ability === 'overdrive') {
       const result = activateAbility(combatState, ability, undefined, { unitInvincibilityEnabled });
+      if (result.ok) soundEffects.playAbilitySound(ability);
       emitSnapshot(true);
       return result;
     }
@@ -355,7 +356,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     const result = activateAbility(combatState, ability, target, { unitInvincibilityEnabled });
     if (result.ok) {
       combatVfx.triggerAbility(ability, new Vector3(target.x, -4.2, target.z));
-      if (ability === 'emp' || ability === 'plasma') soundEffects.playAbilitySound(ability);
+      soundEffects.playAbilitySound(ability);
     }
     emitSnapshot(true);
     return result;

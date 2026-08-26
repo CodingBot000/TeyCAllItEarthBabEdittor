@@ -4,7 +4,19 @@ const ABSORPTION_BEAM_URL = '/assets/runtime/audio/sfx-absorption-beam-loop.mp3'
 const SPACESHIP_LASER_URL = '/assets/runtime/audio/sfx-spacship_laser.mp3';
 const PLASMA_URL = '/assets/runtime/audio/sfx-plasma-sound.mp3';
 const EMP_URL = '/assets/runtime/audio/sfx-emp-shock.mp3';
-export const BATTLE_SOUND_EFFECTS_ENABLED = false;
+// Keep the master switch available for QA, while allowing only the requested
+// battle sounds through in the normal build.
+export const BATTLE_SOUND_EFFECTS_ENABLED = true;
+export const BATTLE_SOUND_EFFECT_TOGGLES = {
+  absorption: true,
+  emp: true,
+  plasma: true,
+  overdrive: true,
+  airDefense: false,
+} as const;
+// No dedicated overdrive recording exists yet; use the short pulse recording
+// rather than reviving the removed shield-impact sound.
+const OVERDRIVE_URL = EMP_URL;
 
 type AudioFactory = (source: string) => HTMLAudioElement;
 type PlaybackSegment = { start: number; end: number };
@@ -25,19 +37,22 @@ export class BattleSoundEffects {
     private readonly audioFactory: AudioFactory = (source) => new Audio(source),
     private readonly enabled = BATTLE_SOUND_EFFECTS_ENABLED,
   ) {
-    this.absorptionBeam = this.enabled ? this.createAudio(ABSORPTION_BEAM_URL, true, 0.48) : null;
+    this.absorptionBeam = this.enabled && BATTLE_SOUND_EFFECT_TOGGLES.absorption
+      ? this.createAudio(ABSORPTION_BEAM_URL, true, 0.48)
+      : null;
   }
 
   setAbsorptionActive(active: boolean): void {
-    if (!this.enabled || this.disposed || this.absorptionActive === active) return;
+    if (!this.enabled || !BATTLE_SOUND_EFFECT_TOGGLES.absorption || this.disposed || this.absorptionActive === active) return;
     this.absorptionActive = active;
     if (active && this.absorptionBeam) this.playLoop(this.absorptionBeam);
     else if (this.absorptionBeam) this.stopAudio(this.absorptionBeam);
   }
 
-  playAbilitySound(ability: 'emp' | 'plasma'): void {
-    if (!this.enabled || this.disposed) return;
-    this.playOneShot(ability === 'plasma' ? PLASMA_URL : EMP_URL, 0.58);
+  playAbilitySound(ability: 'emp' | 'plasma' | 'overdrive'): void {
+    if (!this.enabled || !BATTLE_SOUND_EFFECT_TOGGLES[ability] || this.disposed) return;
+    const source = ability === 'plasma' ? PLASMA_URL : ability === 'overdrive' ? OVERDRIVE_URL : EMP_URL;
+    this.playOneShot(source, ability === 'overdrive' ? 0.48 : 0.58);
   }
 
   syncCombatState(state: Readonly<CombatState>): void {
@@ -58,7 +73,7 @@ export class BattleSoundEffects {
   }
 
   private syncAirDefenseShots(shots: readonly AirDefenseShotEvent[]): void {
-    if (!this.enabled) return;
+    if (!this.enabled || !BATTLE_SOUND_EFFECT_TOGGLES.airDefense) return;
     const retainedIds = new Set(shots.map((shot) => shot.id));
     const retainedTimes = new Set(shots.map((shot) => shot.occurredAt));
     for (const shot of shots) {
