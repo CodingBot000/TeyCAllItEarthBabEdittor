@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AirDefenseShotEvent, CombatState, MothershipHitEvent } from '../domain/types';
+import type { AirDefenseShotEvent, CombatState } from '../domain/types';
 import { BattleSoundEffects } from './BattleSoundEffects';
 
 class FakeAudio {
@@ -45,11 +45,6 @@ class FakeAudio {
     this.listeners.get(type)?.delete(listener);
   }
 
-  finish(): void {
-    this.paused = true;
-    this.ended = true;
-    this.listeners.get('ended')?.forEach((listener) => listener());
-  }
 }
 
 function createState(overrides: Partial<CombatState> = {}): CombatState {
@@ -64,10 +59,6 @@ function createState(overrides: Partial<CombatState> = {}): CombatState {
     absorbableTargets: [],
     ...overrides,
   } as CombatState;
-}
-
-function shieldHit(id: string, occurredAt: number): MothershipHitEvent {
-  return { id, source: 'fighter', kind: 'SHIELD', direction: { x: 0, y: 0, z: -1 }, shieldDamage: 1, hullDamage: 0, occurredAt };
 }
 
 function airDefenseShot(id: string, occurredAt: number): AirDefenseShotEvent {
@@ -97,28 +88,6 @@ describe('battle sound effects', () => {
     expect(absorption.playCount).toBe(2);
   });
 
-  it('does not overlap barrier sounds, then allows the next hit after playback ends', () => {
-    const audios: FakeAudio[] = [];
-    const sounds = new BattleSoundEffects((source) => {
-      const audio = new FakeAudio(source);
-      audios.push(audio);
-      return audio as unknown as HTMLAudioElement;
-    });
-    const state = createState();
-    const barrier = audios[1];
-    const first = shieldHit('hit-1', 1);
-    const second = shieldHit('hit-2', 1.1);
-
-    state.mothershipHits = [first, second];
-    sounds.syncCombatState(state);
-    expect(barrier.playCount).toBe(1);
-
-    barrier.finish();
-    state.mothershipHits = [first, second, shieldHit('hit-3', 4)];
-    sounds.syncCombatState(state);
-    expect(barrier.playCount).toBe(2);
-  });
-
   it('plays one laser sound per multi-target firing event while allowing separate shots to overlap', () => {
     const audios: FakeAudio[] = [];
     const sounds = new BattleSoundEffects((source) => {
@@ -129,7 +98,9 @@ describe('battle sound effects', () => {
     const state = createState();
     state.airDefenseShots = [airDefenseShot('shot-1', 3), airDefenseShot('shot-2', 3)];
     sounds.syncCombatState(state);
+    const firstLaser = audios.find((audio) => audio.source.includes('sfx-spacship_laser'))!;
     expect(audios.filter((audio) => audio.source.includes('sfx-spacship_laser')).length).toBe(1);
+    expect(firstLaser.volume).toBe(0.32);
 
     state.airDefenseShots = [...state.airDefenseShots, airDefenseShot('shot-3', 6)];
     sounds.syncCombatState(state);
@@ -156,6 +127,7 @@ describe('battle sound effects', () => {
     const explosion = audios.find((audio) => audio.source.includes('sfx-explosion-sound'))!;
     expect(plasma.playCount).toBe(1);
     expect(emp.playCount).toBe(1);
+    expect(explosion.volume).toBe(0.34);
     expect(explosion.currentTime).toBe(1);
 
     vi.advanceTimersByTime(1250);

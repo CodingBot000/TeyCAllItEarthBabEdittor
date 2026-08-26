@@ -1,8 +1,7 @@
-import type { AirDefenseShotEvent, CombatState, MothershipHitEvent } from '../domain/types';
+import type { AirDefenseShotEvent, CombatState } from '../domain/types';
 
 const ABSORPTION_BEAM_URL = '/assets/runtime/audio/sfx-absorption-beam-loop.mp3';
 const SPACESHIP_LASER_URL = '/assets/runtime/audio/sfx-spacship_laser.mp3';
-const SPACESHIP_BARRIER_URL = '/assets/runtime/audio/sfx-spaceship-barrier-defend.mp3';
 const EXPLOSION_URL = '/assets/runtime/audio/sfx-explosion-sound.mp3';
 const PLASMA_URL = '/assets/runtime/audio/sfx-plasma-sound.mp3';
 const EMP_URL = '/assets/runtime/audio/sfx-emp-shock.mp3';
@@ -16,9 +15,7 @@ type PlaybackSegment = { start: number; end: number };
  */
 export class BattleSoundEffects {
   private readonly absorptionBeam: HTMLAudioElement;
-  private readonly barrierDefend: HTMLAudioElement;
   private readonly oneShotAudios = new Set<HTMLAudioElement>();
-  private readonly consumedHitIds = new Set<string>();
   private readonly consumedAirDefenseIds = new Set<string>();
   private readonly consumedAirDefenseTimes = new Set<number>();
   private readonly knownActiveEnemyIds = new Set<string>();
@@ -26,13 +23,11 @@ export class BattleSoundEffects {
   private readonly knownActiveDefenderIds = new Set<string>();
   private readonly knownNonDestroyedTargetIds = new Set<string>();
   private absorptionActive = false;
-  private barrierDefendPlaying = false;
   private destructionStateInitialized = false;
   private disposed = false;
 
   constructor(private readonly audioFactory: AudioFactory = (source) => new Audio(source)) {
     this.absorptionBeam = this.createAudio(ABSORPTION_BEAM_URL, true, 0.48);
-    this.barrierDefend = this.createAudio(SPACESHIP_BARRIER_URL, false, 0.68);
   }
 
   setAbsorptionActive(active: boolean): void {
@@ -49,13 +44,12 @@ export class BattleSoundEffects {
 
   playExplosion(): void {
     if (this.disposed) return;
-    this.playOneShot(EXPLOSION_URL, 0.64, { start: 1, end: 2 });
+    this.playOneShot(EXPLOSION_URL, 0.34, { start: 1, end: 2 });
   }
 
   syncCombatState(state: Readonly<CombatState>): void {
     if (this.disposed) return;
     this.setAbsorptionActive(state.result === 'ACTIVE' && state.activeAbility === 'beam');
-    this.syncMothershipHits(state.mothershipHits);
     this.syncAirDefenseShots(state.airDefenseShots);
     this.syncDestructionEvents(state);
   }
@@ -65,28 +59,14 @@ export class BattleSoundEffects {
     this.disposed = true;
     this.absorptionActive = false;
     this.stopAudio(this.absorptionBeam, true);
-    this.stopAudio(this.barrierDefend, true);
     for (const audio of this.oneShotAudios) this.stopAudio(audio, true);
     this.oneShotAudios.clear();
-    this.consumedHitIds.clear();
     this.consumedAirDefenseIds.clear();
     this.consumedAirDefenseTimes.clear();
     this.knownActiveEnemyIds.clear();
     this.knownActiveFacilityIds.clear();
     this.knownActiveDefenderIds.clear();
     this.knownNonDestroyedTargetIds.clear();
-  }
-
-  private syncMothershipHits(hits: readonly MothershipHitEvent[]): void {
-    for (const hit of hits) {
-      if (this.consumedHitIds.has(hit.id)) continue;
-      this.consumedHitIds.add(hit.id);
-      if (hit.kind === 'SHIELD') this.playBarrierDefend();
-    }
-    const retainedIds = new Set(hits.map((hit) => hit.id));
-    for (const id of this.consumedHitIds) {
-      if (!retainedIds.has(id)) this.consumedHitIds.delete(id);
-    }
   }
 
   private syncAirDefenseShots(shots: readonly AirDefenseShotEvent[]): void {
@@ -99,7 +79,7 @@ export class BattleSoundEffects {
       // Treat that group as one mothership trigger and play one sound.
       if (!this.consumedAirDefenseTimes.has(shot.occurredAt)) {
         this.consumedAirDefenseTimes.add(shot.occurredAt);
-        this.playOneShot(SPACESHIP_LASER_URL, 0.62);
+        this.playOneShot(SPACESHIP_LASER_URL, 0.32);
       }
     }
     for (const id of this.consumedAirDefenseIds) {
@@ -155,17 +135,6 @@ export class BattleSoundEffects {
     audio.currentTime = 0;
     void audio.play().catch(() => {
       // Browser autoplay policy may wait for a user gesture.
-    });
-  }
-
-  private playBarrierDefend(): void {
-    if (this.barrierDefend.ended) this.barrierDefendPlaying = false;
-    if (this.disposed || this.barrierDefendPlaying || (!this.barrierDefend.paused && !this.barrierDefend.ended)) return;
-    this.barrierDefendPlaying = true;
-    this.barrierDefend.currentTime = 0;
-    void this.barrierDefend.play().catch(() => {
-      this.barrierDefendPlaying = false;
-      // Keep the battle running if the browser blocks audio playback.
     });
   }
 
