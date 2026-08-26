@@ -707,3 +707,12 @@ Original prompt: 우주선 모형이 지금 엉망진창인데 /Users/switch/Dev
 - 도주 군중의 기준 Y를 현재 위치보다 2 월드 유닛 위로 올렸다. 브라우저 snapshot에서 군중 `worldY=-15.27`을 확인했다.
 - 속도 변경에 맞춰 모바일·전체 흐름 검증의 이동 시간과 관성 허용값을 갱신했다.
 - TypeScript, Vitest 48/48, production build가 통과했다. 전체 lint는 기존 `BattleScreen`의 `setState-in-effect` 오류 1건과 `<img>` 경고 2건이 남아 있다.
+
+## 2026-08-26 — NORMAL/ENDLESS 플레이 타이머 모드
+
+- 기존 RUN/STOP 버튼이 전체 runtime `paused`를 토글하던 동작을 제거하고, 시간 HUD 옆에 `NORMAL/ENDLESS` 토글을 추가했다.
+- 기본 모드는 `NORMAL`이며 75초 생존 제한 시간이 정상적으로 감소한다.
+- `ENDLESS`에서는 게임 경과시간·이동·전투는 계속 진행하고 `survivalUnlockSeconds`를 프레임만큼 연장해 75초 제한이 자동 만료되지 않도록 했다.
+- runtime snapshot에 `timeMode`를 추가했다. 일반 전투 브라우저에서 NORMAL 1초 감소, ENDLESS 10초 동안 잔여시간 고정, NORMAL 복귀 후 감소 재개를 확인했다.
+- ENDLESS를 전체 게임 정지가 아닌 생존 제한 시계 연장 방식으로 확정했다. ENDLESS에서 80초를 진행해도 `result=ACTIVE`, `extractionStatus=LOCKED`, 게임 경과시간은 계속 증가하는 것을 확인했다.
+- TypeScript, Vitest 56/56, production build, 브라우저 버튼 상호작용 검증을 통과했다. 전체 lint는 기존 `BattleScreen`의 `setState-in-effect` 오류 1건과 `<img>` 경고 2건이 남아 있다.

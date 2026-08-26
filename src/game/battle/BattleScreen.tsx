@@ -405,10 +405,21 @@ export function BattleScreen({ campaign, request, onComplete }: BattleScreenProp
           <span><small>{t('tactical.alert')}</small><strong>{Math.round(snapshot.alert)}%</strong></span>
         </div>
       </section> : null}
-      {snapshot ? <section className={`battle-survival-hud extraction-${snapshot.extractionStatus.toLowerCase()}`} aria-live="polite">
-        <span>{snapshot.extractionStatus === 'LOCKED' ? t('battle.survive') : extractionActive ? t('battle.extracting') : t('battle.escapeReady')}</span>
-        <strong>{snapshot.extractionStatus === 'LOCKED' ? `${Math.ceil(snapshot.survivalRemainingSeconds)}s` : extractionActive ? `${Math.round(snapshot.extractionProgress * 100)}%` : t('common.ready')}</strong>
-      </section> : null}
+      {snapshot ? <div className="battle-time-control" aria-label="PLAY TIME CONTROL">
+        <section className={`battle-survival-hud extraction-${snapshot.extractionStatus.toLowerCase()}`} aria-live="polite">
+          <span>{snapshot.extractionStatus === 'LOCKED' ? t('battle.survive') : extractionActive ? t('battle.extracting') : t('battle.escapeReady')}</span>
+          <strong>{snapshot.extractionStatus === 'LOCKED' ? `${Math.ceil(snapshot.survivalRemainingSeconds)}s` : extractionActive ? `${Math.round(snapshot.extractionProgress * 100)}%` : t('common.ready')}</strong>
+        </section>
+        <button
+          className={`battle-time-toggle ${snapshot.timeMode === 'ENDLESS' ? 'is-endless' : 'is-normal'}`}
+          type="button"
+          data-testid="battle-time-toggle"
+          aria-pressed={snapshot.timeMode === 'ENDLESS'}
+          aria-label={`Switch to ${snapshot.timeMode === 'ENDLESS' ? 'NORMAL' : 'ENDLESS'} mode`}
+          disabled={phase !== 'ready'}
+          onClick={() => runtimeRef.current?.setTimeMode(snapshot.timeMode === 'ENDLESS' ? 'NORMAL' : 'ENDLESS')}
+        >{snapshot.timeMode}</button>
+      </div> : null}
       {snapshot ? <section className={`battle-target-hud ${nearbyTarget ? 'target-ready' : ''}`} aria-live="polite">
         <span>{nearbyTarget ? t('battle.targetReady') : guidanceTarget?.discovered ? t('battle.signalTracked') : guidanceTarget ? t('battle.signalUnknown') : t('battle.autoScan')}</span>
         <strong>{nearbyTarget

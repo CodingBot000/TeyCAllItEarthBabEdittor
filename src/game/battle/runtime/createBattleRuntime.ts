@@ -82,10 +82,13 @@ export interface BattleRuntime {
   setUnitInvincibilityEnabled(enabled: boolean): void;
   setPointDefenseDisabled(disabled: boolean): void;
   setPaused(paused: boolean): void;
+  setTimeMode(mode: BattleTimeMode): void;
   advanceTime(milliseconds: number): void;
   getSnapshot(): BattleRuntimeSnapshot;
   dispose(): void;
 }
+
+export type BattleTimeMode = 'NORMAL' | 'ENDLESS';
 
 export interface BattleRuntimeOptions {
   combatState?: CombatState;
@@ -129,6 +132,7 @@ export interface BattleRuntimeSnapshot {
   coordinateSystem: string;
   mapId: string;
   paused: boolean;
+  timeMode: BattleTimeMode;
   elapsedSeconds: number;
   survivalRemainingSeconds: number;
   extractionStatus: ExtractionStatus;
@@ -272,6 +276,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   mothershipDestructionVfx.setQuality('HIGH');
   setGameplayRenderingGroup(mothershipGameplayRoot, fighterPoolRoot, dronePoolRoot, groundBattleRoot);
   let paused = false;
+  let timeMode: BattleTimeMode = 'NORMAL';
   let elapsed = 0;
   let cinematic: MothershipCinematic | null = null;
   let completedCombat = false;
@@ -395,6 +400,10 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
   const setPointDefenseDisabled = (disabled: boolean) => {
     pointDefenseDisabled = disabled;
   };
+  const setTimeMode = (mode: BattleTimeMode): void => {
+    timeMode = mode;
+    emitSnapshot(true);
+  };
   const syncKeyboardMovement = () => {
     const moveLeft = pressedKeys.has('arrowleft') || pressedKeys.has('a');
     const moveRight = pressedKeys.has('arrowright') || pressedKeys.has('d');
@@ -417,6 +426,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       coordinateSystem: 'side-view world: x increases right, y increases up, z increases away from camera; fighters use true 3D coordinates',
       mapId: map.id,
       paused,
+      timeMode,
       elapsedSeconds: round(combatState.elapsedSeconds, 3),
       survivalRemainingSeconds: round(sideViewBattleTimeRemaining(combatState), 3),
       extractionStatus: combatState.extractionStatus,
@@ -688,7 +698,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
       combatState.mothership.position.z = 0;
       fleeingCrowdVisuals.sync(combatState, elapsed, true);
       const hullBeforeStep = invincibilityEnabled ? combatState.mothership.hull : null;
-      if (invincibilityEnabled && gameplayProfile) combatState.survivalUnlockSeconds += deltaSeconds;
+      if (timeMode === 'ENDLESS' && gameplayProfile) combatState.survivalUnlockSeconds += deltaSeconds;
       tickCombat(combatState, deltaSeconds, { unitInvincibilityEnabled, disablePointDefense: pointDefenseDisabled });
       if (gameplayProfile) tickSideViewBattle(combatState, gameplayProfile, deltaSeconds, unitInvincibilityEnabled);
       if (invincibilityEnabled && hullBeforeStep !== null) {
@@ -778,6 +788,7 @@ export async function createBattleRuntime(canvas: HTMLCanvasElement, map: Battle
     setUnitInvincibilityEnabled,
     setPointDefenseDisabled,
     setPaused(nextPaused: boolean) { paused = nextPaused; emitSnapshot(true); },
+    setTimeMode,
     advanceTime,
     getSnapshot,
     dispose() {
@@ -875,6 +886,7 @@ function emptyBattleSnapshot(mapId: string, paused: boolean, shipX: number, elap
     coordinateSystem: 'side-view world: x increases right, y increases up, z increases away from camera; fighters use true 3D coordinates',
     mapId,
     paused,
+    timeMode: 'NORMAL',
     elapsedSeconds: round(elapsedSeconds, 3),
     survivalRemainingSeconds: 0,
     extractionStatus: 'LOCKED',
